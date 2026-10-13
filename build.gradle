@@ -53,7 +53,7 @@ repositories {
 }
 
 base {
-    archivesName = mod_id
+    archivesName = archives_base_name
 }
 
 jarJar.enable()
@@ -126,41 +126,35 @@ mixin {
     configs.add("imm_ptl.mixins.json")
     configs.add("imm_ptl_compat.mixins.json")
     configs.add("imm_ptl_fabric.mixins.json")
+    configs.add("imm_ptl_sable_compat.mixins.json")
+    configs.add("imm_ptl_create_compat.mixins.json")
+    configs.add("imm_ptl_dh_compat.mixins.json")
+    configs.add("imm_ptl_physicsmod_compat.mixins.json")
+    configs.add("imm_ptl_render_tweaks.mixins.json")
 }
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
-    /*implementation "maven.modrinth:embeddium:Na1PoLYF"
-    compileOnly "maven.modrinth:oculus:1.20.1-1.6.15a"*/
 
-    implementation "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
-    implementation "maven.modrinth:iris:1.8.1+1.21.1-neoforge"
+    // Sodium/Iris versions the portal rendering compat is verified against
+    implementation "maven.modrinth:sodium:mc1.21.1-0.8.13-neoforge"
+    implementation "maven.modrinth:iris:1.8.14-beta.1+1.21.1-neoforge"
 
     implementation "maven.modrinth:cloth-config:15.0.140+neoforge"
     implementation "maven.modrinth:pehkui:3.8.3+1.21-neoforge"
 
-    // The Aether
-    implementation "maven.modrinth:owo-lib:0.12.15-beta.12+1.21"
-    implementation "maven.modrinth:aether:1.21.1-1.5.1-beta.4-neoforge"
+    // Create (brings Flywheel, Ponder, Registrate transitively)
+    implementation "maven.modrinth:create:UjX6dr61"
 
-//    // Confluence: Otherworld
-//    implementation "maven.modrinth:confluence:1.1.3"
-//    implementation "maven.modrinth:curios:9.5.1+1.21.1"
+    // Optional compat targets of the Immersive Aeronautics integration (compile-only)
+    compileOnly "maven.modrinth:sable:fg9dTRz9"                 // Sable 2.0.6 (NeoForge); bundles Veil 4.3.2 + sable-companion 1.6.0 as jar-in-jar
+    compileOnly "maven.modrinth:create-aeronautics:44pLdPGg"    // Create Aeronautics 1.3.2 (bundled)
+    compileOnly "maven.modrinth:distanthorizons:9w34y8ai"       // Distant Horizons 3.3.3
+    compileOnly "maven.modrinth:physicsmod:ZhWEOiAq"            // Physics Mod 3.0.34 (NeoForge)
+    compileOnly "maven.modrinth:sable-ragdolls:CyKh8XSr"        // Sable Player Ragdoll 0.7.5
 
-//    // Camol
-//    implementation "curse.maven:camol-1214396:6337020"
-
-    // Oritech
-    implementation "maven.modrinth:oritech:0.16.2"
-    implementation "maven.modrinth:architectury-api:13.0.8+neoforge"
-    implementation "maven.modrinth:geckolib:DTo3uxPN"
-    implementation "maven.modrinth:stitch:4.0.1"
-
-    // Create
-    implementation "maven.modrinth:create:1.21.1-6.0.6"
-
-    // Mekanism
-    implementation "maven.modrinth:mekanism:10.7.14.79"
+    // Nested jar-in-jar classes of Sodium/Iris/Sable, extracted by scripts/extract-nested-deps.sh
+    compileOnly fileTree(dir: 'deps', include: '*.jar')
 }
 
 tasks.named('build').configure { dependsOn('jarJar') }
@@ -174,7 +168,7 @@ tasks.withType(ProcessResources).configureEach {
             minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
             neo_version         : neo_version, neo_version_range: neo_version_range, issue_tracker_url: issue_tracker_url,
             loader_version_range: loader_version_range,
-            mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_credits: mod_credits, mod_version: mod_version,
             mod_authors         : mod_authors, mod_description: mod_description, pack_format_number: pack_format_number,
     ]
     inputs.properties replaceProperties
@@ -186,4 +180,31 @@ tasks.withType(ProcessResources).configureEach {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+// Immersive Aeronautics: ship both licences and the attribution notice inside every jar (Apache-2.0 §4,
+// PolyForm Shield "Notices"): LICENSE is PolyForm Shield (our code and the Sable copy), LICENSE-APACHE covers the
+// code taken from Immersive Portals, Immersive Aeronautics, IPSable and Rapier. NOTICE says which is which.
+tasks.withType(Jar).configureEach {
+    from(rootProject.file('LICENSE')) { into 'META-INF' }
+    from(rootProject.file('LICENSE-APACHE')) { into 'META-INF' }
+    from(rootProject.file('NOTICE')) { into 'META-INF' }
+}
+
+// Seamless ship crossings: the ipa_rapier backend (src/main/java/ipaeronautics, natives/) is copied from Sable and
+// stays under Sable's PolyForm Shield licence, the same text as META-INF/LICENSE. Its native libraries are built by
+// scripts/build-natives.sh; a jar without all six falls back to Sable's stock physics on the missing platforms,
+// so the build refuses to package one unless -PallowMissingNatives is given.
+def ipaRapierNatives = ['x86_64_linux.so', 'aarch64_linux.so', 'x86_64_macos.dylib', 'aarch64_macos.dylib',
+                        'x86_64_windows.dll', 'aarch64_windows.dll'].collect { "src/main/resources/natives/ipa_rapier/ipa_rapier_$it" }
+tasks.named('processResources').configure {
+    doFirst {
+        def missing = ipaRapierNatives.findAll { !rootProject.file(it).exists() }
+        if (!missing.isEmpty()) {
+            if (project.hasProperty('allowMissingNatives')) {
+                logger.warn("ipa_rapier natives missing (stock Sable physics there): ${missing}")
+            } else {
+                throw new GradleException("ipa_rapier natives missing: ${missing}. Run scripts/build-natives.sh, or build with -PallowMissingNatives")
+            }
+        }
+    }
 }

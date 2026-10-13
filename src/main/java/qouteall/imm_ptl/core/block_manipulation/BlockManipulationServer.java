@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.block_manipulation;
 
 import com.mojang.logging.LogUtils;
@@ -29,6 +36,8 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.IPMcHelper;
 import qouteall.imm_ptl.core.ScaleUtils;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction;
 import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
 import qouteall.imm_ptl.core.network.PacketRedirection;
 import qouteall.imm_ptl.core.portal.Portal;
@@ -84,7 +93,7 @@ public class BlockManipulationServer {
 //            });
     
     private static boolean canPlayerReach(
-        ResourceKey<Level> dimension,
+        ServerLevel world,
         ServerPlayer player,
         BlockPos requestPos
     ) {
@@ -92,9 +101,23 @@ public class BlockManipulationServer {
             return false;
         }
         
+        // Immersive Aeronautics: a block on a Sable ship is in plot coordinates; it is where the ship is, and where
+        // the ship's far half is when it straddles a portal
+        for (Tuple<ResourceKey<Level>, Vec3> point : IPShipBlockInteraction.reachPoints(world, requestPos)) {
+            if (canPlayerReachPoint(point.getA(), player, point.getB())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    private static boolean canPlayerReachPoint(
+        ResourceKey<Level> dimension,
+        ServerPlayer player,
+        Vec3 pos
+    ) {
         double playerScale = ScaleUtils.computeBlockReachScale(player);
         
-        Vec3 pos = Vec3.atCenterOf(requestPos);
         Vec3 playerPos = player.position();
         double distanceSquare = 6 * 6 * 4 * 4 * playerScale * playerScale;
         if (player.level().dimension() == dimension) {
@@ -225,7 +248,7 @@ public class BlockManipulationServer {
         BlockPos blockPos = packet.getPos();
         ServerboundPlayerActionPacket.Action action = packet.getAction();
         
-        if (!canPlayerReach(world.dimension(), player, blockPos)) {
+        if (!canPlayerReach(world, player, blockPos)) {
             LOGGER.error("Reject cross-portal action {} {} {}", player, world, blockPos);
             return;
         }
@@ -267,7 +290,7 @@ public class BlockManipulationServer {
         Direction direction = blockHitResult.getDirection();
         player.resetLastActionTime();
         if (world.mayInteract(player, blockPos)) {
-            if (!canPlayerReach(dimension, player, blockPos)) {
+            if (!canPlayerReach(world, player, blockPos)) {
                 LOGGER.error("Reject cross-portal action {} {} {}", player, world, blockPos);
                 return;
             }
@@ -301,6 +324,14 @@ public class BlockManipulationServer {
     }
     
     public static boolean validateReach(Player player, Level targetWorld, BlockPos targetPos) {
+        // Immersive Aeronautics: a block entity on a Sable ship (in plot coordinates) is where the ship and its far
+        // halves are, whichever way the player looks
+        if (targetWorld instanceof ServerLevel serverWorld && player instanceof ServerPlayer serverPlayer
+            && IPSableCompatHelper.isPlotSpacePosition(targetPos.getX(), targetPos.getZ())
+        ) {
+            return canPlayerReach(serverWorld, serverPlayer, targetPos);
+        }
+        
         PortalUtils.PortalAwareRaytraceResult result = PortalUtils.portalAwareRayTrace(
             player.level(),
             player.getEyePosition(),

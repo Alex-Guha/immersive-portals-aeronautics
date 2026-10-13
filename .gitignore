@@ -48,3 +48,21 @@ crowdin-translate-1.2.jar
 src/main/resources/immersive_portals.timestamp
 /libs/
 /runs/
+
+# Reference material for the Immersive Aeronautics reconstruction (binaries and derivable output)
+/*.jar
+/reference/upstream-jar/
+/reference/decompiled-upstream/
+
+# local working notes
+/CLAUDE.md
+
+# user-supplied test logs
+/LOG.txt
+/CRASHLOG.txt
+
+# ipa_rapier natives: build tree, cargo cache, and the built libraries (scripts/build-natives.sh)
+/natives/target/
+/natives/.cargo-cache/
+/src/main/resources/natives/ipa_rapier/ipa_rapier_*
+__pycache__/

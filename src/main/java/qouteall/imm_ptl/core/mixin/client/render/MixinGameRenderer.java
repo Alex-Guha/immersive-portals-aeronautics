@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.render;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
@@ -152,10 +159,13 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         GameRenderer gameRenderer, DeltaTracker deltaTracker
     ) {
         if (CrossPortalViewRendering.renderCrossPortalView()) {
+            // Immersive Aeronautics: frame trace of seated train riders near a portal
+            qouteall.imm_ptl.core.compat.IPSeatedView.afterFrame(true);
             return;
         }
         
         gameRenderer.renderLevel(deltaTracker);
+        qouteall.imm_ptl.core.compat.IPSeatedView.afterFrame(false);
     }
     
     @Inject(method = "renderLevel", at = @At("TAIL"))

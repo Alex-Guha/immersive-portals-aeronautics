@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.common.chunk_sync;
 
 import net.minecraft.server.level.*;
@@ -15,8 +24,9 @@ import qouteall.imm_ptl.core.chunk_loading.PlayerChunkLoading;
 import qouteall.imm_ptl.core.ducks.IEChunkMap;
 
 import java.util.List;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
 
-@Mixin(value = ChunkMap.class, priority = 1100)
+@Mixin(value = ChunkMap.class, priority = 500)
 public abstract class MixinChunkMap_C implements IEChunkMap {
     
     @Shadow
@@ -82,6 +92,7 @@ public abstract class MixinChunkMap_C implements IEChunkMap {
      */
     @Overwrite
     public List<ServerPlayer> getPlayers(ChunkPos pos, boolean boundaryOnly) {
-        return ImmPtlChunkTracking.getPlayersViewingChunk(level.dimension(), pos.x, pos.z, boundaryOnly);
+        // Immersive Aeronautics: merge IP's viewers with vanilla-tracked players (Sable uses this)
+        return IPSableCompatHelper.getPlayersMerged((ChunkMap) (Object) this, level, pos, boundaryOnly);
     }
 }

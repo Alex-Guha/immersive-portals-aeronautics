@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.particle;
 
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
@@ -65,6 +72,27 @@ public class MixinParticleEngine implements IEParticleManager {
     @Override
     public void ip_setWorld(ClientLevel world_) {
         level = world_;
+    }
+    
+    // Immersive Aeronautics: see IEParticleManager
+    @Shadow
+    @org.spongepowered.asm.mixin.Final
+    private java.util.Map<net.minecraft.client.particle.ParticleRenderType, java.util.Queue<Particle>> particles;
+    
+    @Shadow
+    private void tickParticleList(java.util.Collection<Particle> particles) {
+    }
+    
+    @Override
+    public void ip_tickParticleLists() {
+        for (java.util.Queue<Particle> queue : particles.values()) {
+            tickParticleList(queue);
+        }
+    }
+    
+    @Override
+    public java.util.Map<net.minecraft.client.particle.ParticleRenderType, java.util.Queue<Particle>> ip_getParticles() {
+        return particles;
     }
     
 }

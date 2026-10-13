@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.teleportation;
 
 import com.mojang.logging.LogUtils;
@@ -46,6 +55,8 @@ import qouteall.q_misc_util.my_util.WithDim;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipPortalTraversal;
 
 public class ServerTeleportationManager {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -84,6 +95,9 @@ public class ServerTeleportationManager {
         teleportingEntities.clear();
         
         manageGlobalPortalTeleportation();
+        
+        // Immersive Aeronautics: Sable ships through portals
+        IPShipPortalTraversal.tick(server);
     }
     
     public static boolean shouldEntityTeleport(Portal portal, Entity entity) {
@@ -194,6 +208,9 @@ public class ServerTeleportationManager {
             
             teleportPlayer(player, dimensionTo, newEyePos);
             
+            // Immersive Aeronautics: a physics staff drag keeps its goal where it was (its frame now starts here)
+            qouteall.imm_ptl.core.compat.sable_integration.IPPhysicsStaffHooks.onServerPlayerTeleported(player, dimensionBefore, portal);
+            
             portal.onEntityTeleportedOnServer(player);
             
             ScaleUtils.onServerEntityTeleported(player, portal);
@@ -262,6 +279,11 @@ public class ServerTeleportationManager {
         Vec3 posBefore,
         Portal portal
     ) {
+        // Immersive Aeronautics: a player seated on a Sable ship crosses with the ship, never on their own
+        if (IPSableCompatHelper.isRidingOnShip(player)) {
+            return "seated on a ship (the ship carries its riders through portals)";
+        }
+
         if (player.getVehicle() != null) {
             return null;
         }

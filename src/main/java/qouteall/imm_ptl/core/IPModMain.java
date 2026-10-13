@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core;
 
 import com.mojang.logging.LogUtils;
@@ -107,6 +114,10 @@ public class IPModMain {
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             PortalCommand.register(event.getDispatcher(), event.getBuildContext());
+            // Immersive Aeronautics: ship straddling switch (Sable classes only load with Sable present)
+            if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
+                qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCommand.register(event.getDispatcher());
+            }
         });
 
         // @Nick1st moved to IPModEntry (those are registry functions)

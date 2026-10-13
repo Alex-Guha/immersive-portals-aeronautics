@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal.nether_portal;
 
 import net.minecraft.core.Direction;
@@ -14,6 +23,8 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 import qouteall.q_misc_util.my_util.DQuaternion;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 
 public class NetherPortalEntity extends BreakablePortalEntity {
     private static final OverlayInfo overlay_x = new OverlayInfo(
@@ -68,6 +79,17 @@ public class NetherPortalEntity extends BreakablePortalEntity {
     
     @Override
     protected boolean isPortalIntactOnThisSide() {
+        // Immersive Aeronautics: never break a portal whose frame chunks are not fully loaded
+        for (BlockPos blockPos : blockPortalShape.area) {
+            if (level().getChunk(blockPos.getX() >> 4, blockPos.getZ() >> 4, ChunkStatus.FULL, false) == null) {
+                return true;
+            }
+        }
+        for (BlockPos blockPos : blockPortalShape.frameAreaWithoutCorner) {
+            if (level().getChunk(blockPos.getX() >> 4, blockPos.getZ() >> 4, ChunkStatus.FULL, false) == null) {
+                return true;
+            }
+        }
         
         return blockPortalShape.area.stream()
             .allMatch(blockPos ->

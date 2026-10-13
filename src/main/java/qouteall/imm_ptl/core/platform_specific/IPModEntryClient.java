@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.platform_specific;
 
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -30,6 +39,7 @@ import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.MyTaskList;
 
 import java.util.Arrays;
+import qouteall.imm_ptl.core.compat.physicsmod_integration.IPPhysicsOceanIntegration;
 
 public class IPModEntryClient {
     
@@ -66,7 +76,16 @@ public class IPModEntryClient {
         IPModMainClient.init();
 
         modEventBus.addListener(EntityRenderersEvent.RegisterRenderers.class, IPModEntryClient::initPortalRenderers);
-        
+
+        // Immersive Aeronautics: Create's portal-track rails end in the portal plane; drop those faces (z-fighting)
+        if (ModList.get().isLoaded("create")) {
+            modEventBus.addListener(
+                net.neoforged.bus.api.EventPriority.LOWEST,
+                net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
+            );
+        }
+
         boolean isSodiumPresent =
             ModList.get().isLoaded("embeddium") || ModList.get().isLoaded("sodium");
         if (isSodiumPresent) {
@@ -92,21 +111,16 @@ public class IPModEntryClient {
             Helper.log("Iris is present");
             IrisInterface.invoker = new IrisInterface.OnIrisPresent();
             ExperimentalIrisPortalRenderer.init();
-            
-            IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.oneShotTask(() -> {
-                if (IPConfig.getConfig().shouldDisplayWarning("iris")) {
-                    CHelper.printChat(
-                        Component.translatable("imm_ptl.iris_warning")
-                            .append(IPMcHelper.getDisableWarningText("iris"))
-                    );
-                }
-            }));
+
+            // Immersive Aeronautics: Iris is a first-class target here, no chat warning
         }
         else {
             Helper.log("Iris is not present");
         }
         
         IPModInfoChecking.initClient();
+        
+        IPPhysicsOceanIntegration.init();
     }
     
 }

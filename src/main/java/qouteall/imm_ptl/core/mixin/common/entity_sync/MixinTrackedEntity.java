@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.common.entity_sync;
 
 import net.minecraft.core.SectionPos;
@@ -15,6 +24,7 @@ import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction;
 import qouteall.imm_ptl.core.ducks.IEChunkMap;
 import qouteall.imm_ptl.core.ducks.IEEntityTrackerEntry;
 import qouteall.imm_ptl.core.ducks.IETrackedEntity;
@@ -24,11 +34,15 @@ import qouteall.imm_ptl.core.network.PacketRedirection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
 
 //NOTE must redirect all packets about entities
 @SuppressWarnings({"JavadocReference", "resource"})
-@Mixin(ChunkMap.TrackedEntity.class)
+@Mixin(value = ChunkMap.TrackedEntity.class, priority = 500)
 public abstract class MixinTrackedEntity implements IETrackedEntity {
+    @Unique
+    private static final Logger ip_LOGGER = LogUtils.getLogger();
     @Shadow
     @Final
     private ServerEntity serverEntity;
@@ -94,7 +108,10 @@ public abstract class MixinTrackedEntity implements IETrackedEntity {
      */
     @Overwrite
     public void updatePlayer(ServerPlayer player) {
-        // nothing
+        // Immersive Aeronautics: Sable's TrackedEntityMixin redirects the Entity.position()
+        // call inside the vanilla updatePlayer. IP overwrites this method, so keep one
+        // position() call here or Sable's @Redirect fails to apply and the game crashes.
+        ip_getEntity().position();
     }
     
     /**
@@ -164,6 +181,30 @@ public abstract class MixinTrackedEntity implements IETrackedEntity {
                 }
             }
         }
+        
+        // Immersive Aeronautics: entities in Sable plot space (|chunk| > 100000) are paired
+        // with every player in the level, since IP's chunk tracking never covers plot chunks
+        if (Math.abs(this.entity.chunkPosition().x) > 100000 || Math.abs(this.entity.chunkPosition().z) > 100000) {
+            List<ServerPlayer> players = ((ServerLevel) this.entity.level()).players();
+            for (int i = 0; i < players.size(); i++) {
+                ServerPlayer player = players.get(i);
+                if (player != this.entity && this.seenBy.add(player.connection)) {
+                    this.serverEntity.addPairing(player);
+                    ip_LOGGER.debug(
+                        "[IPPlotEntityPair] paired {}#{} -> {}",
+                        this.entity.getClass().getName(), this.entity.getId(), player.getName().getString()
+                    );
+                }
+            }
+            // Immersive Aeronautics: and with the players in other dimensions the ship is synced to (seeing it through a
+            // portal, or near its far half), dimension-tagged
+            ServerLevel level = (ServerLevel) this.entity.level();
+            for (ServerPlayer player : IPShipBlockInteraction.withPortalViewers(level, this.entity.chunkPosition(), List.of())) {
+                if (player != this.entity && player.level() != level && this.seenBy.add(player.connection)) {
+                    PacketRedirection.withForceRedirect(level, () -> this.serverEntity.addPairing(player));
+                }
+            }
+        }
     }
     
     @Unique
@@ -173,6 +214,32 @@ public abstract class MixinTrackedEntity implements IETrackedEntity {
         int effectiveRange,
         ServerPlayer player
     ) {
+        // Immersive Aeronautics: plot-space entities are watched by everyone in the same level
+        if ((Math.abs(entity.chunkPosition().x) > 100000 || Math.abs(entity.chunkPosition().z) > 100000)) {
+            if (entity.level() == player.level()) {
+                return true;
+            }
+            // Immersive Aeronautics: and by the players in other dimensions the ship is synced to
+            if (IPShipBlockInteraction.withPortalViewers((ServerLevel) entity.level(), entity.chunkPosition(), List.of()).contains(player)) {
+                return true;
+            }
+        }
+        
+        // Immersive Aeronautics: a rider always watches its vehicle and vice versa
+        if (entity != null && player != null) {
+            if (entity.hasPassenger(player)) {
+                return true;
+            }
+            if (player.getVehicle() == entity) {
+                return true;
+            }
+        }
+        
+        // Immersive Aeronautics: Sable entities are never watched across dimensions
+        if (entity.getClass().getName().startsWith("dev.ryanhcode.sable") && entity.level() != player.level()) {
+            return false;
+        }
+        
         if (watchRec == null) {
             return false;
         }

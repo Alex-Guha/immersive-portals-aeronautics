@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.network;
 
 import net.minecraft.network.FriendlyByteBuf;
@@ -38,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
 
 public class PacketRedirection {
     private static final Logger LOGGER = LoggerFactory.getLogger(PacketRedirection.class);
@@ -109,7 +119,11 @@ public class PacketRedirection {
         Packet<ClientGamePacketListener> packet,
         ResourceKey<Level> dimension
     ) {
-        if (getForceRedirectDimension() == dimension) {
+        if (IPSableCompatHelper.isDimensionAgnosticPacket(packet)) {
+            // Immersive Aeronautics: Sable/Veil payloads carry their own context, never wrap them
+            serverPlayNetworkHandler.send(packet);
+        }
+        else if (getForceRedirectDimension() == dimension) {
             serverPlayNetworkHandler.send(packet);
         }
         else {
@@ -133,6 +147,11 @@ public class PacketRedirection {
         ResourceKey<Level> dimension,
         Packet<ClientGamePacketListener> packet
     ) {
+        if (IPSableCompatHelper.isDimensionAgnosticPacket(packet)) {
+            // Immersive Aeronautics: Sable/Veil payloads carry their own context, never wrap them
+            return packet;
+        }
+        
         if (isRedirectPacket(packet)) {
             // avoid duplicate redirect nesting
             return packet;

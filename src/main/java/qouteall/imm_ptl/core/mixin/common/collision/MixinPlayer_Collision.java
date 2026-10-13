@@ -1,3 +1,11 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ * Follows IPSable 0.5.0's MixinPlayer_Collision (its priority) by r2smith141 (Apache License 2.0).
+ */
 package qouteall.imm_ptl.core.mixin.common.collision;
 
 import net.minecraft.world.entity.LivingEntity;
@@ -8,8 +16,12 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 
+// Immersive Aeronautics: priority 900, as in IPSable 0.5.0 (r2smith141). Sable's player_standup.PlayerMixin wraps the
+// Level.noCollision call inside this method; an overwrite at the default priority makes that wrap fail at boot (the
+// fork dropped this mixin for it, and players crouched against blocks behind portals they flew into). Applied first,
+// the overwrite keeps IP's portal-trimmed box and Sable's wrap adds the ship blocks to it.
 @SuppressWarnings("resource")
-@Mixin(Player.class)
+@Mixin(value = Player.class, priority = 900)
 public abstract class MixinPlayer_Collision {
     
     /**

@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.render;
 
 import net.minecraft.client.Minecraft;
@@ -19,10 +28,11 @@ import qouteall.imm_ptl.core.render.FrontClipping;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
+import net.minecraft.world.entity.Entity;
 
 // avoid crashing with sodium
 // the overwrite has priority of 1000
-@Mixin(value = LevelRenderer.class, priority = 1100)
+@Mixin(value = LevelRenderer.class, priority = 1300)
 public class MixinLevelRenderer_Optional {
     @Shadow
     private ViewArea viewArea;
@@ -93,7 +103,9 @@ public class MixinLevelRenderer_Optional {
         if (WorldRenderInfo.isRendering()) {
             return WorldRenderInfo.getCameraPos().x;
         }
-        return player.getX();
+        // Immersive Aeronautics: follow the camera entity (e.g. a seat on a ship), not the player
+        Entity cameraEntity = this.minecraft.getCameraEntity();
+        return cameraEntity != null ? cameraEntity.getX() : player.getX();
     }
     
     // biolerplate
@@ -106,7 +118,9 @@ public class MixinLevelRenderer_Optional {
         if (WorldRenderInfo.isRendering()) {
             return WorldRenderInfo.getCameraPos().y;
         }
-        return player.getY();
+        // Immersive Aeronautics: follow the camera entity (e.g. a seat on a ship), not the player
+        Entity cameraEntity = this.minecraft.getCameraEntity();
+        return cameraEntity != null ? cameraEntity.getY() : player.getY();
     }
     
     // biolerplate
@@ -119,6 +133,8 @@ public class MixinLevelRenderer_Optional {
         if (WorldRenderInfo.isRendering()) {
             return WorldRenderInfo.getCameraPos().z;
         }
-        return player.getZ();
+        // Immersive Aeronautics: follow the camera entity (e.g. a seat on a ship), not the player
+        Entity cameraEntity = this.minecraft.getCameraEntity();
+        return cameraEntity != null ? cameraEntity.getZ() : player.getZ();
     }
 }

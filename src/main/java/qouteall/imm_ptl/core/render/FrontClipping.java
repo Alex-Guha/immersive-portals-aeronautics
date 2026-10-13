@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.shaders.Uniform;
@@ -22,6 +29,8 @@ public class FrontClipping {
     private static final Minecraft client = Minecraft.getInstance();
     private static double[] activeClipPlaneEquationBeforeModelView;
     private static double[] activeClipPlaneAfterModelView;
+    // Immersive Aeronautics: the clip plane for world terrain drawn by Sodium (see setupInnerClipping)
+    private static double[] activeTerrainClipPlaneAfterModelView;
     
     public static boolean isClippingEnabled = false;
     
@@ -77,6 +86,14 @@ public class FrontClipping {
                 getClipEquationInner(clipping.pos(), clipping.normal(), adjustment);
             activeClipPlaneAfterModelView =
                 transformClipEquation(activeClipPlaneEquationBeforeModelView, modelView);
+            // Immersive Aeronautics: the adjustment keeps terrain faces lying exactly in the portal plane (world
+            // wrapping portals on block faces) and the far halves of straddling ships (cut 1 cm past the plane in
+            // portal passes). For world terrain behind a portal whose plane lies mid-block (nether portals) no block
+            // face can lie in it, while the band showed the last centimetre of anything ending exactly in the plane
+            // on the camera's side (Create's portal tracks). Ships are drawn with the vanilla shaders and keep it.
+            activeTerrainClipPlaneAfterModelView = adjustment != 0 && liesMidBlock(clipping)
+                ? transformClipEquation(getClipEquationInner(clipping.pos(), clipping.normal(), 0), modelView)
+                : activeClipPlaneAfterModelView;
             
             enableClipping();
         }
@@ -84,6 +101,26 @@ public class FrontClipping {
             activeClipPlaneEquationBeforeModelView = null;
             disableClipping();
         }
+    }
+    
+    // Immersive Aeronautics: an axis-aligned plane through the middle of a block layer
+    private static boolean liesMidBlock(Plane plane) {
+        Vec3 normal = plane.normal();
+        Vec3 pos = plane.pos();
+        double coordinate;
+        if (Math.abs(normal.x) > 0.999999) {
+            coordinate = pos.x;
+        }
+        else if (Math.abs(normal.y) > 0.999999) {
+            coordinate = pos.y;
+        }
+        else if (Math.abs(normal.z) > 0.999999) {
+            coordinate = pos.z;
+        }
+        else {
+            return false;
+        }
+        return Math.abs(coordinate - Math.floor(coordinate) - 0.5) < 1.0e-6;
     }
     
     private static double[] transformClipEquation(
@@ -130,6 +167,7 @@ public class FrontClipping {
             activeClipPlaneAfterModelView = transformClipEquation(
                 activeClipPlaneEquationBeforeModelView, matrixStack.last().pose()
             );
+            activeTerrainClipPlaneAfterModelView = activeClipPlaneAfterModelView; // Immersive Aeronautics
             enableClipping();
         }
         else {
@@ -169,6 +207,11 @@ public class FrontClipping {
     
     public static double[] getActiveClipPlaneEquationAfterModelView() {
         return activeClipPlaneAfterModelView;
+    }
+    
+    // Immersive Aeronautics: what Sodium's terrain shader clips against (without the adjustment at mid-block planes)
+    public static double[] getActiveTerrainClipPlaneEquationAfterModelView() {
+        return activeTerrainClipPlaneAfterModelView;
     }
     
     public static void updateClippingEquationUniformForCurrentShader(

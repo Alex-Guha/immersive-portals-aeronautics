@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat;
 
 import net.neoforged.fml.loading.LoadingModList;
@@ -48,6 +57,11 @@ public class IPCompatMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.contains("CardinalComp")) {
             boolean cardinalCompLoaded = modList.getModFileById("cardinal-components-base") != null;
             return cardinalCompLoaded;
+        }
+        
+        if (mixinClassName.contains("Dh")) {
+            boolean dhLoaded = modList.getModFileById("distanthorizons") != null;
+            return dhLoaded;
         }
         
         return false;

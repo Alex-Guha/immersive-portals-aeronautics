@@ -1,8 +1,18 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat.iris_compatibility;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import org.apache.commons.lang3.Validate;
@@ -24,6 +34,7 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
+import qouteall.q_misc_util.Helper;
 
 import java.util.List;
 
@@ -69,14 +80,32 @@ public class IrisPortalRenderer extends PortalRenderer {
         // but in AMD videocard it cannot. AMD videocard only supports converting depth32 into depth32stencil8.
         IPCGlobal.useSeparatedStencilFormat = !IPMcHelper.isNvidiaVideocard();
         
-        if (deferredFbs.length != PortalRendering.getMaxPortalLayer() + 1) {
+        if (deferredFbs.length != IPGlobal.maxPortalLayer + 1) {
             for (SecondaryFrameBuffer fb : deferredFbs) {
                 fb.fb.destroyBuffers();
             }
             
-            deferredFbs = new SecondaryFrameBuffer[PortalRendering.getMaxPortalLayer() + 1];
+            deferredFbs = new SecondaryFrameBuffer[IPGlobal.maxPortalLayer + 1];
             for (int i = 0; i < deferredFbs.length; i++) {
                 deferredFbs[i] = new SecondaryFrameBuffer();
+            }
+            
+            // Immersive Aeronautics: pick the stencil format from the main framebuffer's actual
+            // depth texture format instead of guessing from the GPU vendor
+            RenderTarget mainTargetForFormatCheck = client.getMainRenderTarget();
+            int mainDepthTexForFormatCheck = mainTargetForFormatCheck.getDepthTextureId();
+            if (mainDepthTexForFormatCheck > 0) {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, mainDepthTexForFormatCheck);
+                int mainFormatForFormatCheck = GL11.glGetTexLevelParameteri(
+                    GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_INTERNAL_FORMAT
+                );
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+                if (mainFormatForFormatCheck == GL30.GL_DEPTH32F_STENCIL8) {
+                    IPCGlobal.useSeparatedStencilFormat = true;
+                }
+                else if (mainFormatForFormatCheck == GL30.GL_DEPTH24_STENCIL8) {
+                    IPCGlobal.useSeparatedStencilFormat = false;
+                }
             }
         }
         
@@ -125,6 +154,11 @@ public class IrisPortalRenderer extends PortalRenderer {
             CHelper.doCheckGlError();
             
             // copy depth from mc fb to deferred fb
+            // Immersive Aeronautics: make the deferred depth format match the main one first
+            IPIrisDepthFormatFix.matchDeferredDepthFormat(
+                Minecraft.getInstance().getMainRenderTarget(),
+                deferredFbs[PortalRendering.getPortalLayer()].fb
+            );
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, mcFrameBuffer.frameBufferId);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, deferredFbs[portalLayer].fb.frameBufferId);
             GL30.glBlitFramebuffer(
@@ -135,6 +169,27 @@ public class IrisPortalRenderer extends PortalRenderer {
             
             int errorCode = GL11.glGetError();
             if (errorCode != GL_NO_ERROR) {
+                int mainDepthTex = mcFrameBuffer.getDepthTextureId();
+                int deferredDepthTex = deferredFbs[portalLayer].fb.getDepthTextureId();
+                int mainInternalFormat = 0;
+                int deferredInternalFormat = 0;
+                if (mainDepthTex > 0) {
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, mainDepthTex);
+                    mainInternalFormat = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_INTERNAL_FORMAT);
+                }
+                if (deferredDepthTex > 0) {
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, deferredDepthTex);
+                    deferredInternalFormat = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_INTERNAL_FORMAT);
+                }
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+                Helper.LOGGER.error(
+                    "[ImmPtl] Depth blit from main framebuffer ({}x{}, depthTex={}, internalFormat=0x{}) to deferred framebuffer ({}x{}, depthTex={}, internalFormat=0x{}) failed with GL error 0x{}",
+                    mcFrameBuffer.viewWidth, mcFrameBuffer.viewHeight,
+                    mainDepthTex, Integer.toHexString(mainInternalFormat),
+                    deferredFbs[portalLayer].fb.viewWidth, deferredFbs[portalLayer].fb.viewHeight,
+                    deferredDepthTex, Integer.toHexString(deferredInternalFormat),
+                    Integer.toHexString(errorCode)
+                );
                 IPGlobal.renderMode = IPGlobal.RenderMode.compatibility;
                 CHelper.printChat("[Immersive Portals]" +
                     "Switched to compatibility portal rendering mode." +
@@ -226,6 +281,9 @@ public class IrisPortalRenderer extends PortalRenderer {
         mainFrameBuffer.bindWrite(true);
         
         deferredFbs[0].fb.blitToScreen(mainFrameBuffer.viewWidth, mainFrameBuffer.viewHeight);
+        
+        // Immersive Aeronautics: put the portal depth back so the held item is not clipped
+        IPIrisHandDepthFix.restorePortalDepth(Minecraft.getInstance().getMainRenderTarget(), deferredFbs[0].fb);
         
         CHelper.checkGlError();
     }

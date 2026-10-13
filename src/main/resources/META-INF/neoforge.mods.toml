@@ -14,7 +14,7 @@ modId="immersive_portals_core" #mandatory
 # The version number of the mod
 version="${mod_version}" #mandatory
 # A display name for the mod
-displayName="Immersive Portals" #mandatory
+displayName="${mod_name}" #mandatory
 # A URL to query for updates for this mod. See the JSON update specification https://docs.neoforged.net/docs/misc/updatechecker/
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 # A URL for the "homepage" for this mod, displayed in the mod UI
@@ -22,9 +22,24 @@ displayName="Immersive Portals" #mandatory
 # A file name (in the root of the mod JAR) containing a logo for display
 logoFile="icon.png" #optional
 # A text field displayed in the mod UI
-#credits="" #optional
+credits="${mod_credits}" #optional
 # A text field displayed in the mod UI
 authors="${mod_authors}" #optional
+# The description text for the mod (multi line!) (#mandatory)
+description='''${mod_description}'''
+
+# Compatibility alias: the base Immersive Portals mod id. This fork registers as
+# "immersive_portals_core"/"imm_ptl", but many mods (Physics Mod, Distant Horizons, ...)
+# detect IP via ModList.isLoaded("immersive_portals"). Declaring it here (class-less,
+# same as the other IP modules which have no @Mod class either) lets those mods apply
+# their IP-compat paths.
+[[mods]] #mandatory
+# The modid of the mod
+modId="immersive_portals" #mandatory
+# The version number of the mod
+version="${mod_version}" #mandatory
+# A display name for the mod
+displayName="Immersive Portals" #mandatory
 # The description text for the mod (multi line!) (#mandatory)
 description='''${mod_description}'''
 
@@ -85,6 +100,21 @@ config="imm_ptl_peripheral.mixins.json"
 
 [[mixins]]
 config="q_misc_util.mixins.json"
+
+[[mixins]]
+config="imm_ptl_physicsmod_compat.mixins.json"
+
+[[mixins]]
+config="imm_ptl_sable_compat.mixins.json"
+
+[[mixins]]
+config="imm_ptl_render_tweaks.mixins.json"
+
+[[mixins]]
+config="imm_ptl_create_compat.mixins.json"
+
+[[mixins]]
+config="imm_ptl_dh_compat.mixins.json"
 
 # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.
 [[dependencies.immersive_portals_core]] #optional

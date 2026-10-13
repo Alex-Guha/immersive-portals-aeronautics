@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render.renderer;
 
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -8,6 +15,7 @@ import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
+import qouteall.imm_ptl.core.compat.dh_integration.IPDhTextureGuard;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
 import qouteall.imm_ptl.core.render.FrontClipping;
@@ -64,9 +72,22 @@ public class RendererUsingStencil extends PortalRenderer {
     
     protected void renderPortals(Matrix4f modelView) {
         List<Portal> portalsToRender = getPortalsToRender(modelView);
+        if (portalsToRender.isEmpty()) {
+            return;
+        }
         
-        for (Portal portal : portalsToRender) {
-            doRenderPortal(portal, modelView);
+        // Immersive Aeronautics: the portal passes draw Distant Horizons LODs into DH's textures,
+        // which this pass still reads after the translucent layer
+        boolean guardDhTextures = IPDhTextureGuard.beforePortalRendering();
+        try {
+            for (Portal portal : portalsToRender) {
+                doRenderPortal(portal, modelView);
+            }
+        }
+        finally {
+            if (guardDhTextures) {
+                IPDhTextureGuard.afterPortalRendering();
+            }
         }
     }
     

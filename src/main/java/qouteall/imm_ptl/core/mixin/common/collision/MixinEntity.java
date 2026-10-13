@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.common.collision;
 
 import net.minecraft.core.BlockPos;
@@ -27,12 +36,15 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.IPMcHelper;
 import qouteall.imm_ptl.core.api.ImmPtlEntityExtension;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCollisionBridge;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
 import qouteall.imm_ptl.core.portal.EndPortalEntity;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.CountDownInt;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 
 @Mixin(Entity.class)
 public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
@@ -46,6 +58,9 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
     
     @Shadow
     protected abstract Vec3 collide(Vec3 vec3d_1);
+    
+    @Shadow
+    protected abstract boolean isHorizontalCollisionMinor(Vec3 deltaMovement);
     
     @Shadow
     public abstract Component getName();
@@ -80,21 +95,29 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
     @Unique
     private static final CountDownInt IMM_PTL_LOG_COUNTER = new CountDownInt(20);
     
-    @Redirect(
+    // Immersive Aeronautics: see onIsFireImmune
+    @Unique
+    private static final int IP_END_PORTAL_FIRE_GRACE_TICKS = 10;
+    @Unique
+    private int ip_lastEndPortalContactTick = -1000;
+    
+    // Immersive Aeronautics: WrapOperation instead of Redirect so other mods (Sable) can
+    // wrap Entity.collide too
+    @WrapOperation(
         method = "Lnet/minecraft/world/entity/Entity;move(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;)V",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/world/entity/Entity;collide(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;"
         )
     )
-    private Vec3 redirectHandleCollisions(Entity entity, Vec3 attemptedMove) {
+    private Vec3 redirectHandleCollisions(Entity entity, Vec3 attemptedMove, Operation<Vec3> original) {
         if (!IPGlobal.enableServerCollision) {
             if (!entity.level().isClientSide()) {
                 if (entity instanceof Player) {
-                    return attemptedMove;
+                    return ip_bypassedCollision(entity, attemptedMove, attemptedMove);
                 }
                 else {
-                    return Vec3.ZERO;
+                    return ip_bypassedCollision(entity, attemptedMove, Vec3.ZERO);
                 }
             }
         }
@@ -109,31 +132,73 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
                 );
             }
             
-            return Vec3.ZERO;
+            return ip_bypassedCollision(entity, attemptedMove, Vec3.ZERO);
         }
         
         if (!IPGlobal.crossPortalCollision
             || ip_portalCollisionHandler == null
             || !ip_portalCollisionHandler.hasCollisionEntry()
         ) {
-            Vec3 normalCollisionResult = collide(attemptedMove);
-            return normalCollisionResult;
+            return original.call(entity, attemptedMove);
         }
         
-        Vec3 result = ip_portalCollisionHandler.handleCollision(
-            (Entity) (Object) this, attemptedMove
-        );
-        
+        // Immersive Aeronautics: still run the other wrappers (Sable's ship collision): the terrain collision they end
+        // with, Entity.collide, is answered by IP's portal-aware collision instead (ip_portalAwareCollide). So an
+        // entity touching a portal while standing on a ship (one straddling that portal, say) keeps its footing.
+        ip_portalCollideNext = true;
+        try {
+            return original.call(entity, attemptedMove);
+        } finally {
+            ip_portalCollideNext = false;
+        }
+    }
+    
+    /** Immersive Aeronautics: set while {@link #redirectHandleCollisions} wants the next terrain collision cross-portal. */
+    @Unique
+    private boolean ip_portalCollideNext;
+    
+    /**
+     * Immersive Aeronautics: the terrain collision of a move with a portal collision entry is IP's cross-portal
+     * collision (blocks behind the portal in this world excluded, the destination's blocks included).
+     */
+    @Inject(
+        method = "Lnet/minecraft/world/entity/Entity;collide(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;",
+        at = @At("HEAD"),
+        cancellable = true
+    )
+    private void ip_portalAwareCollide(Vec3 motion, CallbackInfoReturnable<Vec3> cir) {
+        if (!ip_portalCollideNext || ip_portalCollisionHandler == null) {
+            return;
+        }
+        ip_portalCollideNext = false;
+        Vec3 result = ip_portalCollisionHandler.handleCollision((Entity) (Object) this, motion);
         if (result.lengthSqr() > 20 * 20) {
             if (IMM_PTL_LOG_COUNTER.tryDecrement()) {
                 LOGGER.error(
                     "[ImmPtl] cross portal collision result too large {} {} {}",
-                    this, attemptedMove, result
+                    this, motion, result
                 );
             }
-            return Vec3.ZERO;
+            result = Vec3.ZERO;
         }
-        
+        cir.setReturnValue(result);
+    }
+    
+    /**
+     * Immersive Aeronautics: every return of {@link #redirectHandleCollisions} that does not call
+     * {@code original} skips the other wrappers of {@code Entity.collide}. Sable's redirect of that
+     * call records its per-move collision state there and reads it later in the same
+     * {@code Entity.move} without a null check, so a bypassed first move crashed the server
+     * (entity loaded or re-seated next to a portal). Hand Sable the outcome instead.
+     */
+    @Unique
+    private Vec3 ip_bypassedCollision(Entity entity, Vec3 attemptedMove, Vec3 result) {
+        boolean horizontalCollision = !Mth.equal(attemptedMove.x, result.x)
+            || !Mth.equal(attemptedMove.z, result.z);
+        IPSableCollisionBridge.recordBypassedCollision(
+            entity, attemptedMove, result,
+            horizontalCollision && isHorizontalCollisionMinor(result)
+        );
         return result;
     }
     
@@ -145,7 +210,11 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
         cancellable = true
     )
     private void onIsFireImmune(CallbackInfoReturnable<Boolean> cir) {
-        if (ip_getCollidingPortal() instanceof EndPortalEntity) {
+        // Immersive Aeronautics: also for a few ticks after the last contact. The server drops the
+        // collision once the eye is past the portal plane, but the client's teleport request comes
+        // a tick later, and by then the feet are in the stronghold's lava pool below the portal.
+        if (ip_getCollidingPortal() instanceof EndPortalEntity
+            || tickCount - ip_lastEndPortalContactTick <= IP_END_PORTAL_FIRE_GRACE_TICKS) {
             cir.setReturnValue(true);
             cir.cancel();
         }
@@ -286,6 +355,11 @@ public abstract class MixinEntity implements IEEntity, ImmPtlEntityExtension {
         }
         
         ip_portalCollisionHandler.notifyCollidingWithPortal(this_, ((Portal) portal));
+        
+        // Immersive Aeronautics: see onIsFireImmune
+        if (portal instanceof EndPortalEntity) {
+            ip_lastEndPortalContactTick = tickCount;
+        }
     }
     
     @Override

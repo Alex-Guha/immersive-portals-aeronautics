@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.teleportation;
 
 import com.mojang.logging.LogUtils;
@@ -28,6 +37,7 @@ import qouteall.imm_ptl.core.api.PortalAPI;
 import qouteall.imm_ptl.core.collision.CollisionHelper;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.compat.GravityChangerInterface;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
 import qouteall.imm_ptl.core.ducks.IEAbstractClientPlayer;
 import qouteall.imm_ptl.core.ducks.IEClientPlayNetworkHandler;
 import qouteall.imm_ptl.core.ducks.IEEntity;
@@ -208,9 +218,14 @@ public class ClientTeleportationManager {
     private static TeleportationUtil.Teleportation tryTeleport(float partialTicks) {
         LocalPlayer player = client.player;
         assert player != null;
-        
+
+        // Immersive Aeronautics: a player seated on a Sable ship crosses with the ship, never on their own
+        if (IPSableCompatHelper.isRidingOnShip(player)) {
+            return null;
+        }
+
         Vec3 thisFrameEyePos = getPlayerEyePos(partialTicks);
-        
+
         if (lastPlayerEyePos.distanceToSqr(thisFrameEyePos) > 1600) {
             // when the player is moving too fast, don't do teleportation
             return null;
@@ -365,6 +380,9 @@ public class ClientTeleportationManager {
         }
         
         ScaleUtilsClient.onClientPlayerTeleported(portal);
+        
+        // Immersive Aeronautics: a physics staff drag turns with the player's view
+        qouteall.imm_ptl.core.compat.sable_integration.IPPhysicsStaffHooks.onClientPlayerTeleported(portal);
         
         player.connection.send(new ServerboundCustomPayloadPacket(
             new ImmPtlNetworking.TeleportPacket(

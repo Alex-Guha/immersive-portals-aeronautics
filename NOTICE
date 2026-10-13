@@ -1,0 +1,58 @@
+Immersive Portals: Aeronautics
+Copyright 2026 Alex Guha
+
+Required Notice: Copyright 2026 Alex Guha
+
+This product contains code under two licences:
+
+- The code written for Immersive Portals: Aeronautics, including its changes to code
+  taken from the works listed below, is licensed under the PolyForm Shield License 1.0.0
+  (see LICENSE, https://polyformproject.org/licenses/shield/1.0.0). So is the code copied
+  from Sable (3), whose licensor is RyanHCode.
+- The code taken from works 1, 2, 4 and 5 stays under the Apache License 2.0 (see
+  LICENSE-APACHE). Those parts may be used under that licence, here or from their
+  original sources; that permission does not extend to this project's changes to them
+  or to this product as a whole.
+
+This product is a derivative work of:
+
+1. Immersive Portals for NeoForge
+   https://github.com/iPortalTeam/ImmersivePortalsModForNeo
+   Copyright qouteall, Nick1st and contributors. Apache License 2.0.
+   Used as the base of this project (from its version 6.0.7); the source files this project
+   changed carry a modification notice at the top.
+
+2. Immersive Aeronautics 1.1.4 by ItsSoBread
+   https://www.curseforge.com/minecraft/mc-mods/immersive-aeronautics
+   Apache License 2.0. A fork of (1) adding Sable / Create Aeronautics, Distant Horizons,
+   Physics Mod and Iris compatibility, published as a binary only. This project rebuilt that
+   work as source from the published jar and then modified it; those source files carry a
+   reconstruction notice at the top.
+
+3. Sable by RyanHCode
+   https://github.com/ryanhcode/sable
+   PolyForm Shield License 1.0.0 (see LICENSE,
+   https://polyformproject.org/licenses/shield/1.0.0).
+   The Java classes in the package ipaeronautics.rapier and the native library ipa_rapier
+   (natives/ipa_rapier/ in this jar) are a modified copy of Sable 2.0.6's Rapier physics
+   backend. They are not covered by the Apache License, and are only used when Sable itself
+   is installed.
+
+4. Rapier by Dimforge, as modified by RyanHCode
+   https://github.com/ryanhcode/rapier
+   Apache License 2.0 (natives/ipa_rapier/LICENSE-RAPIER). Statically linked into the
+   ipa_rapier native library, together with the crates.io crates listed with their licences
+   in natives/ipa_rapier/THIRD-PARTY-LICENSES.txt.
+
+5. IPSable 0.5.0 by r2smith141
+   https://github.com/r2smith141/IPSable
+   Apache License 2.0. Its changes to Sable's Rapier crate (one physics world for all
+   dimensions, image colliders, clip regions) and to Rapier are part of the ipa_rapier
+   native library; the fused physics step follows its design, and the ship straddling code
+   (qouteall.imm_ptl.core.compat.sable_straddle, ipaeronautics.rapier.RapierExt and related
+   mixins) ports its crossing detector, straddle sessions and terrain enrolment and follows
+   its approach to drawing, colliding with and interacting with a ship half through a portal.
+   The source files concerned name IPSable at the top.
+
+"Immersive Portals" and "Immersive Aeronautics" are the names of the original projects.
+This project is not endorsed by their authors.

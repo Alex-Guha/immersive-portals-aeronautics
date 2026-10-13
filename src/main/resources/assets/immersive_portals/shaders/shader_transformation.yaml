@@ -13,9 +13,12 @@ configs:
           )*\{
         replacement: |-
           uniform vec4 iportal_ClippingEquation;
+          uniform vec4 ipa_ShipClipEquation;
           void main() {
               gl_ClipDistance[0] = dot(Position.xyz + ChunkOffset, iportal_ClippingEquation.xyz) +
                   iportal_ClippingEquation.w;
+              gl_ClipDistance[1] = dot(Position.xyz + ChunkOffset, ipa_ShipClipEquation.xyz) +
+                  ipa_ShipClipEquation.w;
     debugOutput: false
   - comment: For portal area rendering and entity rendering and particle
     type: vs

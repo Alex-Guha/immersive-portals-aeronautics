@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat.mixin.sodium;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -11,17 +18,32 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
+import qouteall.imm_ptl.core.compat.sodium_compatibility.IESodiumRenderRegion;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.q_misc_util.Helper;
 
 @Mixin(value = RenderRegion.class, remap = false)
-public class MixinSodiumRenderRegion {
+public class MixinSodiumRenderRegion implements IESodiumRenderRegion {
     @Shadow
     @Final
     private ChunkRenderList renderList;
     
     @Unique
     private @Nullable ObjectArrayList<ChunkRenderList> chunkRenderListsForPortalRendering = null;
+    
+    /** The render list the cached draw batches were last filled from. See {@link MixinSodiumDefaultChunkRenderer}. */
+    @Unique
+    private @Nullable ChunkRenderList ip_lastRenderedList = null;
+    
+    @Override
+    public @Nullable ChunkRenderList ip_getLastRenderedList() {
+        return ip_lastRenderedList;
+    }
+    
+    @Override
+    public void ip_setLastRenderedList(@Nullable ChunkRenderList list) {
+        ip_lastRenderedList = list;
+    }
     
     /**
      * @author qouteall

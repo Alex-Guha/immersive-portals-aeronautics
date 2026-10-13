@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.interaction;
 
 import io.netty.buffer.Unpooled;
@@ -27,9 +36,15 @@ import qouteall.imm_ptl.core.IPMcHelper;
 import qouteall.imm_ptl.core.block_manipulation.BlockManipulationServer;
 import qouteall.imm_ptl.core.ducks.IEClientPlayerInteractionManager;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
+import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(MultiPlayerGameMode.class)
 public abstract class MixinMultiPlayerGameMode implements IEClientPlayerInteractionManager {
+    @Unique
+    private static final Logger ip_LOGGER = LogUtils.getLogger();
     @Shadow
     @Final
     private ClientPacketListener connection;
@@ -80,6 +95,36 @@ public abstract class MixinMultiPlayerGameMode implements IEClientPlayerInteract
         );
     }
     
+    /**
+     * Immersive Aeronautics: the hit sound of a block broken through a portal (IP switched the client to its world) is
+     * played by that world, so IP's cross-portal sound places it at the portal (vanilla hands it to the sound manager at
+     * the block's coordinates, which belong to the other world; on a Sable ship they are plot coordinates).
+     */
+    @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(
+        method = "continueDestroyBlock",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/sounds/SoundManager;play(Lnet/minecraft/client/resources/sounds/SoundInstance;)V"
+        ),
+        require = 0
+    )
+    private void ip_playHitSoundInItsWorld(
+        net.minecraft.client.sounds.SoundManager soundManager, net.minecraft.client.resources.sounds.SoundInstance sound,
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> original,
+        @com.llamalad7.mixinextras.sugar.Local(argsOnly = true) net.minecraft.core.BlockPos pos,
+        @com.llamalad7.mixinextras.sugar.Local net.minecraft.world.level.block.SoundType soundType
+    ) {
+        net.minecraft.client.multiplayer.ClientLevel world = minecraft.level;
+        if (world != null && minecraft.player != null && world != minecraft.player.level()) {
+            world.playLocalSound(
+                pos, soundType.getHitSound(), net.minecraft.sounds.SoundSource.BLOCKS,
+                (soundType.getVolume() + 1.0F) / 8.0F, soundType.getPitch() * 0.5F, false
+            );
+            return;
+        }
+        original.call(soundManager, sound);
+    }
+    
     @ModifyArg(
         method = "startPrediction",
         at = @At(
@@ -114,6 +159,17 @@ public abstract class MixinMultiPlayerGameMode implements IEClientPlayerInteract
     }
     
     private static Packet<?> ip_redirectPacket(Packet<?> packet) {
+        // Immersive Aeronautics: block interaction packets go through un-redirected unless the
+        // player is pointing at a portal (fixes breaking/placing blocks on Sable ships)
+        if ((packet instanceof ServerboundPlayerActionPacket || packet instanceof ServerboundUseItemOnPacket)
+            && !BlockManipulationClient.isPointingToPortal()
+        ) {
+            if (ClientWorldLoader.getIsWorldSwitched()) {
+                ip_LOGGER.debug("[IPShipBreakFix] passthrough interaction packet (worldSwitched, not pointing at portal)");
+            }
+            return packet;
+        }
+        
         if (ClientWorldLoader.getIsWorldSwitched()) {
             ResourceKey<Level> dimension = Minecraft.getInstance().level.dimension();
             if (packet instanceof ServerboundPlayerActionPacket playerActionPacket) {

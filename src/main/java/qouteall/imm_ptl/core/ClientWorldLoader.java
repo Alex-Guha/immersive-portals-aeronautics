@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core;
 
 import de.nick1st.imm_ptl.events.ClientExitEvent;
@@ -150,7 +157,11 @@ public class ClientWorldLoader {
                 newWorld.tick(() -> true);
                 
                 if (!CLIENT.isPaused()) {
-                    tickRemoteWorldRandomTicksClient(newWorld, nearbyPortals);
+                    // Immersive Aeronautics: the world's particles tick even with no portal to it near the player
+                    // (seen from further away they froze: never aged out, and jittered between their last two positions)
+                    if (!tickRemoteWorldRandomTicksClient(newWorld, nearbyPortals)) {
+                        ((IEParticleManager) CLIENT.particleEngine).ip_tickParticleLists();
+                    }
                 }
                 
                 newWorld.pollLightUpdates();
@@ -165,12 +176,14 @@ public class ClientWorldLoader {
     
     // show nether particles through portal
     // TODO optimize it in future version?
-    private static void tickRemoteWorldRandomTicksClient(
+    // Immersive Aeronautics: returns whether the particle engine was ticked
+    private static boolean tickRemoteWorldRandomTicksClient(
         ClientLevel newWorld, List<Portal> nearbyPortals
     ) {
-        nearbyPortals.stream().filter(
+        java.util.Optional<Portal> nearbyPortal = nearbyPortals.stream().filter(
             portal -> portal.getDestDim() == newWorld.dimension()
-        ).findFirst().ifPresent(portal -> {
+        ).findFirst();
+        nearbyPortal.ifPresent(portal -> {
             assert CLIENT.player != null;
             Vec3 playerPos = CLIENT.player.position();
             Vec3 center = portal.transformPoint(playerPos);
@@ -191,6 +204,7 @@ public class ClientWorldLoader {
             
             ((IECamera) camera).portal_setPos(oldCameraPos);
         });
+        return nearbyPortal.isPresent();
         
         
     }

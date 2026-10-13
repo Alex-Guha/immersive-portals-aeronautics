@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.chunk_loading;
 
 import com.mojang.logging.LogUtils;
@@ -61,8 +70,9 @@ import java.util.concurrent.Executor;
 public class ImmPtlChunkTickets {
     private static final Logger LOGGER = LogUtils.getLogger();
     
-    public static final TicketType<ChunkPos> TICKET_TYPE =
-        TicketType.create("imm_ptl", Comparator.comparingLong(ChunkPos::toLong));
+    // Immersive Aeronautics: use the vanilla FORCED ticket type instead of a custom one
+    // (originally TicketType.create("imm_ptl", Comparator.comparingLong(ChunkPos::toLong)))
+    public static final TicketType<ChunkPos> TICKET_TYPE = TicketType.FORCED;
     
     // for debugging
     @SuppressWarnings("FieldMayBeFinal")
@@ -194,7 +204,7 @@ public class ImmPtlChunkTickets {
                 return true;
             }
             
-            ChunkResult<LevelChunk> resultNow = chunkHolder.getEntityTickingChunkFuture()
+            ChunkResult<LevelChunk> resultNow = chunkHolder.getFullChunkFuture()
                 .getNow(null);
             
             if (resultNow == null) {

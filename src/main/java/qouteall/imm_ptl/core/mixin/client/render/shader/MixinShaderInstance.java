@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.render.shader;
 
 import com.mojang.blaze3d.shaders.Shader;
@@ -44,6 +51,14 @@ public abstract class MixinShaderInstance implements IEShader {
                 7, 4, this_
             );
             uniforms.add(ip_clippingEquation);
+        }
+        
+        // Immersive Aeronautics: the per-ship straddle clip plane (gl_ClipDistance[1]) of the vanilla terrain shaders
+        // that draw Sable ships; ShaderCodeTransformation declares it in their GLSL (shader_transformation.yaml)
+        if (ShaderCodeTransformation.TERRAIN_SHADERS.contains(name)) {
+            Uniform shipClip = new Uniform("ipa_ShipClipEquation", 7, 4, this_);
+            shipClip.set(0.0f, 0.0f, 0.0f, 1.0f);
+            uniforms.add(shipClip);
         }
     }
     

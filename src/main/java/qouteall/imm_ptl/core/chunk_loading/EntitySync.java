@@ -1,3 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
+ * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
+ * Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.chunk_loading;
 
 import de.nick1st.imm_ptl.events.DimensionEvents;
@@ -10,6 +19,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import qouteall.imm_ptl.core.ducks.IEChunkMap;
 import qouteall.imm_ptl.core.ducks.IETrackedEntity;
 import qouteall.imm_ptl.core.network.PacketRedirection;
+import net.minecraft.world.level.ChunkPos;
 
 public class EntitySync {
     
@@ -60,7 +70,14 @@ public class EntitySync {
                         IETrackedEntity ieTrackedEntity = (IETrackedEntity) trackedEntity;
                         
                         long chunkPos = ieTrackedEntity.ip_getEntity().chunkPosition().toLong();
-                        if (distanceManager.inEntityTickingRange(chunkPos)) {
+                        // Immersive Aeronautics: entities in Sable plot space (|chunk| > 100000)
+                        // are never in entity-ticking range, but still need their changes sent
+                        boolean shouldSend = distanceManager.inEntityTickingRange(chunkPos)
+                            || ChunkPos.getX(chunkPos) > 100000
+                            || ChunkPos.getX(chunkPos) < -100000
+                            || ChunkPos.getZ(chunkPos) > 100000
+                            || ChunkPos.getZ(chunkPos) < -100000;
+                        if (shouldSend) {
                             ieTrackedEntity.ip_sendChanges();
                         }
                     }

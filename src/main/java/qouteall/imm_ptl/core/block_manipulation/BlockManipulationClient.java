@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.block_manipulation;
 
 import net.minecraft.client.Minecraft;
@@ -20,6 +27,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.ClientWorldLoader;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 import qouteall.imm_ptl.core.portal.PortalUtils;
@@ -61,6 +69,8 @@ public class BlockManipulationClient {
         
         remotePointedDim = null;
         remoteHitResult = null;
+        // Immersive Aeronautics: forget the previous far-half target of a straddling ship
+        IPShipBlockInteraction.onPickStart();
 
         if (!NeoForge.EVENT_BUS.post(new BlockManipulationServer.CrossPortalInteractionEvent(client.player)).canDo()) {
             return;
@@ -69,6 +79,23 @@ public class BlockManipulationClient {
         Vec3 cameraPos = client.gameRenderer.getMainCamera().getPosition();
         
         double reachDistance = client.player.blockInteractionRange();
+        
+        // Immersive Aeronautics: seated on a straddling ship or a crossing train with the head past its portal plane, the
+        // player sees the destination (CrossPortalViewRendering): target there, from the head mapped through the portal
+        qouteall.imm_ptl.core.compat.IPSeatedView.View seatedView = qouteall.imm_ptl.core.compat.IPSeatedView.of(partialTick);
+        Portal seatedPortal = seatedView != null ? seatedView.portal() : null;
+        if (seatedPortal != null) {
+            Vec3 eyePos = client.player.getEyePosition(partialTick);
+            Vec3 viewVector = client.player.getViewVector(partialTick);
+            client.hitResult = createMissedHitResult(eyePos, eyePos.add(viewVector.scale(reachDistance)));
+            client.crosshairPickEntity = null;
+            updateTargetedBlockThroughPortal(
+                eyePos, viewVector, client.player.level().dimension(), 0.0, reachDistance, seatedPortal, partialTick
+            );
+            return;
+        }
+        // Immersive Aeronautics: how far along the view the target is (to the portal when pointing through one)
+        double[] targetDistance = {getCurrentTargetDistance()};
 
         PortalUtils.raytracePortalFromEntityView(client.player, partialTick, reachDistance, true, portal1 -> portal1.isInteractableBy(client.player)).ifPresent(pair -> {
             Portal portal = pair.getFirst();
@@ -76,6 +103,7 @@ public class BlockManipulationClient {
             double distanceToPortalPointing = hitPos.distanceTo(cameraPos);
             if (distanceToPortalPointing < getCurrentTargetDistance() + 0.2) {
                 client.hitResult = createMissedHitResult(cameraPos, hitPos);
+                targetDistance[0] = distanceToPortalPointing;
                 
                 updateTargetedBlockThroughPortal(
                     cameraPos,
@@ -83,10 +111,26 @@ public class BlockManipulationClient {
                     client.player.level().dimension(),
                     distanceToPortalPointing,
                     reachDistance,
-                    portal
+                    portal,
+                    partialTick
                 );
             }
         });
+        
+        // Immersive Aeronautics: the far half of a Sable ship straddling a portal into this world is targeted in the
+        // ship's own dimension (plot coordinates repeat between dimensions)
+        Vec3 viewVector = client.player.getViewVector(partialTick);
+        IPShipBlockInteraction.Target farHalf = IPShipBlockInteraction.pickFarHalf(
+            client.level, cameraPos, cameraPos.add(viewVector.scale(reachDistance)), targetDistance[0], partialTick
+        );
+        if (farHalf != null) {
+            client.hitResult = createMissedHitResult(
+                cameraPos, cameraPos.add(viewVector.scale(Math.min(reachDistance, targetDistance[0])))
+            );
+            client.crosshairPickEntity = null;
+            remoteHitResult = farHalf.hit();
+            remotePointedDim = farHalf.dimension();
+        }
     }
     
     private static double getCurrentTargetDistance() {
@@ -103,7 +147,8 @@ public class BlockManipulationClient {
             }
         }
         
-        return cameraPos.distanceTo(client.hitResult.getLocation());
+        // Immersive Aeronautics: a hit on a Sable ship is in plot coordinates; measure where the ship is
+        return cameraPos.distanceTo(IPShipBlockInteraction.toWorld(client.level, client.hitResult.getLocation()));
     }
     
     private static void updateTargetedBlockThroughPortal(
@@ -112,7 +157,8 @@ public class BlockManipulationClient {
         ResourceKey<Level> playerDimension,
         double beginDistance,
         double endDistance,
-        Portal portal
+        Portal portal,
+        float partialTick
     ) {
         
         Vec3 from = portal.transformPoint(
@@ -181,6 +227,18 @@ public class BlockManipulationClient {
                 ((BlockHitResult) remoteHitResult).getBlockPos(),
                 ((BlockHitResult) remoteHitResult).isInside()
             );
+        }
+        
+        // Immersive Aeronautics: Sable ships behind the portal, and far halves of ships straddling a portal into that
+        // world, are targeted too (in the ship's own dimension)
+        IPShipBlockInteraction.Target shipTarget = IPShipBlockInteraction.refineRemoteTarget(
+            world, from, to, (BlockHitResult) remoteHitResult, partialTick
+        );
+        if (shipTarget != null) {
+            remoteHitResult = shipTarget.hit();
+            client.hitResult = createMissedHitResult(from, to);
+            remotePointedDim = shipTarget.dimension();
+            return;
         }
         
         if (remoteHitResult != null) {

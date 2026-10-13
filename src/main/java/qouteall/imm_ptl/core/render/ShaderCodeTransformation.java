@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.shaders.Program;
@@ -102,6 +109,14 @@ public class ShaderCodeTransformation {
                 config.affectedShaders.contains(shaderId)
         ).findFirst().orElse(null);
     }
+    
+    /**
+     * Immersive Aeronautics: the vanilla terrain shaders (the first entry of shader_transformation.yaml), which also draw
+     * Sable ships and get the straddle clip plane {@code ipa_ShipClipEquation} (gl_ClipDistance[1]).
+     */
+    public static final Set<String> TERRAIN_SHADERS = Set.of(
+        "rendertype_solid", "rendertype_cutout", "rendertype_cutout_mipped", "rendertype_translucent"
+    );
     
     public static boolean shouldAddUniform(String shaderName) {
         if (configs == null) {

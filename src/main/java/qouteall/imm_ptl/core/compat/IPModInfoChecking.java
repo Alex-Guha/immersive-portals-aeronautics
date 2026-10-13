@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat;
 
 import com.mojang.logging.LogUtils;
@@ -227,23 +234,7 @@ public class IPModInfoChecking {
             ));
         });
         
-        IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.withDelayCondition(
-            () -> Minecraft.getInstance().level == null,
-            MyTaskList.oneShotTask(() -> {
-                if (IPConfig.getConfig().shouldDisplayWarning("many_mods") && FMLEnvironment.production) {
-                    List<ModContainer> topLevelMods = ModList.get().getSortedMods(); // TODO @Nick1st Fix this up
-//                    FabricLoader.getInstance().getAllMods().stream()
-//                        .filter(modContainer -> modContainer.getContainingMod().isEmpty()).toList();
-                    
-                    if (topLevelMods.size() > 20) {
-                        CHelper.printChat(Component.literal(
-                            "[Immersive Portals] WARNING: You are using many mods. It's likely that one of them has compatibility issues with Immersive Portals. " +
-                                "If you are sure that there is no compatibility issue, disable this warning."
-                        ).withStyle(ChatFormatting.RED).append(IPMcHelper.getDisableWarningText("many_mods")));
-                    }
-                }
-            })
-        ));
+        // Immersive Aeronautics: the "many mods" warning is meaningless in a modpack; removed.
         
     }
     

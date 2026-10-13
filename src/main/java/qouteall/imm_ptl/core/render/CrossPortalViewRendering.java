@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.datafixers.util.Pair;
@@ -25,6 +32,13 @@ import qouteall.imm_ptl.core.teleportation.ClientTeleportationManager;
 public class CrossPortalViewRendering {
     public static final Minecraft client = Minecraft.getInstance();
     
+    // Immersive Aeronautics: whether the cross-portal view of a seated rider is being drawn
+    private static boolean renderingSeatedView;
+    
+    public static boolean isRenderingSeatedView() {
+        return renderingSeatedView;
+    }
+    
     // if rendered, return true
     public static boolean renderCrossPortalView() {
         if (!IPGlobal.enableCrossPortalView) {
@@ -50,6 +64,15 @@ public class CrossPortalViewRendering {
             TransformationManager.getIsometricAdjustedCameraPos(camera);
         
         Vec3 physicalPlayerHeadPos = ClientTeleportationManager.getPlayerEyePos(RenderStates.getPartialTick());
+        // Immersive Aeronautics: seated on a straddling ship or a crossing train with the head past its portal plane, the
+        // head is behind the portal in the world it is in: look from just in front of the plane, so the view goes through
+        // the portal
+        qouteall.imm_ptl.core.compat.IPSeatedView.View seatedView =
+            qouteall.imm_ptl.core.compat.IPSeatedView.of(RenderStates.getPartialTick());
+        Vec3 seatedViewOrigin = seatedView != null ? seatedView.origin() : null;
+        if (seatedViewOrigin != null) {
+            physicalPlayerHeadPos = seatedViewOrigin;
+        }
         
         Pair<Portal, Vec3> portalHit = PortalCommand.raytracePortals(
             client.level, physicalPlayerHeadPos, isometricAdjustedOriginalCameraPos, true
@@ -89,11 +112,22 @@ public class CrossPortalViewRendering {
             .setOverwriteCameraTransformation(false)
             .setDescription(null)
             .setRenderDistance(client.options.getEffectiveRenderDistance())
-            .setDoRenderHand(false)
+            // Immersive Aeronautics: a seated rider looking through the portal it sits behind keeps its hand
+            .setDoRenderHand(seatedViewOrigin != null && !isThirdPerson())
             .setEnableViewBobbing(false)
             .build();
         
-        IPCGlobal.renderer.invokeWorldRendering(worldRenderInfo);
+        // Immersive Aeronautics: while a seated rider looks through the portal it sits behind, the main camera is moved
+        // into the destination's coordinates, so IP's checks against drawing the player too near the camera
+        // (CrossPortalEntityRenderer) compare positions of two worlds: a pass of the player's own world drew the
+        // player's head around the camera. Don't draw the player in any pass of this view
+        renderingSeatedView = seatedViewOrigin != null;
+        try {
+            IPCGlobal.renderer.invokeWorldRendering(worldRenderInfo);
+        }
+        finally {
+            renderingSeatedView = false;
+        }
         
         return true;
     }

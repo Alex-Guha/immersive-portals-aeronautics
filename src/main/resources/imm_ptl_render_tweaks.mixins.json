@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "qouteall.imm_ptl.core.compat.mixin_render_tweaks",
+  "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "MixinPortalRenderer_ShaderDistanceCull",
+    "MixinIrisBufferedSource_PortalClip"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

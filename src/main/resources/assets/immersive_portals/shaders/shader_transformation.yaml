@@ -66,6 +66,29 @@ configs:
           ) + iportal_ClippingEquation.w;
           }
     debugOutput: false
+  - comment: >-
+      Immersive Aeronautics: an Iris shader pack's vanilla-path terrain programs (they draw Sable ships with a pack),
+      like the vanilla terrain entry. Iris's ShaderInstance.getUniform prefixes names with iris_, hence the ship plane's
+      name. ShaderCodeTransformation.IRIS_TERRAIN_SHADERS lists them for MixinShaderInstance.
+    type: vs
+    affectedShaders:
+      - iris_terrain_solid
+      - iris_terrain_cutout
+      - iris_terrain_translucent
+      - iris_moving_block
+    transformations:
+      - pattern: |-
+          void ( )*main( )*\(( )*( )*\)( )*(
+          )*\{
+        replacement: |-
+          uniform vec4 iportal_ClippingEquation;
+          uniform vec4 iris_ipa_ShipClipEquation;
+          void main() {
+              gl_ClipDistance[0] = dot(iris_Position + iris_ChunkOffset, iportal_ClippingEquation.xyz) +
+                  iportal_ClippingEquation.w;
+              gl_ClipDistance[1] = dot(iris_Position + iris_ChunkOffset, iris_ipa_ShipClipEquation.xyz) +
+                  iris_ipa_ShipClipEquation.w;
+    debugOutput: false
   - comment: For sodium
     type: vs
     affectedShaders:

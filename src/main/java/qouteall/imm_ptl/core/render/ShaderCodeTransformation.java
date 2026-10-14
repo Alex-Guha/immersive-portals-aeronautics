@@ -118,6 +118,21 @@ public class ShaderCodeTransformation {
         "rendertype_solid", "rendertype_cutout", "rendertype_cutout_mipped", "rendertype_translucent"
     );
     
+    /**
+     * Immersive Aeronautics: an Iris shader pack's vanilla-path programs standing in for the vanilla terrain shaders
+     * (Iris's {@code ShaderKey} names; shader_transformation.yaml patches them as {@code iris_<name>}). They draw Sable
+     * ships while a pack is active and get both planes, IP's and the straddle cut.
+     */
+    public static final Set<String> IRIS_TERRAIN_SHADERS = Set.of(
+        "terrain_solid", "terrain_cutout", "terrain_translucent", "moving_block"
+    );
+
+    private static final String IRIS_EXTENDED_SHADER = "net.irisshaders.iris.pipeline.programs.ExtendedShader";
+
+    public static boolean isIrisTerrainShader(String shaderName, Object shader) {
+        return IRIS_TERRAIN_SHADERS.contains(shaderName) && shader.getClass().getName().equals(IRIS_EXTENDED_SHADER);
+    }
+
     public static boolean shouldAddUniform(String shaderName) {
         if (configs == null) {
             LOGGER.info("Shader Transform Skipping {} in shouldAddUniform", shaderName);

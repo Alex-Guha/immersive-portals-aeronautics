@@ -10,6 +10,7 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import ipaeronautics.rapier.RapierExt;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniondc;
@@ -32,8 +33,8 @@ import java.util.function.Consumer;
  *     <li>the body's own collider drops contacts past the source plane, inside the aperture (grown by
  *     {@value #APERTURE_MARGIN} on each side) and up to the ship's diagonal deep: the part through the portal no
  *     longer touches what is behind the portal in the source world;</li>
- *     <li>the image drops contacts before the destination plane, in the mapped aperture: only the part through the
- *     portal touches the destination world.</li>
+ *     <li>the image drops every contact before the destination plane: only the part past the plane touches the
+ *     destination world ({@link #imageClipRegions}).</li>
  * </ul>
  * Sessions are server-only and never saved; a ship that is not straddling has no image and no clip regions.
  */
@@ -81,6 +82,14 @@ final class IPStraddleSessions {
     }
 
     private static final Map<Key, Session> SESSIONS = new HashMap<>();
+    /**
+     * Frame blocks a ship stuck in a portal's frame is let through until it is free of them (world boxes of its own
+     * level, grown by {@link #GHOST_MARGIN}; {@code IPStraddleController}): their contacts are dropped for its body and,
+     * mapped through each of its portals, for its images (the far portal's frame lies there).
+     */
+    private static final Map<UUID, List<AABB>> GHOSTS = new HashMap<>();
+    /** How far [blocks] around a let-through frame block contacts are dropped too (contact points sit between surfaces). */
+    private static final double GHOST_MARGIN = 0.1;
 
     private IPStraddleSessions() {
     }
@@ -193,6 +202,7 @@ final class IPStraddleSessions {
      */
     static void dropShip(final UUID shipId) {
         SESSIONS.keySet().removeIf(key -> key.ship().equals(shipId));
+        GHOSTS.remove(shipId);
     }
 
     /**
@@ -209,6 +219,7 @@ final class IPStraddleSessions {
      */
     static void reset() {
         SESSIONS.clear();
+        GHOSTS.clear();
     }
 
     private static void refreshIfMoved(final Session session, final Portal portal, final Vec3 normal) {
@@ -254,13 +265,107 @@ final class IPStraddleSessions {
         pushRealClipRegions(session.ship, session.source, session.bodyId);
 
         final IPPortalIsometry iso = session.isometry;
-        final double[] imageClip = clipRegion(iso.mapPoint(session.origin), iso.mapVec(session.normal).scale(-1.0),
+        final double[] imageClip = imageClipRegions(iso.mapPoint(session.origin), iso.mapVec(session.normal),
                 iso.mapVec(portal.getAxisW()), iso.mapVec(portal.getAxisH()), halfW, halfH, depth);
         final long destScene = RapierExt.sceneHandle(session.dest);
         if (destScene != 0L) {
-            RapierExt.setImageClipRegions(destScene, session.bodyId, session.imageHandle, imageClip);
+            RapierExt.setImageClipRegions(destScene, session.bodyId, session.imageHandle,
+                    concat(imageClip, ghostRegions(session.ship.getUniqueId(), iso)));
         }
     }
+
+    /**
+     * Lets {@code ship} through the given frame blocks of its own level (world block positions) until the next call;
+     * an empty list ends it. Re-sends the clip regions of its body and of its images.
+     */
+    static void setGhosts(final ServerSubLevel ship, final ServerLevel level, final List<net.minecraft.core.BlockPos> frameBlocks) {
+        final UUID id = ship.getUniqueId();
+        if (frameBlocks.isEmpty()) {
+            if (GHOSTS.remove(id) == null) {
+                return;
+            }
+        } else {
+            final List<AABB> boxes = new ArrayList<>(frameBlocks.size());
+            for (final net.minecraft.core.BlockPos pos : frameBlocks) {
+                boxes.add(new AABB(pos).inflate(GHOST_MARGIN));
+            }
+            GHOSTS.put(id, boxes);
+        }
+        boolean anySession = false;
+        for (final Session session : SESSIONS.values()) {
+            if (session.ship == ship) {
+                anySession = true;
+                applyClipRegions(session, session.portal);
+            }
+        }
+        if (!anySession && !ship.isRemoved()) {
+            pushRealClipRegions(ship, level, ship.getRuntimeId());
+        }
+    }
+
+    static boolean hasGhosts(final UUID shipId) {
+        return GHOSTS.containsKey(shipId);
+    }
+
+    /** Drops the let-through frame blocks of every ship not in {@code live}, without native calls (their bodies are gone). */
+    static void retainGhosts(final java.util.Set<UUID> live) {
+        GHOSTS.keySet().retainAll(live);
+    }
+
+    /**
+     * Clip regions covering a ship's let-through frame blocks, in its own level or, with {@code isometry}, mapped into a
+     * portal's destination.
+     */
+    private static double[] ghostRegions(final UUID shipId, @Nullable final IPPortalIsometry isometry) {
+        final List<AABB> boxes = GHOSTS.get(shipId);
+        if (boxes == null) {
+            return new double[0];
+        }
+        final double[] flat = new double[boxes.size() * RapierExt.CLIP_REGION_DOUBLES];
+        for (int i = 0; i < boxes.size(); i++) {
+            final AABB box = boxes.get(i);
+            Vec3 point = new Vec3(box.minX, (box.minY + box.maxY) * 0.5, (box.minZ + box.maxZ) * 0.5);
+            Vec3 normal = new Vec3(1.0, 0.0, 0.0);
+            Vec3 axisW = new Vec3(0.0, 1.0, 0.0);
+            Vec3 axisH = new Vec3(0.0, 0.0, 1.0);
+            if (isometry != null) {
+                point = isometry.mapPoint(point);
+                normal = isometry.mapVec(normal);
+                axisW = isometry.mapVec(axisW);
+                axisH = isometry.mapVec(axisH);
+            }
+            System.arraycopy(clipRegion(point, normal, axisW, axisH, box.getYsize() * 0.5, box.getZsize() * 0.5, box.getXsize()),
+                    0, flat, i * RapierExt.CLIP_REGION_DOUBLES, RapierExt.CLIP_REGION_DOUBLES);
+        }
+        return flat;
+    }
+
+    private static double[] concat(final double[] a, final double[] b) {
+        if (b.length == 0) {
+            return a;
+        }
+        final double[] out = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
+    }
+
+    /**
+     * The image's clip region: everything before the destination plane, not only the mapped opening (as IPSable). The
+     * part of the ship before the plane is drawn in, and touches, its own world only; with the opening alone, a ship
+     * wider than it touched whatever lies behind the destination portal (a ship resting on a frame was held up by
+     * terrain behind the far portal, 2.0.7). Past the plane the image keeps colliding everywhere, as the far half is
+     * drawn past the whole plane.
+     *
+     * @param point  the destination plane's origin
+     * @param normal the destination plane's normal pointing away from the portal into the destination world
+     * @param halfW  half the clipped aperture's width (opening plus margin)
+     * @param depth  how far the region reaches (the ship cannot reach further from the plane)
+     */
+    private static double[] imageClipRegions(final Vec3 point, final Vec3 normal, final Vec3 axisW, final Vec3 axisH,
+                                             final double halfW, final double halfH, final double depth) {
+        return clipRegion(point, normal.scale(-1.0), axisW, axisH, halfW + depth, halfH + depth, depth);
+    }
+
 
     /**
      * The body's clip regions replace wholesale, so they are the union over all of the ship's sessions (a ship can
@@ -279,7 +384,7 @@ final class IPStraddleSessions {
         }
         final long sourceScene = RapierExt.sceneHandle(source);
         if (sourceScene != 0L) {
-            RapierExt.setClipRegions(sourceScene, bodyId, flat);
+            RapierExt.setClipRegions(sourceScene, bodyId, concat(flat, ghostRegions(ship.getUniqueId(), null)));
         }
     }
 

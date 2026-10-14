@@ -45,18 +45,22 @@ public abstract class MixinShaderInstance implements IEShader {
     private void onLoadReferences(CallbackInfo ci) {
         Shader this_ = (Shader) (Object) this;
         
-        if (ShaderCodeTransformation.shouldAddUniform(name)) {
+        // Immersive Aeronautics: also an Iris shader pack's terrain programs
+        boolean irisTerrain = ShaderCodeTransformation.isIrisTerrainShader(name, this);
+
+        if (ShaderCodeTransformation.shouldAddUniform(name) || irisTerrain) {
             ip_clippingEquation = new Uniform(
                 "iportal_ClippingEquation",
                 7, 4, this_
             );
             uniforms.add(ip_clippingEquation);
         }
-        
-        // Immersive Aeronautics: the per-ship straddle clip plane (gl_ClipDistance[1]) of the vanilla terrain shaders
-        // that draw Sable ships; ShaderCodeTransformation declares it in their GLSL (shader_transformation.yaml)
-        if (ShaderCodeTransformation.TERRAIN_SHADERS.contains(name)) {
-            Uniform shipClip = new Uniform("ipa_ShipClipEquation", 7, 4, this_);
+
+        // Immersive Aeronautics: the per-ship straddle clip plane (gl_ClipDistance[1]) of the terrain shaders that draw
+        // Sable ships; ShaderCodeTransformation declares it in their GLSL (shader_transformation.yaml). Iris's
+        // getUniform(n) looks up "iris_" + n, so its programs declare it under that name.
+        if (ShaderCodeTransformation.TERRAIN_SHADERS.contains(name) || irisTerrain) {
+            Uniform shipClip = new Uniform(irisTerrain ? "iris_ipa_ShipClipEquation" : "ipa_ShipClipEquation", 7, 4, this_);
             shipClip.set(0.0f, 0.0f, 0.0f, 1.0f);
             uniforms.add(shipClip);
         }

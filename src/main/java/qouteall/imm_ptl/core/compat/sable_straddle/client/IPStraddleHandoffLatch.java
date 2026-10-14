@@ -121,13 +121,26 @@ public final class IPStraddleHandoffLatch {
         if (container == null || !(container.getSubLevel(x, z) instanceof final ClientSubLevel ship)) {
             return false;
         }
-        if (PENDING.containsKey(ship) || !IPStraddleClientSessions.mayBeHandingOff(ship)) {
+        if (PENDING.containsKey(ship) || !IPStraddleClientSessions.mayBeHandingOff(ship) || handsOffWithinLevel(ship)) {
             return false;
         }
         PENDING.put(ship, new Pending(clientLevel, x, z, ship, System.currentTimeMillis() + MAX_MILLIS));
         // the new copy may have arrived first (a ship sent to portal viewers right at the hand-off)
         tryLink(ship);
         return true;
+    }
+
+    /**
+     * A ship going through a portal into its own dimension cannot be held: Sable's container keys ships by UUID, so
+     * the old and the new copy cannot coexist in one level (and the new copy's start-tracking would release the slot).
+     */
+    private static boolean handsOffWithinLevel(final ClientSubLevel ship) {
+        for (final IPStraddleClientSessions.Session session : IPStraddleClientSessions.renderSessionsOf(ship)) {
+            if (session.destDim().equals(session.shipDim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -214,6 +227,10 @@ public final class IPStraddleHandoffLatch {
         }
         for (final IPStraddleClientSessions.Session session : IPStraddleClientSessions.renderSessionsOf(held)) {
             final ClientLevel destLevel = ClientWorldLoader.getOptionalWorld(session.destDim());
+            if (destLevel == held.getLevel()) {
+                // a portal into the ship's own dimension: the copy found there would be the held one itself
+                continue;
+            }
             final ClientSubLevelContainer container = destLevel == null ? null : ClientSubLevelContainer.getContainer(destLevel);
             if (container != null && container.getSubLevel(held.getUniqueId()) instanceof final ClientSubLevel replacement
                     && !replacement.isRemoved()) {
@@ -355,7 +372,7 @@ public final class IPStraddleHandoffLatch {
             return null;
         }
         final Link link = LINKS.get(ship);
-        if (link == null || link.replacement.isRemoved()) {
+        if (link == null || link.replacement.isRemoved() || link.replacement == ship) {
             return null;
         }
         if (link.cachedPartialTick == partialTick) {

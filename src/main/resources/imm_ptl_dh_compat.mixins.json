@@ -17,7 +17,8 @@
     "MixinDhClientServerLevel_OwnDimensionWrapper",
     "MixinDhGlShader_PortalClipSource",
     "MixinDhTerrainShader_PortalClipPlane",
-    "MixinDhGenericObjectShader_PortalClipPlane"
+    "MixinDhGenericObjectShader_PortalClipPlane",
+    "MixinDhImmersivePortalsAccessor_StallWarning"
   ],
   "injectors": {
     "defaultRequire": 0

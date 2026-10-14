@@ -15,6 +15,59 @@ Mod ids (`immersive_portals_core`, `immersive_portals`, `q_misc_util`) are uncha
 compatibility code keeps working. The jar is `ip_aeronautics-<version>.jar`. Player-facing description:
 `DESCRIPTION.md`.
 
+## How it works
+
+**The two mods it joins.** Sable keeps each ship as a sub-level of its dimension. The ship's blocks live in a *plot*,
+a block of far-off chunks (chunk coordinates beyond ±100000), and a pose (position and rotation) maps plot space into
+the world. Ship physics runs in Sable's native Rapier backend on the server. Clients get ship chunks and poses through
+Sable's tracking packets, but only for ships in their own dimension. Immersive Portals (IP) draws a portal by rendering
+the destination world from a camera moved through the portal and clipped to the opening. It keeps a client copy of
+every world visible through a portal, and it redirects packets for those worlds to the right copy.
+
+**Ships seen through portals** (`compat.sable_integration`, `compat.mixin_sable`). `IPShipThroughPortalSync` samples
+the chunks each player sees through portals and syncs the ships in them to that player. Every Sable packet that may
+reach a player in another dimension goes through IP's redirection, tagged with the ship's dimension. This is needed
+because plot coordinates are per dimension: an untagged packet would land on whichever ship occupies the same plot slot
+in the player's current world. When the player walks through the portal, tracking passes between the portal sync and
+Sable's own sync without removing and re-adding the ship. For drawing, Sable's ship renderer and Sodium, Iris,
+Flywheel, Distant Horizons and Veil are patched to follow IP's portal pass: its clip plane, its swapped render buffers
+and its swap of `Minecraft.level`.
+
+**Ships crossing portals.** Two paths:
+
+- *Straddling* (the default, `compat.sable_straddle` + `compat.sable_physics`). A ship can sit half through a portal
+  as one body. It stays in its own dimension the whole time; the half past the portal is a projection into the
+  destination:
+  - **Physics.** We ship a copy of Sable's Rapier backend (`ipaeronautics.rapier`, Rust in `natives/`). It plugs in
+    through Sable's pipeline-provider interface and runs every dimension as a chart of one native world, stepped
+    together (`IPFusedPhysicsStep`). While a ship touches a portal (`IPStraddleController`, `IPStraddleSessions`), its
+    blocks also exist as an *image collider* in the destination's chart. Contacts on both sides are cut at the portal
+    plane.
+  - **Hand-off.** Once every block of the ship is past the plane, the ship moves into the destination dimension at the
+    exact mapped pose and velocity (`IPSableBridge.moveThroughPortal`).
+  - **Rendering.** On the client, the ship is cut at the plane in its own dimension, and the far half is drawn again in
+    the destination at the mapped pose. At the hand-off, the old copy keeps drawing until the new one has compiled
+    (`IPStraddleHandoffLatch`).
+  - **Everything else on a straddling ship.** Entity collision, block interaction, raycasts, sounds, particles and
+    seats work on both halves (`IPStraddleCut` and friends). Each is routed to the ship's own dimension and mapped
+    through the portal.
+- *One-step crossing* (the fallback, `IPShipPortalTraversalImpl`): the fork's original behaviour. When a ship touches
+  a portal, the whole ship moves to the destination at once, if there is room for its blocks there. This path is used
+  when straddling is turned off, or when our natives or the Sable version are unavailable. In that case every level
+  runs Sable's stock physics unchanged. Clients never need the natives, because physics runs on the server.
+
+**Other mods' machinery** (`compat.create_integration`, `compat.mixin_create` and the Aeronautics parts of the Sable
+packages). This covers Create Aeronautics ropes, balloons, burners and the physics staff; Create trains on portal track
+and their seated riders; and Shield Generators' fields. Each gets the same treatment: anything keyed by plot position
+or "current level" is routed to the ship's own dimension, and anything drawn with its own shader is clipped at the
+portal plane.
+
+**Smaller pieces from the fork:** Distant Horizons near clipping, Physics Mod ocean handling, Iris depth fixes and a
+shader-distance portal cull (`compat.mixin_dh`, `mixin_physicsmod`, `mixin_render_tweaks`, `iris_integration`).
+Mixins on optional mods are skipped when the mod is absent (`compat.IPOptionalModMixinPlugin`).
+
+The full story of each subject, including the rules learned along the way, is in `docs/lessons/`.
+
 ## Development
 
 ### Requirements
@@ -111,9 +164,9 @@ code. Rules: `docs/provenance.md`.
 
 ## Git
 
-- `main` = upstream v6.0.7 + our work up to 1.5.0; `seamless-ships` carries the straddling work (1.5.1 onward).
-- Remote `upstream` = iPortalTeam/ImmersivePortalsModForNeo; tag `v6.0.7` is the base, `parity-ia1.1.4` the state
-  that matched the fork.
+- `main` = upstream v6.0.7 + all our work (the straddling work of `seamless-ships`, 1.5.1 onward, merged at 2.0.0).
+- Standalone repository since 2.0.0: no longer tracks iPortalTeam/ImmersivePortalsModForNeo, whose history up to
+  v6.0.7 it keeps. Tag `v6.0.7` is the base, `parity-ia1.1.4` the state that matched the fork.
 
 ## Upstream
 

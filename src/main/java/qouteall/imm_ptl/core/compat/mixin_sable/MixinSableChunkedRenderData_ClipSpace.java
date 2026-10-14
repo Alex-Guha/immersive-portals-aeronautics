@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.ducks.IEShader;
 import qouteall.imm_ptl.core.render.FrontClipping;
 
 /**
@@ -64,7 +65,8 @@ public class MixinSableChunkedRenderData_ClipSpace {
                 return;
             }
 
-            Uniform clipUniform = shader.getUniform("iportal_ClippingEquation");
+            // IP's own handle: an Iris shader pack's getUniform looks the name up with an "iris_" prefix
+            Uniform clipUniform = ((IEShader) shader).ip_getClippingEquationUniform();
             if (clipUniform == null) {
                 return;
             }

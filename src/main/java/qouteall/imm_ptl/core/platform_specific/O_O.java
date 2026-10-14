@@ -1,6 +1,12 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.platform_specific;
 
-import net.minecraft.SharedConstants;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.ResourceKey;
@@ -100,16 +106,9 @@ public class O_O {
     
     @Nullable
     public static String getImmPtlModInfoUrl() {
-        String gameVersion = SharedConstants.getCurrentVersion().getName();
-        
-        if (O_O.isForge()) {
-            return "https://qouteall.fun/immptl_info/forge-%s.json".formatted(gameVersion);
-        }
-        else {
-            // it's in github pages
-            // https://github.com/qouteall/immptl_info
-            return "https://qouteall.fun/immptl_info/%s.json".formatted(gameVersion);
-        }
+        // Immersive Aeronautics: upstream's mod info (qouteall.fun/immptl_info) describes upstream's mod: its versions,
+        // its incompatible mods and shader packs (Complementary, which works here). Not ours to show; not fetched.
+        return null;
     }
     
     public static boolean isModLoadedWithinVersion(String modId, @Nullable String startVersion, @Nullable String endVersion) {

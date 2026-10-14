@@ -77,6 +77,29 @@ final class IPStraddleController {
      * {@link IPStraddleSessions#APERTURE_MARGIN}.
      */
     static final double DETECTION_MARGIN = 0.0;
+    /**
+     * A ship block pushed this far [blocks] into the portal's frame was driven into it (a hard hit: the physics staff, a
+     * fast impact); resting or sliding contact stays far below.
+     */
+    private static final double FRAME_PRESSED = 0.1;
+    /** A ship block this close [blocks] to the portal's frame touches it. */
+    private static final double FRAME_TOUCHING = 0.05;
+    /**
+     * A ship pressed into the frame has nothing really through the opening while no block reaches this far [blocks] past
+     * the plane: the frame's own half before the plane is that deep, so a hit can push blocks no further.
+     */
+    private static final double FRAME_HELD_DEPTH = 0.5;
+    /**
+     * A ship whose blocks are this far [blocks] inside the portal's frame for {@value #FRAME_STUCK_TICKS} ticks is stuck
+     * in it (a hard hit or a physics staff pull tunnelled a frame block into the hull: every contact then pushes another
+     * way and nothing gets it out). It is let through those frame blocks until it is free of them.
+     */
+    private static final double FRAME_STUCK_DEPTH = 0.25;
+    private static final long FRAME_STUCK_TICKS = 10;
+    /** Ships deep in a frame, with the tick they got there. */
+    private static final Map<UUID, Long> STUCK_SINCE = new HashMap<>();
+    /** Ships let through frame blocks, with those blocks (as last sent). */
+    private static final Map<UUID, Set<BlockPos>> LET_THROUGH = new HashMap<>();
     /** How far [blocks] around a doorway a rope partner counts as being at it ({@link #partnerPastFace}). */
     private static final double PARTNER_REACH = 32.0;
     /** Diagnostics: last tick a "declined" line was logged per ship and portal. */
@@ -107,6 +130,8 @@ final class IPStraddleController {
         REFUSALS.clear();
         DECLINED_LOGGED.clear();
         WAITING_SINCE.clear();
+        STUCK_SINCE.clear();
+        LET_THROUGH.clear();
     }
 
     static void tick(final MinecraftServer server, final long tick) {
@@ -139,6 +164,9 @@ final class IPStraddleController {
         }
         IPShipCrossingDetector.retain(live);
         REFUSALS.keySet().retainAll(live);
+        STUCK_SINCE.keySet().retainAll(live);
+        LET_THROUGH.keySet().retainAll(live);
+        IPStraddleSessions.retainGhosts(live);
 
         handOffAll(server, handoffs, tick);
     }
@@ -371,6 +399,9 @@ final class IPStraddleController {
         final boolean tooLarge = swept.getXsize() * swept.getYsize() * swept.getZsize() > MAX_SUBLEVEL_VOLUME;
 
         final List<Portal> nearby = nearbyPortals(level, ship, swept.inflate(PORTAL_QUERY_INFLATION));
+        if (!tooLarge && (!nearby.isEmpty() || LET_THROUGH.containsKey(ship.getUniqueId()))) {
+            letThroughFrameIfStuck(level, ship, IPShipCrossingDetector.blocks(ship, tick), nearby, tick);
+        }
         if (nearby.isEmpty()) {
             return;
         }
@@ -396,8 +427,11 @@ final class IPStraddleController {
 
             // Opening one segment early is neutral for a ship still in front of the plane (the clip regions only
             // remove contacts past it) and lets a fast ship meet an already open doorway.
+            // Not for a ship about to hit the frame: a ship wider than the opening (its middle headed into it) opened a
+            // session that its rest against the frame kept for good (2.0.7).
             final boolean predicted = !haveSession && state.phase() == Phase.APPROACHING
-                    && IPShipCrossingDetector.willEnter(ship, blocks, portal, normal, DETECTION_MARGIN, EARLY_OPEN_SEGMENTS);
+                    && IPShipCrossingDetector.willEnter(ship, blocks, portal, normal, DETECTION_MARGIN, EARLY_OPEN_SEGMENTS)
+                    && IPShipCrossingDetector.frameContactAhead(level, ship, blocks, portal, normal, EARLY_OPEN_SEGMENTS) < -FRAME_TOUCHING;
             final boolean straddling = (state.phase() == Phase.STRADDLING && (haveSession || state.sweptThroughAperture()))
                     || predicted;
 
@@ -406,6 +440,20 @@ final class IPStraddleController {
                 // it slid along the plane out of the opening: the part past the plane is beside the portal, in its own world
                 IPStraddleSessions.close(key, "left the opening");
                 IPShipCrossingDetector.forget(ship.getUniqueId());
+                continue;
+            }
+            if (state.phase() == Phase.STRADDLING && (haveSession ? state.maxDistance() < FRAME_HELD_DEPTH : straddling)
+                    && !LET_THROUGH.containsKey(ship.getUniqueId())
+                    && IPShipCrossingDetector.frameContact(level, ship, blocks, portal, normal) >= FRAME_PRESSED) {
+                // A hard hit on the frame pushed blocks in front of the opening up to the plane: the frame holds the ship,
+                // nothing is through (not while it is let through the frame: then the frame holds nothing). With a session the clip regions would leave the frame's inner half past the plane
+                // without collision, and the ship drawn cut at the plane.
+                if (haveSession) {
+                    IPStraddleSessions.close(key, "held by the portal's frame");
+                    IPShipCrossingDetector.forget(ship.getUniqueId());
+                } else {
+                    declined(ship, portal, state, "it is pressed into the portal's frame");
+                }
                 continue;
             }
             if (!haveSession && state.phase() == Phase.STRADDLING && !straddling) {
@@ -483,7 +531,8 @@ final class IPStraddleController {
                 continue;
             }
 
-            if (haveSession && state.phase() == Phase.APPROACHING && keepsOpen(key, state, tick)) {
+            if (haveSession && state.phase() == Phase.APPROACHING && keepsOpen(key, state, tick)
+                    && IPShipCrossingDetector.frameContact(level, ship, blocks, portal, normal) < -FRAME_TOUCHING) {
                 // hysteresis: a ship hovering at the plane (or opened early by the lookahead) keeps its session
                 seen.add(key);
                 IPStraddleSessions.openOrRefresh(ship, portal, level, normal, tick);
@@ -491,7 +540,8 @@ final class IPStraddleController {
             }
 
             if (haveSession) {
-                IPStraddleSessions.close(key, state.phase() == Phase.APPROACHING ? "backed out" : "left the aperture");
+                IPStraddleSessions.close(key, state.phase() != Phase.APPROACHING ? "left the aperture"
+                        : keepsOpen(key, state, tick) ? "resting against the portal's frame" : "backed out");
                 // The segment just unwound must not be read as an entry through the opposite face.
                 IPShipCrossingDetector.forget(ship.getUniqueId());
                 return;
@@ -500,10 +550,61 @@ final class IPStraddleController {
     }
 
     /**
+     * Lets a ship stuck in a portal's frame through the frame blocks it is inside ({@value #FRAME_STUCK_DEPTH} deep for
+     * {@value #FRAME_STUCK_TICKS} ticks), on both sides of the portal, until it overlaps none of them: it can then be
+     * flown or dragged out, and collides with the frame again as soon as it is clear. Frame blocks it moves into
+     * meanwhile are let through too.
+     */
+    private static void letThroughFrameIfStuck(final ServerLevel level, final ServerSubLevel ship, final List<BlockPos> blocks,
+                                               final List<Portal> nearby, final long tick) {
+        final UUID id = ship.getUniqueId();
+        final Map<BlockPos, Double> overlapping = new HashMap<>();
+        double deepest = Double.NEGATIVE_INFINITY;
+        Portal deepestPortal = null;
+        for (final Portal portal : nearby) {
+            if (!isCanonicalFace(portal, nearby) || blocks.isEmpty()) {
+                continue;
+            }
+            final double depth = IPShipCrossingDetector.frameOverlaps(level, ship, blocks, portal, portal.getNormal().scale(-1.0),
+                    0.0, overlapping);
+            if (depth > deepest) {
+                deepest = depth;
+                deepestPortal = portal;
+            }
+        }
+        final Set<BlockPos> current = LET_THROUGH.get(id);
+        if (current != null) {
+            if (overlapping.isEmpty()) {
+                LET_THROUGH.remove(id);
+                IPStraddleSessions.setGhosts(ship, level, List.of());
+                LOGGER.info("[IPStraddle] ship {} is free of the portal frame: it collides with the frame again", id);
+            } else if (!current.equals(overlapping.keySet())) {
+                LET_THROUGH.put(id, new HashSet<>(overlapping.keySet()));
+                IPStraddleSessions.setGhosts(ship, level, new ArrayList<>(overlapping.keySet()));
+            }
+            return;
+        }
+        if (deepest < FRAME_STUCK_DEPTH) {
+            STUCK_SINCE.remove(id);
+            return;
+        }
+        final long since = STUCK_SINCE.computeIfAbsent(id, key -> tick);
+        if (tick - since < FRAME_STUCK_TICKS) {
+            return;
+        }
+        STUCK_SINCE.remove(id);
+        LET_THROUGH.put(id, new HashSet<>(overlapping.keySet()));
+        IPStraddleSessions.setGhosts(ship, level, new ArrayList<>(overlapping.keySet()));
+        LOGGER.info("[IPStraddle] ship {} is stuck {} blocks deep in the frame of portal {}: letting it through {} frame block(s) until it is free",
+                id, String.format("%.2f", deepest), deepestPortal.getUUID(), overlapping.size());
+    }
+
+    /**
      * Whether a session whose ship is back before the plane stays open: while the ship is within
      * {@value #KEEP_DISTANCE} of the plane, or for {@value #MIN_SESSION_TICKS} ticks after it opened. Without this a
      * ship resting at the plane, or opened one segment early and then slowed down, opened and closed its session (and
-     * its physics image) every few ticks.
+     * its physics image) every few ticks. The caller closes it anyway while the ship touches the portal's frame: a ship
+     * resting against a nether portal's frame is exactly {@value #KEEP_DISTANCE} before the plane.
      */
     private static boolean keepsOpen(final IPStraddleSessions.Key key, final State state, final long tick) {
         final IPStraddleSessions.Session session = IPStraddleSessions.get(key);
@@ -675,6 +776,7 @@ final class IPStraddleController {
         final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
         final Vector3dc position = ship.logicalPose().position();
         final Vec3 destPos = isometry.mapPoint(new Vec3(position.x(), position.y(), position.z()));
+        final Vec3 arrivalDisplacement = isometry.mapVec(toVec3(position).subtract(toVec3(ship.lastPose().position())));
         final Quaterniond rotation = new Quaterniond(isometry.rotation());
 
         IPSableBridge.Velocity carried = null;
@@ -685,6 +787,11 @@ final class IPStraddleController {
                     toVector(isometry.mapVec(toVec3(body.getAngularVelocity(new Vector3d())))));
         }
 
+        if (LET_THROUGH.remove(shipId) != null) {
+            // the frame blocks are the source level's; the moved ship gets a new body
+            IPStraddleSessions.setGhosts(ship, handoff.level(), List.of());
+        }
+        STUCK_SINCE.remove(shipId);
         IPStraddleSync.markHandedOff(new IPStraddleSessions.Key(shipId, portal.getUUID()));
         for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
             if (key.ship().equals(shipId)) {
@@ -712,6 +819,8 @@ final class IPStraddleController {
             onHandoffFailed(handoff, server.getTickCount(), travelling);
         } else {
             REFUSALS.remove(shipId);
+            IPShipCrossingDetector.seedArrival(moved.sub(), arrivalDisplacement, isometry.mapPoint(portal.getOriginPos()),
+                    isometry.mapVec(portal.getNormal().scale(-1.0)), server.getTickCount());
             IPStraddleDebugTrace.onHandedOff(shipId, server.getTickCount());
             LOGGER.info("[IPStraddle] ship {} arrived in {} (plot-space shift {})", shipId, dest.dimension().location(), moved.shift());
             IPShipThroughPortalSync.onShipLeftDimension(server, shipId, handoff.level().dimension());

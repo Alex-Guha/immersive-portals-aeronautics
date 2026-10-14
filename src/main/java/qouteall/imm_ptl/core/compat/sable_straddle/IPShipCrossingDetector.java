@@ -10,6 +10,8 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
@@ -43,6 +45,14 @@ final class IPShipCrossingDetector {
     static final double HYSTERESIS = 0.1;
     /** Ticks a ship's block list is reused before it is read again from the plot. */
     private static final int VOLUME_REFRESH_TICKS = 20;
+    /** Ship blocks whose box comes this close [blocks] to the plane are tested against the frame. */
+    private static final double FRAME_REACH = 1.0;
+    /** How far [blocks] around a ship block world blocks are tested against it ({@link #frameContact}). */
+    private static final double FRAME_SEARCH = 0.1;
+    /** A world block counts as frame when it reaches within this distance [blocks] of the plane, as a nether portal's frame. */
+    private static final double FRAME_HALF_THICKNESS = 0.5;
+    /** A world block reaching less than this far [blocks] into the opening still counts as beside it. */
+    private static final double EDGE_TOLERANCE = 1.0e-4;
 
     enum Phase { APPROACHING, STRADDLING, CROSSED }
 
@@ -97,6 +107,39 @@ final class IPShipCrossingDetector {
     static void forget(final UUID shipId) {
         TRAILS.remove(shipId);
         VOLUMES.remove(shipId);
+    }
+
+    /**
+     * Starts the history of a ship just handed off through a portal with the end of its incoming segment, mapped
+     * through the portal: the part along which it was already wholly out of the portal it came out of (at least
+     * {@value #HYSTERESIS} past that plane, so it is never read as going back in). Without it the history starts at
+     * the arrival pose, and a fast ship arriving already on another portal's plane (stacked portals, a portal leading
+     * onto itself) is never seen entering that portal and falls through it.
+     *
+     * @param ship         the ship's new sub-level, at its arrival pose
+     * @param displacement its last segment's displacement, mapped through the portal
+     * @param exitOrigin   a point of the plane it came out of, in the destination
+     * @param exitNormal   that plane's unit normal pointing into the destination world
+     */
+    static void seedArrival(final ServerSubLevel ship, final Vec3 displacement, final Vec3 exitOrigin, final Vec3 exitNormal,
+                            final long tick) {
+        final Pose3dc arrived = ship.logicalPose();
+        final Trail trail = new Trail();
+        trail.owner = ship;
+        trail.start.set(arrived);
+        trail.end.set(arrived);
+        TRAILS.put(ship.getUniqueId(), trail);
+        final double outward = displacement.dot(exitNormal);
+        final List<BlockPos> blocks = blocks(ship, tick);
+        if (outward <= EPSILON || blocks.isEmpty()) {
+            return;
+        }
+        final double clearance = sample(blocks, new Frame(arrived), exitOrigin, exitNormal)[0] - HYSTERESIS;
+        final double back = Math.clamp(clearance / outward, 0.0, 1.0);
+        trail.start.position().set(
+                arrived.position().x() - displacement.x * back,
+                arrived.position().y() - displacement.y * back,
+                arrived.position().z() - displacement.z * back);
     }
 
     /**
@@ -233,6 +276,110 @@ final class IPShipCrossingDetector {
             }
         }
         return false;
+    }
+
+    /**
+     * How deep the ship is pushed into the portal's frame now: the largest overlap [blocks] of a ship block near the
+     * plane with a solid block of the ship's own world that sits at the plane wholly beside the opening (negative: the
+     * gap to the nearest one; {@link Double#NEGATIVE_INFINITY} when none is within {@value #FRAME_SEARCH} of the ship's
+     * blocks). A ship resting against a frame touches it (about 0); only a hard hit pushes it in by a tenth of a block.
+     */
+    static double frameContact(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
+                               final Vec3 normal) {
+        return frameContact(level, blocks, portal, normal, new Frame(trail(ship).end), null);
+    }
+
+    /**
+     * The frame blocks (as {@link #frameContact}) the ship overlaps by more than {@code minOverlap} now, each with its
+     * largest overlap, added to {@code out}.
+     *
+     * @return the largest overlap, as {@link #frameContact}
+     */
+    static double frameOverlaps(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
+                                final Vec3 normal, final double minOverlap, final Map<BlockPos, Double> out) {
+        final Map<BlockPos, Double> all = new HashMap<>();
+        final double deepest = frameContact(level, blocks, portal, normal, new Frame(trail(ship).end), all);
+        all.forEach((pos, overlap) -> {
+            if (overlap > minOverlap) {
+                out.merge(pos, overlap, Math::max);
+            }
+        });
+        return deepest;
+    }
+
+    /**
+     * {@link #frameContact} at the pose the latest segment extrapolated by {@code lookahead} segments reaches (the pose
+     * {@link #willEnter} predicts).
+     */
+    static double frameContactAhead(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
+                                    final Vec3 normal, final double lookahead) {
+        final Trail trail = trail(ship);
+        return frameContact(level, blocks, portal, normal, new Frame(extrapolate(trail.start, trail.end, 1.0 + lookahead)), null);
+    }
+
+    /**
+     * @param out when not null, receives every frame block within reach with its largest overlap
+     */
+    private static double frameContact(final Level level, final List<BlockPos> blocks, final Portal portal, final Vec3 normal,
+                                       final Frame frame, @org.jetbrains.annotations.Nullable final Map<BlockPos, Double> out) {
+        final Vec3 origin = portal.getOriginPos();
+        final Vec3 axisW = portal.getAxisW();
+        final Vec3 axisH = portal.getAxisH();
+        final double halfW = portal.getWidth() * 0.5;
+        final double halfH = portal.getHeight() * 0.5;
+        final double shipN = frame.obbSupport(normal.x, normal.y, normal.z);
+        final double shipW = frame.obbSupport(axisW.x, axisW.y, axisW.z);
+        final double shipH = frame.obbSupport(axisH.x, axisH.y, axisH.z);
+        // a world block is a unit cube: its support along a unit axis
+        final double worldN = (Math.abs(normal.x) + Math.abs(normal.y) + Math.abs(normal.z)) * 0.5;
+        final double worldW = (Math.abs(axisW.x) + Math.abs(axisW.y) + Math.abs(axisW.z)) * 0.5;
+        final double worldH = (Math.abs(axisH.x) + Math.abs(axisH.y) + Math.abs(axisH.z)) * 0.5;
+        final Map<BlockPos, Boolean> solid = new HashMap<>();
+        double deepest = Double.NEGATIVE_INFINITY;
+        for (final BlockPos block : blocks) {
+            final double cx = frame.centerX(block), cy = frame.centerY(block), cz = frame.centerZ(block);
+            final double depth = (cx - origin.x) * normal.x + (cy - origin.y) * normal.y + (cz - origin.z) * normal.z;
+            if (depth + shipN < -FRAME_REACH || depth - shipN > FRAME_REACH) {
+                continue;
+            }
+            final double w = (cx - origin.x) * axisW.x + (cy - origin.y) * axisW.y + (cz - origin.z) * axisW.z;
+            final double h = (cx - origin.x) * axisH.x + (cy - origin.y) * axisH.y + (cz - origin.z) * axisH.z;
+            if (Math.abs(w) + shipW <= halfW && Math.abs(h) + shipH <= halfH) {
+                continue; // wholly inside the opening's prism: nothing beside the opening to touch
+            }
+            final int minX = Mth.floor(cx - frame.halfX - FRAME_SEARCH), maxX = Mth.floor(cx + frame.halfX + FRAME_SEARCH);
+            final int minY = Mth.floor(cy - frame.halfY - FRAME_SEARCH), maxY = Mth.floor(cy + frame.halfY + FRAME_SEARCH);
+            final int minZ = Mth.floor(cz - frame.halfZ - FRAME_SEARCH), maxZ = Mth.floor(cz + frame.halfZ + FRAME_SEARCH);
+            for (int x = minX; x <= maxX; x++) {
+                for (int y = minY; y <= maxY; y++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        final double dx = x + 0.5 - origin.x, dy = y + 0.5 - origin.y, dz = z + 0.5 - origin.z;
+                        final double worldDepth = dx * normal.x + dy * normal.y + dz * normal.z;
+                        if (worldDepth - worldN >= FRAME_HALF_THICKNESS || worldDepth + worldN <= -FRAME_HALF_THICKNESS) {
+                            continue; // not at the plane
+                        }
+                        if (Math.abs(dx * axisW.x + dy * axisW.y + dz * axisW.z) - worldW < halfW - EDGE_TOLERANCE
+                                && Math.abs(dx * axisH.x + dy * axisH.y + dz * axisH.z) - worldH < halfH - EDGE_TOLERANCE) {
+                            continue; // reaches into the opening: not frame
+                        }
+                        final BlockPos pos = new BlockPos(x, y, z);
+                        if (!solid.computeIfAbsent(pos, p -> isSolid(level, p))) {
+                            continue;
+                        }
+                        final double overlap = frame.overlapWithCube(cx, cy, cz, x + 0.5, y + 0.5, z + 0.5);
+                        deepest = Math.max(deepest, overlap);
+                        if (out != null) {
+                            out.merge(pos, overlap, Math::max);
+                        }
+                    }
+                }
+            }
+        }
+        return deepest;
+    }
+
+    private static boolean isSolid(final Level level, final BlockPos pos) {
+        return level.isLoaded(pos) && !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
     }
 
     /**
@@ -490,6 +637,39 @@ final class IPShipCrossingDetector {
             return (Math.abs(this.xx * x + this.xy * y + this.xz * z)
                     + Math.abs(this.yx * x + this.yy * y + this.yz * z)
                     + Math.abs(this.zx * x + this.zy * y + this.zz * z)) * 0.5;
+        }
+
+        /**
+         * Separating-axis overlap of a ship block's box (centre {@code c}) with a world-aligned unit cube (centre
+         * {@code p}): the smallest overlap over the 15 candidate axes, negative when they are apart (a lower bound of the
+         * gap). Exact for a tilted block whose edge only touches the cube, which an AABB test would read as inside it.
+         */
+        double overlapWithCube(final double cx, final double cy, final double cz, final double px, final double py, final double pz) {
+            final double tx = cx - px, ty = cy - py, tz = cz - pz;
+            final double[][] edges = {{this.xx, this.xy, this.xz}, {this.yx, this.yy, this.yz}, {this.zx, this.zy, this.zz}};
+            double overlap = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < 3; i++) {
+                final double[] world = {i == 0 ? 1 : 0, i == 1 ? 1 : 0, i == 2 ? 1 : 0};
+                overlap = Math.min(overlap, this.overlapAlong(world[0], world[1], world[2], tx, ty, tz));
+                overlap = Math.min(overlap, this.overlapAlong(edges[i][0], edges[i][1], edges[i][2], tx, ty, tz));
+                for (final double[] edge : edges) {
+                    overlap = Math.min(overlap, this.overlapAlong(
+                            world[1] * edge[2] - world[2] * edge[1],
+                            world[2] * edge[0] - world[0] * edge[2],
+                            world[0] * edge[1] - world[1] * edge[0], tx, ty, tz));
+                }
+            }
+            return overlap;
+        }
+
+        private double overlapAlong(final double x, final double y, final double z, final double tx, final double ty, final double tz) {
+            final double length = Math.sqrt(x * x + y * y + z * z);
+            if (length < 1.0e-6) {
+                return Double.POSITIVE_INFINITY; // parallel edges: covered by the face axes
+            }
+            final double ux = x / length, uy = y / length, uz = z / length;
+            final double cube = (Math.abs(ux) + Math.abs(uy) + Math.abs(uz)) * 0.5;
+            return this.obbSupport(ux, uy, uz) + cube - Math.abs(tx * ux + ty * uy + tz * uz);
         }
     }
 

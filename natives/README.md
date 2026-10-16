@@ -26,6 +26,10 @@ Our changes, all marked in file headers:
   (16). The Rust code calls back into Java only through object classes, never by class name.
 - `Rapier3D_stepChartOnly`: the per-chart rope and joint upkeep of `step` without stepping the world, so every
   dimension gets it each substep (IPSable's fused step skipped it for all but the last dimension).
+- `moving_portals.rs` (2.2.0): images and clip regions of portals mounted on a body (a ship) follow that body every
+  step, and the images get the portal's frame velocity; with it, 7 engine files (`portal_frame_*` fields: collider
+  parent, contact manifold, narrow phase, the coulomb and twist contact builders) add that velocity as a surface
+  velocity of the image (`docs/lessons/ship-mounted-portals.md`).
 - `dispatcher.rs`: body pairs of different charts never collide. IPSable relied on 16 collision-group bits, which wrap
   above 16 dimensions. Ropes and boxes (no chart on their shape) still rely on the bits.
 

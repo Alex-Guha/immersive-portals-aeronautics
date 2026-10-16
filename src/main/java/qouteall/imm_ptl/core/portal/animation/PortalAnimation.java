@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal.animation;
 
 import net.minecraft.ChatFormatting;
@@ -279,7 +286,12 @@ public class PortalAnimation {
      * We need to make sure that it works the same whether the driver portal ticks first or not.
      */
     public void swapTickRelativeStateIfNeeded(Portal portal) {
-        int counter = portal.tickCount;
+        // Immersive Aeronautics: on the server, count server ticks. A cluster's holder provides the tick state of its
+        // portals in other dimensions too, and a portal in a dimension whose entities do not tick (no player there)
+        // never advanced its tickCount: every tick looked like a second animation ("Conflicting animation" spam for
+        // the fixed side of a ship-mounted portal).
+        long counter = portal.level().isClientSide() || portal.getServer() == null
+            ? portal.tickCount : portal.getServer().getTickCount();
         if (counter != updateCounter) {
             lastTickAnimatedState = thisTickAnimatedState;
             thisTickAnimatedState = null;

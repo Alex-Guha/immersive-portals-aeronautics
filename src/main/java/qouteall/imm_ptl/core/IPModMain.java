@@ -111,12 +111,18 @@ public class IPModMain {
         IPPortingLibCompat.init();
         
         BlockManipulationServer.init();
+        
+        // Immersive Aeronautics: portals mounted on Sable ships (their animation driver is read on both sides)
+        if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
+            qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors.init();
+        }
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             PortalCommand.register(event.getDispatcher(), event.getBuildContext());
             // Immersive Aeronautics: ship straddling switch (Sable classes only load with Sable present)
             if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
                 qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCommand.register(event.getDispatcher());
+                qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalCommand.register(event.getDispatcher());
             }
         });
 

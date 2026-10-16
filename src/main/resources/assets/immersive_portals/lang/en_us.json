@@ -204,6 +204,8 @@
   "text.autoconfig.immersive_portals.option.netherPortalMode": "Nether Portal Mode",
   "text.autoconfig.immersive_portals.option.endPortalMode": "End Portal Mode",
   "text.autoconfig.immersive_portals.option.lightVanillaNetherPortalWhenCrouching": "Light vanilla portal when crouching",
+  "text.autoconfig.immersive_portals.option.shipMountedPortals": "Portals on ships (Sable)",
+  "text.autoconfig.immersive_portals.option.shipMountedPortals.@Tooltip": "If enabled, a nether portal can be lit on a ship or assembled into one, and moves with it. Its other side stays fixed. Experimental.",
   "text.autoconfig.immersive_portals.option.enableServerPerformanceAdjustment": "Enable Server Performance Adjustment",
   "text.autoconfig.immersive_portals.option.enableServerPerformanceAdjustment.@Tooltip": "If enabled, will load fewer chunks via portal when server is laggy.",
   "text.autoconfig.immersive_portals.option.enableDatapackPortalGen": "Enable Datapack Portal Generation",

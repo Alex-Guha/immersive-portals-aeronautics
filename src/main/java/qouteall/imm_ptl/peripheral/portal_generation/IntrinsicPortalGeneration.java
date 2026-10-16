@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.portal_generation;
 
 import com.google.common.collect.Lists;
@@ -123,7 +130,12 @@ public class IntrinsicPortalGeneration {
         if (!dimensionCorrect) {
             return false;
         }
-        
+
+        // Immersive Aeronautics: no portal from a Sable ship's plot coordinates
+        if (!qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.mayGenerateFrom(world, firePos, null)) {
+            return false;
+        }
+
         Optional<PortalShape> newPortal = PortalShape.findEmptyPortalShape(world, firePos, Direction.Axis.X);
         
         if (newPortal.isEmpty()) {

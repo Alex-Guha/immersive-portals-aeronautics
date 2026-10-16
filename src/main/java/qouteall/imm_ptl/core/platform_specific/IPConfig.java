@@ -124,7 +124,10 @@ public class IPConfig implements ConfigData {
     public boolean easeCommandStickPermission = false;
     public boolean portalsChangeGravityByDefault = false;
     public boolean portalWandUsableOnSurvivalMode = false;
-    
+    // Immersive Aeronautics: portals on Sable ships (docs/plans/ship-mounted-portals.md)
+    @ConfigEntry.Gui.Tooltip
+    public boolean shipMountedPortals = true;
+
     // common invisible configs
     
     @ConfigEntry.Gui.Excluded

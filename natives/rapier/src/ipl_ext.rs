@@ -194,6 +194,46 @@ pub struct IplClipRegion {
     /// symptom. Java sends the owning body's own diagonal, so the cutter is a closed box
     /// around exactly the volume that can be straddling.
     pub max_depth: Real,
+    /// Immersive Portals: Aeronautics, moving portals: a region at a portal mounted on a body follows that body
+    /// (`crate::moving_portals`); None for still portals.
+    pub anchor: Option<ClipAnchor>,
+}
+
+/// The placement of a clip region in its carrier's body frame (see `IplClipRegion::anchor`).
+#[derive(Debug, Clone, Copy)]
+pub struct ClipAnchor {
+    pub carrier: RigidBodyHandle,
+    pub point: Vec3,
+    pub normal: Vec3,
+    pub axis_w: Vec3,
+    pub axis_h: Vec3,
+}
+
+/// Reads a clip-region array (`setClipRegions` layout); None when the array cannot be read.
+pub fn read_clip_regions(env: &JNIEnv, data: &JDoubleArray) -> Option<Vec<IplClipRegion>> {
+    let len = env.get_array_length(data).ok()? as usize;
+    let mut values = vec![0.0f64; len];
+    if len > 0 && env.get_double_array_region(data, 0, &mut values).is_err() {
+        return None;
+    }
+    let mut regions = Vec::with_capacity(values.len() / 14);
+    if values.is_empty() {
+        return Some(regions);
+    }
+    for c in values.chunks_exact(ipl_clip_stride(values.len())) {
+        regions.push(IplClipRegion {
+            point: Vec3::new(c[0] as Real, c[1] as Real, c[2] as Real),
+            normal: Vec3::new(c[3] as Real, c[4] as Real, c[5] as Real),
+            axis_w: Vec3::new(c[6] as Real, c[7] as Real, c[8] as Real),
+            half_w: c[9] as Real,
+            axis_h: Vec3::new(c[10] as Real, c[11] as Real, c[12] as Real),
+            half_h: c[13] as Real,
+            skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
+            max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            anchor: None,
+        });
+    }
+    Some(regions)
 }
 
 /// Clip-region stride. The current payload is 16 doubles per region:
@@ -265,6 +305,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setClipRegions<'local
             half_h: c[13] as Real,
             skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
             max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            anchor: None,
         });
     }
     // No success log: straddle sessions re-push regions per tick — an unconditional
@@ -593,6 +634,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_removeImageCollider<'
         info.image_colliders.retain(|h| *h != handle);
         info.image_clip.remove(&handle);
     }
+    crate::moving_portals::forget_image(&mut sable_data, handle);
 
     sim_data.collider_set.remove(
         handle,
@@ -652,6 +694,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageClipRegions<'
             half_h: c[13] as Real,
             skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
             max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            anchor: None,
         });
     }
     if regions.is_empty() {

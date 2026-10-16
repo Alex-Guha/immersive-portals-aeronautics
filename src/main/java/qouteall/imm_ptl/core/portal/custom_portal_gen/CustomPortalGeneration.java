@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal.custom_portal_gen;
 
 import com.google.common.collect.Lists;
@@ -165,6 +172,8 @@ public class CustomPortalGeneration {
         BlockPos from,
         ServerLevel fromWorld, ServerLevel toWorld
     ) {
+        // Immersive Aeronautics: a frame on a Sable ship maps from the ship's world position
+        from = qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.positionForMapping(fromWorld, from);
         BlockPos newPosition = Helper.divide(Helper.scale(from, spaceRatioTo), spaceRatioFrom);
         
         boolean withinBounds = toWorld.getWorldBorder().isWithinBounds(newPosition);
@@ -248,7 +257,12 @@ public class CustomPortalGeneration {
             Helper.log("Skip custom portal generation because chunk not loaded");
             return false;
         }
-        
+
+        // Immersive Aeronautics: no portal generation from a Sable ship's plot coordinates
+        if (!qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.mayGenerateFrom(world, startPos, this)) {
+            return false;
+        }
+
         ResourceKey<Level> destDimension = this.toDimension;
         
         if (destDimension == THE_SAME_DIMENSION) {

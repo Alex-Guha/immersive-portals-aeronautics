@@ -22,7 +22,9 @@ import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction;
 import qouteall.imm_ptl.core.ducks.IEChunkMap;
@@ -99,28 +101,26 @@ public abstract class MixinTrackedEntity implements IETrackedEntity {
     }
     
     /**
-     * @author qouteall
-     * @reason managed by ImmPtl
+     * Managed by ImmPtl.
      * In vanilla, entity tracking updates when
      * - {@link ChunkMap#move(ServerPlayer)}
      *   When the player moves, the entities in curr dim except that player updates to that player,
      *   and that player updates to all player in that dimension
+     * Immersive Aeronautics: cancelled at HEAD instead of overwritten, so that other mods' required
+     * injectors into the vanilla body (Sable's position() redirect, Vista's inRange modifier) still
+     * find their targets; an overwrite crashed the server on the first tracked entity.
      */
-    @Overwrite
-    public void updatePlayer(ServerPlayer player) {
-        // Immersive Aeronautics: Sable's TrackedEntityMixin redirects the Entity.position()
-        // call inside the vanilla updatePlayer. IP overwrites this method, so keep one
-        // position() call here or Sable's @Redirect fails to apply and the game crashes.
-        ip_getEntity().position();
+    @Inject(method = "updatePlayer", at = @At("HEAD"), cancellable = true, require = 1)
+    private void ip_onUpdatePlayer(ServerPlayer player, CallbackInfo ci) {
+        ci.cancel();
     }
     
     /**
-     * @author qouteall
-     * @reason managed by ImmPtl
+     * Managed by ImmPtl. Immersive Aeronautics: cancelled instead of overwritten, see above.
      */
-    @Overwrite
-    public void updatePlayers(List<ServerPlayer> list) {
-        // nothing
+    @Inject(method = "updatePlayers", at = @At("HEAD"), cancellable = true, require = 1)
+    private void ip_onUpdatePlayers(List<ServerPlayer> list, CallbackInfo ci) {
+        ci.cancel();
     }
     
     @Override

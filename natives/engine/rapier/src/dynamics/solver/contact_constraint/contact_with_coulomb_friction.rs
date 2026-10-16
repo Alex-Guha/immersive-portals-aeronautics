@@ -1,6 +1,7 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
-// frame-mapped contacts (diff against 38e92f1 to see them). Not otherwise changed by Immersive Portals: Aeronautics.
+// frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
+// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
 
 use super::{ContactConstraintNormalPart, ContactConstraintTangentPart};
 use crate::dynamics::integration_parameters::BLOCK_SOLVER_ENABLED;
@@ -16,6 +17,17 @@ use crate::utils::{self, AngularInertiaOps, CrossProduct, DotProduct, ScalarType
 use num::Zero;
 use parry::utils::SdpMatrix2;
 use simba::simd::{SimdPartialOrd, SimdValue};
+
+/// IPL atlas, moving portals: gathers a per-manifold vector field across the SIMD lanes.
+macro_rules! ipl_gather_manifold_vec {
+    ($manifolds:expr, $field:ident) => {{
+        #[cfg(feature = "simd-is-enabled")]
+        let v = <SimdReal as ScalarType>::Vector::from(gather![|ii| $manifolds[ii].data.$field.into()]);
+        #[cfg(not(feature = "simd-is-enabled"))]
+        let v = $manifolds[0].data.$field;
+        v
+    }};
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct CoulombContactPointInfos<N: ScalarType> {
@@ -134,6 +146,24 @@ impl ContactWithCoulombFrictionBuilder {
             (identity, identity)
         };
 
+        // IPL atlas, moving portals (Immersive Portals: Aeronautics): an image of a moving portal moves with the
+        // portal's frame. That motion is a surface velocity of the image at each contact point,
+        // u = lin + ang × (p − center), added like Rapier's tangent velocity (friction target, point shift between
+        // substeps) and also to the normal target. Only when a lane has one, so ordinary contacts stay bit-identical.
+        let portal_any_frame = (0..SIMD_WIDTH).any(|ii| {
+            manifold_id[ii] != usize::MAX
+                && (manifolds[ii].data.portal_frame_lin1 != crate::math::Vector::ZERO
+                    || manifolds[ii].data.portal_frame_ang1 != crate::math::Vector::ZERO
+                    || manifolds[ii].data.portal_frame_lin2 != crate::math::Vector::ZERO
+                    || manifolds[ii].data.portal_frame_ang2 != crate::math::Vector::ZERO)
+        });
+        let frame_lin1 = ipl_gather_manifold_vec!(manifolds, portal_frame_lin1);
+        let frame_ang1 = ipl_gather_manifold_vec!(manifolds, portal_frame_ang1);
+        let frame_center1 = ipl_gather_manifold_vec!(manifolds, portal_frame_center1);
+        let frame_lin2 = ipl_gather_manifold_vec!(manifolds, portal_frame_lin2);
+        let frame_ang2 = ipl_gather_manifold_vec!(manifolds, portal_frame_ang2);
+        let frame_center2 = ipl_gather_manifold_vec!(manifolds, portal_frame_center2);
+
         let world_com1 = poses1.translation + portal_shift1;
         let world_com2 = poses2.translation + portal_shift2;
 
@@ -185,6 +215,13 @@ impl ContactWithCoulombFrictionBuilder {
             let vel1 = vels1.linear + vels1.angular.gcross(dp1);
             let vel2 = vels2.linear + vels2.angular.gcross(dp2);
 
+            let frame_u = if portal_any_frame {
+                (frame_lin1 + frame_ang1.gcross(solver_contact.point - frame_center1))
+                    - (frame_lin2 + frame_ang2.gcross(solver_contact.point - frame_center2))
+            } else {
+                Default::default()
+            };
+
             out_constraint.limit = solver_contact.friction;
             out_constraint.manifold_contact_id[k] = solver_contact.contact_id.map(|id| id as u8);
 
@@ -204,7 +241,12 @@ impl ContactWithCoulombFrictionBuilder {
                 );
 
                 let projected_velocity = (vel1 - vel2).gdot(force_dir1);
-                normal_rhs_wo_bias = is_bouncy * solver_contact.restitution * projected_velocity;
+                normal_rhs_wo_bias = if portal_any_frame {
+                    let frame_projected = frame_u.gdot(force_dir1);
+                    is_bouncy * solver_contact.restitution * (projected_velocity + frame_projected) + frame_projected
+                } else {
+                    is_bouncy * solver_contact.restitution * projected_velocity
+                };
 
                 out_constraint.normal_part[k].torque_dir1 = torque_dir1;
                 out_constraint.normal_part[k].torque_dir2 = torque_dir2;
@@ -228,7 +270,11 @@ impl ContactWithCoulombFrictionBuilder {
                 let r = tangents1[j].gdot(imsum.component_mul(&tangents1[j]))
                     + ii_torque_dir1.gdot(torque_dir1)
                     + ii_torque_dir2.gdot(torque_dir2);
-                let rhs_wo_bias = solver_contact.tangent_velocity.gdot(tangents1[j]);
+                let rhs_wo_bias = if portal_any_frame {
+                    (solver_contact.tangent_velocity + frame_u).gdot(tangents1[j])
+                } else {
+                    solver_contact.tangent_velocity.gdot(tangents1[j])
+                };
 
                 out_constraint.tangent_part[k].torque_dir1[j] = torque_dir1;
                 out_constraint.tangent_part[k].torque_dir2[j] = torque_dir2;
@@ -261,7 +307,11 @@ impl ContactWithCoulombFrictionBuilder {
                 poses1.inverse_transform_point(solver_contact.point - portal_shift1);
             out_builder.infos[k].local_p2 =
                 poses2.inverse_transform_point(solver_contact.point - portal_shift2);
-            out_builder.infos[k].tangent_vel = solver_contact.tangent_velocity;
+            out_builder.infos[k].tangent_vel = if portal_any_frame {
+                solver_contact.tangent_velocity + frame_u
+            } else {
+                solver_contact.tangent_velocity
+            };
             out_builder.infos[k].dist = solver_contact.dist;
             out_builder.infos[k].normal_vel = normal_rhs_wo_bias;
         }

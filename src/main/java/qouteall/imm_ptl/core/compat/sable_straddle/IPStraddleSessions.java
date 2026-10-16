@@ -5,6 +5,7 @@
  */
 package qouteall.imm_ptl.core.compat.sable_straddle;
 
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
 import com.mojang.logging.LogUtils;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -66,9 +67,13 @@ final class IPStraddleSessions {
         long openedTick;
         /** Added to the clip depth while the ship waits wholly past the plane ({@link #setExtraDepth}). */
         double extraDepth;
+        /** The portal's carrier when it is mounted on a ship ({@link IPMountedStraddle}), else null. */
+        @Nullable
+        final IPShipPortalAnchors.Mount mount;
 
         private Session(final Key key, final ServerSubLevel ship, final Portal portal, final ServerLevel source,
-                        final ServerLevel dest, final IPPortalIsometry isometry, final Vec3 normal) {
+                        final ServerLevel dest, final IPPortalIsometry isometry, final Vec3 normal,
+                        @Nullable final IPShipPortalAnchors.Mount mount) {
             this.key = key;
             this.ship = ship;
             this.portal = portal;
@@ -78,6 +83,7 @@ final class IPStraddleSessions {
             this.isometry = isometry;
             this.normal = normal;
             this.origin = portal.getOriginPos();
+            this.mount = mount;
         }
     }
 
@@ -155,9 +161,12 @@ final class IPStraddleSessions {
             return false;
         }
 
+        // a ship carrying portals going through a portal shatters them first (docs/plans/ship-mounted-portals.md)
+        IPShipPortalAnchors.shatterCarriedPortals(ship.getUniqueId(), "its ship is going through a portal");
         final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
         checkAgainstPortal(isometry, portal);
-        final Session session = new Session(key, ship, portal, source, dest, isometry, normal);
+        final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
+        final Session session = new Session(key, ship, portal, source, dest, isometry, normal, mount);
         session.openedTick = tick;
         final Vec3 t = isometry.translation();
         final Quaterniondc q = isometry.rotation();
@@ -170,6 +179,7 @@ final class IPStraddleSessions {
             return false;
         }
         SESSIONS.put(key, session);
+        IPMountedStraddle.sendAnchor(session, destScene);
         applyClipRegions(session, portal);
 
         LOGGER.info("[IPStraddle] ship {} straddles portal {} ({} -> {}, facing {}){}: image collider {}",
@@ -227,14 +237,22 @@ final class IPStraddleSessions {
         final boolean isometryMoved = !fresh.sameAs(session.isometry);
         final boolean apertureMoved = session.origin.distanceToSqr(portal.getOriginPos()) > 1.0e-10
                 || session.normal.distanceToSqr(normal) > 1.0e-10;
-        if (!isometryMoved && !apertureMoved) {
+        // a mounted portal's transforms are in its carrier's body frame, which Sable re-bases when the carrier's mass
+        // changes: re-sent every tick
+        if (!isometryMoved && !apertureMoved && session.mount == null) {
             return;
         }
         session.isometry = fresh;
         session.normal = normal;
         session.origin = portal.getOriginPos();
-        session.version++;
-        if (isometryMoved) {
+        if (session.mount == null) {
+            // clients derive a mounted session's geometry from the carrier they draw (IPStraddleSync.sendMount)
+            session.version++;
+        }
+        if (session.mount != null) {
+            // the native side moves the image with the carrier every step; only the body-frame transform is refreshed
+            IPMountedStraddle.sendAnchor(session, RapierExt.sceneHandle(session.dest));
+        } else if (isometryMoved) {
             final long destScene = RapierExt.sceneHandle(session.dest);
             if (destScene != 0L) {
                 final Vec3 t = fresh.translation();
@@ -269,8 +287,14 @@ final class IPStraddleSessions {
                 iso.mapVec(portal.getAxisW()), iso.mapVec(portal.getAxisH()), halfW, halfH, depth);
         final long destScene = RapierExt.sceneHandle(session.dest);
         if (destScene != 0L) {
-            RapierExt.setImageClipRegions(destScene, session.bodyId, session.imageHandle,
-                    concat(imageClip, ghostRegions(session.ship.getUniqueId(), iso)));
+            final double[] regions = concat(imageClip, ghostRegions(session.ship.getUniqueId(), iso));
+            if (session.mount != null && !session.mount.carrierIsSource()) {
+                // the destination plane is on the carrier: the image's regions follow it
+                RapierExt.setAnchoredClipRegions(destScene, session.bodyId, session.imageHandle,
+                        session.mount.carrier().getRuntimeId(), IPMountedStraddle.toCarrierFrame(session.mount.carrier(), regions));
+            } else {
+                RapierExt.setImageClipRegions(destScene, session.bodyId, session.imageHandle, regions);
+            }
         }
     }
 
@@ -373,9 +397,13 @@ final class IPStraddleSessions {
      */
     private static void pushRealClipRegions(final ServerSubLevel ship, final ServerLevel source, final int bodyId) {
         final List<double[]> regions = new ArrayList<>(2);
+        ServerSubLevel carrier = null;
         for (final Session session : SESSIONS.values()) {
             if (session.ship == ship && session.realClip != null) {
                 regions.add(session.realClip);
+                if (session.mount != null && session.mount.carrierIsSource()) {
+                    carrier = session.mount.carrier();
+                }
             }
         }
         final double[] flat = new double[regions.size() * RapierExt.CLIP_REGION_DOUBLES];
@@ -384,7 +412,14 @@ final class IPStraddleSessions {
         }
         final long sourceScene = RapierExt.sceneHandle(source);
         if (sourceScene != 0L) {
-            RapierExt.setClipRegions(sourceScene, bodyId, concat(flat, ghostRegions(ship.getUniqueId(), null)));
+            final double[] all = concat(flat, ghostRegions(ship.getUniqueId(), null));
+            if (carrier != null) {
+                // a portal of this ship's sessions moves with its carrier: the body's regions follow the carrier (a second,
+                // still portal straddled at the same time would follow it too: accepted, it is re-sent every tick)
+                RapierExt.setAnchoredClipRegions(sourceScene, bodyId, -1L, carrier.getRuntimeId(), IPMountedStraddle.toCarrierFrame(carrier, all));
+            } else {
+                RapierExt.setClipRegions(sourceScene, bodyId, all);
+            }
         }
     }
 

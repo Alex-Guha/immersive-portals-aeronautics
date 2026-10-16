@@ -219,7 +219,9 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
         Vec3 center = Vec3.atCenterOf(pos);
         List<Portal> candidates = qouteall.imm_ptl.core.compat.IPPortalLookup.touching(
             level, new AABB(pos).inflate(2.0),
+            // Create's portal tracks cannot move: never on a ship-mounted portal
             p -> p.getTeleportable() && !p.getDestDim().equals(level.dimension())
+                && !qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isShipMounted(p)
         );
         Portal best = null;
         double bestDistSq = Double.MAX_VALUE;

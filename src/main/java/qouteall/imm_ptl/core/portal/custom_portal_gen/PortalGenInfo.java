@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal.custom_portal_gen;
 
 import net.minecraft.core.Direction;
@@ -86,6 +93,8 @@ public class PortalGenInfo {
         EntityType<T> entityType
     ) {
         T f1 = createTemplatePortal(entityType);
+        // Immersive Aeronautics: a frame on a Sable ship: the portal starts at the ship's world pose
+        Object shipMount = qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.beforePairDerived(f1, fromShape);
         
         T f2 = PortalManipulation.createFlippedPortal(f1, entityType);
         
@@ -108,6 +117,8 @@ public class PortalGenInfo {
         McHelper.spawnServerEntity(f2);
         McHelper.spawnServerEntity(t1);
         McHelper.spawnServerEntity(t2);
+        // Immersive Aeronautics: and is then mounted on the ship
+        qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.afterPairSpawned(f1, shipMount);
         
         return (new BreakablePortalEntity[]{f1, f2, t1, t2});
     }

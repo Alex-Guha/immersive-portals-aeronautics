@@ -16,8 +16,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipPortalAssemblyGuard;
 
 /**
- * Breaks lit portals whose blocks are about to be assembled into a sub-level
- * ({@link IPShipPortalAssemblyGuard}). {@code moveBlocks} is the one method every assembly path
+ * Lit portals whose blocks are about to be moved by Sable (assembly, disassembly): broken, or with ship-mounted
+ * portals on, mounted on the ship or moved along ({@link IPShipPortalAssemblyGuard}). {@code moveBlocks} is the one method every assembly path
  * (Sable commands, Create Aeronautics assemblers) uses to move blocks from the world into a plot.
  */
 @Mixin(
@@ -37,9 +37,24 @@ public class MixinSableAssembly_PortalBreak {
         ServerLevel level, SubLevelAssemblyHelper.AssemblyTransform transform, Iterable<BlockPos> blocks, CallbackInfo ci
     ) {
         try {
-            IPShipPortalAssemblyGuard.breakPortalsAmong(level, blocks);
+            IPShipPortalAssemblyGuard.onBlocksMoving(level, transform, blocks);
         } catch (Throwable e) {
             ip_LOGGER.warn("[IPShipPortal] portal check before sub-level assembly failed: {}", e.toString());
+        }
+    }
+
+    @Inject(
+        method = "moveBlocks",
+        at = @At("RETURN"),
+        require = 0
+    )
+    private static void ip_afterMove(
+        ServerLevel level, SubLevelAssemblyHelper.AssemblyTransform transform, Iterable<BlockPos> blocks, CallbackInfo ci
+    ) {
+        try {
+            IPShipPortalAssemblyGuard.afterBlocksMoved();
+        } catch (Throwable e) {
+            ip_LOGGER.warn("[IPShipPortal] portal update after sub-level assembly failed: {}", e.toString());
         }
     }
 }

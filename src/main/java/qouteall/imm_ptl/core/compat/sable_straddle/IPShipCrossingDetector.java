@@ -4,6 +4,8 @@
  */
 package qouteall.imm_ptl.core.compat.sable_straddle;
 
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
+import org.joml.Vector3d;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -229,7 +231,7 @@ final class IPShipCrossingDetector {
         if (blocks.isEmpty()) {
             return State.EMPTY;
         }
-        final Trail trail = trail(ship);
+        final Trail trail = trail(ship, portal);
         final Frame start = new Frame(trail.start);
         final Frame end = new Frame(trail.end);
         final Frame older = trail.hasOlder ? new Frame(trail.older) : null;
@@ -313,7 +315,7 @@ final class IPShipCrossingDetector {
      */
     static double frameContactAhead(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
                                     final Vec3 normal, final double lookahead) {
-        final Trail trail = trail(ship);
+        final Trail trail = trail(ship, portal);
         return frameContact(level, blocks, portal, normal, new Frame(extrapolate(trail.start, trail.end, 1.0 + lookahead)), null);
     }
 
@@ -391,10 +393,48 @@ final class IPShipCrossingDetector {
         if (lookahead <= 0.0 || blocks.isEmpty()) {
             return false;
         }
-        final Trail trail = trail(ship);
+        final Trail trail = trail(ship, portal);
         final Pose3d ahead = extrapolate(trail.start, trail.end, 1.0 + lookahead);
         final Sweep predicted = sweep(portal, blocks, new Frame(trail.end), new Frame(ahead), normal, margin);
         return predicted.intersects() && predicted.direction() == Direction.TOWARD_DESTINATION;
+    }
+
+    /**
+     * The ship's trail as seen from {@code portal}: for a portal mounted on another ship (the carrier's side, which
+     * moves), every pose is taken relative to the carrier, moved by the carrier's motion since then
+     * ({@code M_now ∘ M_then⁻¹}), so only the motion relative to the portal counts: a portal swept over a still ship
+     * enters it, and a ship riding along beside it does not.
+     */
+    private static Trail trail(final ServerSubLevel ship, final Portal portal) {
+        final Trail own = trail(ship);
+        final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
+        if (mount == null || !mount.carrierIsSource() || mount.carrier() == ship) {
+            return own;
+        }
+        final Trail carrier = trail(mount.carrier());
+        final Trail relative = new Trail();
+        relative.owner = ship;
+        relative.hasOlder = own.hasOlder;
+        relative.end.set(own.end);
+        relativeTo(own.start, carrier.start, carrier.end, relative.start);
+        if (own.hasOlder) {
+            relativeTo(own.older, carrier.hasOlder ? carrier.older : carrier.start, carrier.end, relative.older);
+        }
+        return relative;
+    }
+
+    /**
+     * {@code out} = the pose {@code pose} (taken when the carrier was at {@code then}) carried along with the carrier to
+     * {@code now}: {@code now ∘ then⁻¹ ∘ pose}, keeping the ship's rotation point.
+     */
+    private static void relativeTo(final Pose3dc pose, final Pose3dc then, final Pose3dc now, final Pose3d out) {
+        final Quaterniond carry = new Quaterniond(now.orientation()).mul(new Quaterniond(then.orientation()).conjugate());
+        final Vector3d shift = new Vector3d(then.rotationPoint()).sub(now.rotationPoint());
+        now.orientation().transform(shift);
+        shift.add(now.position()).sub(carry.transform(new Vector3d(then.position())));
+        out.set(pose);
+        carry.transform(out.position()).add(shift);
+        new Quaterniond(carry).mul(pose.orientation(), out.orientation());
     }
 
     private static Trail trail(final ServerSubLevel ship) {

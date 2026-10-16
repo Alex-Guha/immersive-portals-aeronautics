@@ -155,6 +155,10 @@ public abstract class BreakablePortalEntity extends Portal {
      */
     public boolean isIntactNow() {
         Validate.isTrue(!level().isClientSide);
+        // Immersive Aeronautics: a portal on a ship that is not loaded cannot be judged (its blocks are not there)
+        if (qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isOnUnloadedShip(this)) {
+            return !shouldBreakPortal && isPortalValid();
+        }
         return !shouldBreakPortal && isPortalValid() && isPortalIntactOnThisSide();
     }
     
@@ -206,6 +210,12 @@ public abstract class BreakablePortalEntity extends Portal {
     
     private void checkPortalIntegrity() {
         Validate.isTrue(!level().isClientSide);
+        
+        // Immersive Aeronautics: a portal on a ship that is not loaded waits for its ship (its frame and pairing are
+        // judged by IPShipPortalAnchors once the ship is back); without this IP broke it on reading the missing blocks
+        if (qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isOnUnloadedShip(this)) {
+            return;
+        }
         
         if (!isPortalValid()) {
             remove(RemovalReason.KILLED);

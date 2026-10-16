@@ -138,6 +138,11 @@ pub struct SableSceneData {
     /// rims use this to exempt an anchored portal carrier from its containment body.
     pub ipl_excluded_pairs: HashSet<(LevelColliderID, LevelColliderID)>,
 
+    /// Immersive Portals: Aeronautics, moving portals: image colliders anchored to a carrier body.
+    pub ipl_image_anchors: HashMap<rapier3d::prelude::ColliderHandle, crate::moving_portals::ImageAnchor>,
+    /// Bodies with clip regions anchored to a carrier body.
+    pub ipl_anchored_clip_bodies: HashSet<LevelColliderID>,
+
 }
 
 impl SableSceneData {

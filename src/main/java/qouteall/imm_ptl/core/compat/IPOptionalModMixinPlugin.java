@@ -22,7 +22,8 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         "com.seibel.distanthorizons.", "distanthorizons",
         "net.diebuddies.", "physicsmod",
         "com.anton.shieldgenerators.", "shield_generators",
-        "net.irisshaders.", "iris"
+        "net.irisshaders.", "iris",
+        "team.lodestar.lodestone.", "lodestone"
     );
 
     @Override

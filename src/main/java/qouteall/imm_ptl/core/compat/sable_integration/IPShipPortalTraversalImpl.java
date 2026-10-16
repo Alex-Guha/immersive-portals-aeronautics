@@ -8,6 +8,7 @@
  */
 package qouteall.imm_ptl.core.compat.sable_integration;
 
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
 import com.mojang.logging.LogUtils;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -91,6 +92,7 @@ final class IPShipPortalTraversalImpl {
         IPShipRiderCarry.reset();
         IPShipRagdollGuard.reset();
         IPStraddle.onServerStarted(server);
+        IPShipPortalAnchors.onServerStarted();
         IPPhysicsStaffHooks.onServerStarted();
         IPShipTeleportJournal.replayPending(server);
     }
@@ -99,6 +101,7 @@ final class IPShipPortalTraversalImpl {
         long tick = server.getTickCount();
         IPShipRiderCarry.tickPendingRemounts(server);
         IPShipRagdollGuard.tryRegister();
+        IPShipPortalAnchors.tick(server);
 
         try {
             IPShipThroughPortalSync.tick(server, tick);
@@ -264,6 +267,8 @@ final class IPShipPortalTraversalImpl {
      */
     private static void moveThroughPortal(ServerLevel level, ServerLevel destLevel, ServerSubLevel sub, Portal portal, long tick) {
         UUID shipId = sub.getUniqueId();
+        // a ship carrying portals going through a portal shatters them first (docs/plans/ship-mounted-portals.md)
+        IPShipPortalAnchors.shatterCarriedPortals(shipId, "its ship is going through a portal");
         Vec3 destPos = portal.transformPoint(toVec3(sub));
         Quaterniond rotation = portalRotation(portal);
         Vec3 outDir = portal.getContentDirection().normalize();
@@ -504,7 +509,9 @@ final class IPShipPortalTraversalImpl {
 
     /** A portal ships are carried through: teleportable, with a destination, unscaled. */
     private static boolean isShipPortal(Portal portal) {
-        return portal.getTeleportable() && portal.getDestDim() != null && !(Math.abs(portal.getScale() - 1.0) > 1.0E-4);
+        // ships do not go through ship-mounted portals (docs/plans/ship-mounted-portals.md)
+        return portal.getTeleportable() && portal.getDestDim() != null && !(Math.abs(portal.getScale() - 1.0) > 1.0E-4)
+            && !IPShipPortalAnchors.isShipMounted(portal);
     }
 
     /** Signed distance of {@code point} from the portal plane, positive in front of the portal. */

@@ -1,6 +1,7 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
-// frame-mapped contacts (diff against 38e92f1 to see them). Not otherwise changed by Immersive Portals: Aeronautics.
+// frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
+// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -1017,6 +1018,9 @@ impl NarrowPhase {
                 let portal_rot2 = portal_iso2
                     .map(|p| p.rotation)
                     .unwrap_or(crate::math::Rotation::IDENTITY);
+                // IPL atlas, moving portals: the frame velocity of a moving portal's image (surface velocity).
+                let frame1 = co1.parent.as_ref().and_then(|p| p.portal_frame_velocity);
+                let frame2 = co2.parent.as_ref().and_then(|p| p.portal_frame_velocity);
 
                 for manifold in &mut pair.manifolds {
                     let world_pos1 = manifold.subshape_pos1.prepend_to(&co1.pos);
@@ -1032,6 +1036,12 @@ impl NarrowPhase {
                     manifold.data.portal_shift2 = portal_shift2;
                     manifold.data.portal_rot1 = portal_rot1;
                     manifold.data.portal_rot2 = portal_rot2;
+                    manifold.data.portal_frame_lin1 = frame1.map(|f| f.linvel).unwrap_or(crate::math::Vector::ZERO);
+                    manifold.data.portal_frame_ang1 = frame1.map(|f| f.angvel).unwrap_or(crate::math::Vector::ZERO);
+                    manifold.data.portal_frame_center1 = frame1.map(|f| f.center).unwrap_or(crate::math::Vector::ZERO);
+                    manifold.data.portal_frame_lin2 = frame2.map(|f| f.linvel).unwrap_or(crate::math::Vector::ZERO);
+                    manifold.data.portal_frame_ang2 = frame2.map(|f| f.angvel).unwrap_or(crate::math::Vector::ZERO);
+                    manifold.data.portal_frame_center2 = frame2.map(|f| f.center).unwrap_or(crate::math::Vector::ZERO);
 
                     // Generate solver contacts.
                     #[allow(unused_mut)] // Mut not needed in 2D.

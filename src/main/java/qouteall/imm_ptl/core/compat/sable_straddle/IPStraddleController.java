@@ -4,6 +4,7 @@
  */
 package qouteall.imm_ptl.core.compat.sable_straddle;
 
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
 import com.mojang.logging.LogUtils;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -139,6 +140,18 @@ final class IPStraddleController {
         final Set<UUID> live = new HashSet<>();
         final List<Handoff> handoffs = new ArrayList<>();
 
+        // every ship's segment first: a ship is judged against a portal mounted on another ship relative to that
+        // carrier's segment of the same tick (IPShipCrossingDetector)
+        for (final ServerLevel level : server.getAllLevels()) {
+            final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+            if (container != null) {
+                for (final ServerSubLevel ship : container.getAllSubLevels()) {
+                    if (!ship.isRemoved()) {
+                        IPShipCrossingDetector.capture(ship);
+                    }
+                }
+            }
+        }
         for (final ServerLevel level : server.getAllLevels()) {
             final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container == null) {
@@ -391,7 +404,6 @@ final class IPStraddleController {
         if (ship.getPlot().getBoundingBox() == BoundingBox3i.EMPTY || IPShipRagdollGuard.isRagdollSubLevel(ship)) {
             return;
         }
-        IPShipCrossingDetector.capture(ship);
         final AABB swept = IPShipCrossingDetector.sweptBounds(ship);
         if (swept == null) {
             return;
@@ -661,7 +673,9 @@ final class IPStraddleController {
      */
     private static List<Portal> nearbyPortals(final ServerLevel level, final ServerSubLevel ship, final AABB area) {
         final List<Portal> nearby = new ArrayList<>();
-        for (final Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, area, IPStraddleController::isShipPortal)) {
+        // never a portal mounted on this very ship
+        for (final Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, area,
+                p -> isShipPortal(p) && !IPShipPortalAnchors.isCarriedBy(p, ship))) {
             if (portal instanceof final BreakablePortalEntity breakable && !breakable.isIntactNow()) {
                 LOGGER.info("[IPStraddle] ignoring and breaking {}: its portal blocks are no longer in place", portal);
                 breakable.breakPortalNow();
@@ -781,7 +795,13 @@ final class IPStraddleController {
 
         IPSableBridge.Velocity carried = null;
         final RigidBodyHandle body = RigidBodyHandle.of(ship);
-        if (body != null) {
+        final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
+        if (body != null && mount != null) {
+            // a portal mounted on a ship: the velocity relative to its moving side (IPMountedStraddle)
+            final Vector3d[] velocity = IPMountedStraddle.handoffVelocity(mount, isometry, toVec3(position), destPos,
+                    body.getLinearVelocity(new Vector3d()), body.getAngularVelocity(new Vector3d()));
+            carried = new IPSableBridge.Velocity(velocity[0], velocity[1]);
+        } else if (body != null) {
             carried = new IPSableBridge.Velocity(
                     toVector(isometry.mapVec(toVec3(body.getLinearVelocity(new Vector3d())))),
                     toVector(isometry.mapVec(toVec3(body.getAngularVelocity(new Vector3d())))));

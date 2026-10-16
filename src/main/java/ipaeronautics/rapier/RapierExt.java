@@ -77,4 +77,25 @@ public final class RapierExt {
      * Sets (or clears, with an empty array) the clip regions of one image collider.
      */
     public static native void setImageClipRegions(long sceneHandle, int bodyId, long imageHandle, double[] regions);
+
+    /** {@link #setImageAnchor} mode: the carrier carries the source side (the body is in the carrier's world). */
+    public static final int ANCHOR_CARRIER_IS_SOURCE = 0;
+    /** {@link #setImageAnchor} mode: the carrier carries the destination side (the image is at the carrier). */
+    public static final int ANCHOR_CARRIER_IS_DESTINATION = 1;
+
+    /**
+     * Moving portals (natives/rapier/src/moving_portals.rs): the image follows the carrier body {@code carrierId} from
+     * now on, its prefix derived from the carrier's pose before every step, with the portal's frame velocity. {@code k}
+     * (translation, rotation quaternion) maps the carrier's body frame to the fixed side ({@link #ANCHOR_CARRIER_IS_SOURCE})
+     * or the fixed side into the carrier's body frame ({@link #ANCHOR_CARRIER_IS_DESTINATION}). A negative
+     * {@code carrierId} drops the anchoring.
+     */
+    public static native void setImageAnchor(long sceneHandle, long imageHandle, int carrierId, int mode,
+                                             double tx, double ty, double tz, double qx, double qy, double qz, double qw);
+
+    /**
+     * Moving portals: sets the clip regions of body {@code bodyId} ({@code imageHandle} &lt; 0) or of one of its image
+     * colliders, given in the body frame of the carrier {@code carrierId}; they follow the carrier from then on.
+     */
+    public static native void setAnchoredClipRegions(long sceneHandle, int bodyId, long imageHandle, int carrierId, double[] regions);
 }

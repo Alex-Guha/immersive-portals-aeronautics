@@ -16,6 +16,7 @@ mod groups;
 mod hooks;
 pub mod ipl_ext;
 mod joints;
+mod moving_portals;
 mod rope;
 mod scene;
 mod voxel_collider;
@@ -448,6 +449,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_initialize<'local>(
             rigid_bodies: HashMap::<LevelColliderID, RigidBodyHandle>::new(),
             bodies_by_chart: HashMap::<scene::ChartId, std::collections::HashSet<LevelColliderID>>::new(),
             ipl_excluded_pairs: std::collections::HashSet::new(),
+            ipl_image_anchors: HashMap::new(),
+            ipl_anchored_clip_bodies: std::collections::HashSet::new(),
         }));
         let manifold_info_map = Arc::new(SableManifoldInfoMap::default());
         let chart_buffers: Arc<scene::ChartBuffers> = Arc::new(scene::ChartBuffers::default());
@@ -655,8 +658,12 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_step<'local>(
 
             // Atlas: the world steps with the world gravity (assert-uniform, v3 §5).
             let gravity = scene.world.world_gravity;
+            // Moving portals: images and clip regions at portals mounted on bodies follow their carriers.
+            let mut sable = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             let sim = &mut *sim;
+            moving_portals::refresh(&mut sable, sim);
+            drop(sable);
 
             let params = get_physics_state();
             let params = &params.integration_parameters;

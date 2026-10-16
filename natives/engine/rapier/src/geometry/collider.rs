@@ -1,6 +1,7 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
-// frame-mapped contacts (diff against 38e92f1 to see them). Not otherwise changed by Immersive Portals: Aeronautics.
+// frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
+// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
 
 use crate::alloc_prelude::*;
 use crate::dynamics::{CoefficientCombineRule, MassProperties, RigidBodyHandle, RigidBodySet};
@@ -410,6 +411,14 @@ impl Collider {
         if let Some(parent) = self.parent.as_mut() {
             self.changes.insert(ColliderChanges::PARENT);
             parent.portal_prefix = prefix;
+        }
+    }
+
+    /// IPL atlas, moving portals: set or clear the frame velocity of this image collider
+    /// (see [`ColliderParent::portal_frame_velocity`]). Does nothing for standalone colliders.
+    pub fn set_portal_frame_velocity(&mut self, velocity: Option<super::PortalFrameVelocity>) {
+        if let Some(parent) = self.parent.as_mut() {
+            parent.portal_frame_velocity = velocity;
         }
     }
 

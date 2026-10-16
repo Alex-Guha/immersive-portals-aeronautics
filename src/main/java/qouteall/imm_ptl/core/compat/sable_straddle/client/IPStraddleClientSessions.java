@@ -58,6 +58,55 @@ public final class IPStraddleClientSessions {
     }
 
     /**
+     * A session at a portal mounted on a ship (docs/plans/ship-mounted-portals.md, phase 4): its geometry follows the
+     * carrier as drawn ({@code IPStraddleSync.sendMount} for the invariants).
+     */
+    private record Mount(UUID carrier, ResourceKey<Level> carrierDim, boolean carrierIsSource, Vec3 plotOrigin,
+                         Vec3 plotNormal, Vec3 plotAxisW, Vec3 plotAxisH, Vec3 kDest, Quaterniond kRotation) {
+    }
+
+    private static final Map<Key, Mount> MOUNTS = new HashMap<>();
+
+    /**
+     * The session as it is to be drawn now: unchanged for a still portal; for a mounted one, recomputed from the
+     * carrier's render pose (the one Sable draws it with this frame), so the cut and the far half stay on the moving
+     * portal. Without the carrier on this client, the server's last geometry.
+     */
+    private static Session current(final Key key, final Session session) {
+        final Mount mount = MOUNTS.get(key);
+        if (mount == null) {
+            return session;
+        }
+        final net.minecraft.client.multiplayer.ClientLevel level = qouteall.imm_ptl.core.ClientWorldLoader.getOptionalWorld(mount.carrierDim());
+        final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container =
+                level == null ? null : dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        if (container == null || !(container.getSubLevel(mount.carrier()) instanceof final dev.ryanhcode.sable.sublevel.ClientSubLevel carrier)
+                || carrier.isRemoved()) {
+            return session;
+        }
+        final dev.ryanhcode.sable.companion.math.Pose3dc pose = carrier.renderPose();
+        if (mount.carrierIsSource()) {
+            // P = K ∘ M⁻¹: the plane is where the carrier draws it, the fixed side stays
+            final Vec3 origin = pose.transformPosition(mount.plotOrigin());
+            final Quaterniond rotation = new Quaterniond(mount.kRotation()).mul(new Quaterniond(pose.orientation()).conjugate()).normalize();
+            return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), origin,
+                    pose.transformNormal(mount.plotNormal()), pose.transformNormal(mount.plotAxisW()), pose.transformNormal(mount.plotAxisH()),
+                    session.halfW(), session.halfH(), new IPPortalIsometry(origin, mount.kDest(), rotation));
+        }
+        // P = M ∘ K: the plane stays, the far side is where the carrier draws it
+        final Quaterniond rotation = new Quaterniond(pose.orientation()).mul(mount.kRotation()).normalize();
+        return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), session.origin(),
+                session.normal(), session.axisW(), session.axisH(), session.halfW(), session.halfH(),
+                new IPPortalIsometry(session.origin(), pose.transformPosition(mount.kDest()), rotation));
+    }
+
+    private static void addCurrent(final List<Session> out, final Map<Key, Session> sessions) {
+        for (final Map.Entry<Key, Session> entry : sessions.entrySet()) {
+            out.add(current(entry.getKey(), entry.getValue()));
+        }
+    }
+
+    /**
      * How long an ended session still cuts its ship: the client draws ships at an interpolated pose that trails the
      * server's, so a ship whose session just ended (backed out, or handed off and about to be removed here) can
      * still be drawn straddling for a few ticks.
@@ -79,6 +128,7 @@ public final class IPStraddleClientSessions {
     public static void init() {
         NeoForge.EVENT_BUS.addListener(ClientCleanupEvent.class, e -> {
             SESSIONS.clear();
+            MOUNTS.clear();
             RETIRED.clear();
             RETIRED_UNTIL.clear();
             HANDED_OFF.clear();
@@ -104,8 +154,8 @@ public final class IPStraddleClientSessions {
     public static List<Session> renderSessions() {
         pruneRetired();
         final List<Session> result = new ArrayList<>(SESSIONS.size() + RETIRED.size());
-        result.addAll(SESSIONS.values());
-        result.addAll(RETIRED.values());
+        addCurrent(result, SESSIONS);
+        addCurrent(result, RETIRED);
         return result;
     }
 
@@ -205,12 +255,20 @@ public final class IPStraddleClientSessions {
                 return false;
             }
             RETIRED.remove(entry.getKey());
+            if (!SESSIONS.containsKey(entry.getKey())) {
+                MOUNTS.remove(entry.getKey());
+            }
             return true;
         });
     }
 
     public static Collection<Session> all() {
-        return SESSIONS.values();
+        if (MOUNTS.isEmpty()) {
+            return SESSIONS.values();
+        }
+        final List<Session> result = new ArrayList<>(SESSIONS.size());
+        addCurrent(result, SESSIONS);
+        return result;
     }
 
     /**
@@ -221,9 +279,9 @@ public final class IPStraddleClientSessions {
             return List.of();
         }
         final List<Session> result = new ArrayList<>(1);
-        for (final Session session : SESSIONS.values()) {
-            if (session.ship().equals(ship)) {
-                result.add(session);
+        for (final Map.Entry<Key, Session> entry : SESSIONS.entrySet()) {
+            if (entry.getValue().ship().equals(ship)) {
+                result.add(current(entry.getKey(), entry.getValue()));
             }
         }
         return result;
@@ -237,9 +295,9 @@ public final class IPStraddleClientSessions {
             return List.of();
         }
         final List<Session> result = new ArrayList<>(1);
-        for (final Session session : SESSIONS.values()) {
-            if (session.destDim().equals(dimension)) {
-                result.add(session);
+        for (final Map.Entry<Key, Session> entry : SESSIONS.entrySet()) {
+            if (entry.getValue().destDim().equals(dimension)) {
+                result.add(current(entry.getKey(), entry.getValue()));
             }
         }
         return result;
@@ -260,6 +318,13 @@ public final class IPStraddleClientSessions {
             SESSIONS.put(new Key(ship, portal),
                     new Session(ship, shipDim, portal, destDim, origin, normal, axisW, axisH, halfW, halfH, isometry));
             LOGGER.debug("[IPStraddle] client: ship {} straddles portal {} ({} -> {})", ship, portal, shipDim.location(), destDim.location());
+        }
+
+        public static void mount(final UUID ship, final UUID portal, final UUID carrier, final ResourceKey<Level> carrierDim,
+                                 final boolean carrierIsSource, final Vec3 plotOrigin, final Vec3 plotNormal,
+                                 final Vec3 plotAxisW, final Vec3 plotAxisH, final Vec3 kDest, final DQuaternion kRotation) {
+            MOUNTS.put(new Key(ship, portal), new Mount(carrier, carrierDim, carrierIsSource, plotOrigin, plotNormal,
+                    plotAxisW, plotAxisH, kDest, new Quaterniond(kRotation.x, kRotation.y, kRotation.z, kRotation.w).normalize()));
         }
 
         public static void end(final UUID ship, final UUID portal, final boolean handedOff) {

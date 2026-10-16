@@ -1,6 +1,7 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
-// frame-mapped contacts (diff against 38e92f1 to see them). Not otherwise changed by Immersive Portals: Aeronautics.
+// frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
+// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
 
 use crate::alloc_prelude::*;
 use crate::dynamics::{CoefficientCombineRule, MassProperties, RigidBodyHandle, RigidBodyType};
@@ -186,6 +187,22 @@ pub struct ColliderParent {
     /// mass-properties composition (images are massless by construction) nor to
     /// the CCD paths (CCD stays disabled for imaged bodies).
     pub portal_prefix: Option<Pose>,
+    /// IPL atlas, moving portals (Immersive Portals: Aeronautics): the velocity of the image's points caused by the
+    /// portal moving, at this collider's image points (frame twist). Contacts treat it as a surface velocity of the
+    /// image, so a portal on a moving ship carries what its image touches. None for still portals.
+    pub portal_frame_velocity: Option<PortalFrameVelocity>,
+}
+
+/// IPL atlas, moving portals: a rigid velocity field `u(p) = linvel + angvel × (p − center)` in the image's chart.
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
+pub struct PortalFrameVelocity {
+    /// The velocity at `center`.
+    pub linvel: crate::math::Vector,
+    /// The angular velocity.
+    pub angvel: crate::math::Vector,
+    /// The point `linvel` is measured at.
+    pub center: crate::math::Vector,
 }
 
 impl ColliderParent {

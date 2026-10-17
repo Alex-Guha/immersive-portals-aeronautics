@@ -52,6 +52,7 @@ public final class IPStraddle {
         enabled = on;
         if (!on) {
             IPStraddleSessions.closeAll("straddling switched off");
+            IPPortalRims.clearAll();
             IPShipCrossingDetector.reset();
             // no straddle tick runs while off: retract the sessions from clients now
             IPStraddleSync.tick(server);
@@ -74,6 +75,7 @@ public final class IPStraddle {
         IPStraddleSessions.reset();
         IPShipCrossingDetector.reset();
         IPStraddleController.reset();
+        IPPortalRims.reset();
         IPStraddleDebugTrace.reset();
         IPStraddleSync.reset();
         IPStraddleSeats.onServerStarted();

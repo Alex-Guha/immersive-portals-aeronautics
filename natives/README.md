@@ -30,6 +30,9 @@ Our changes, all marked in file headers:
   step, and the images get the portal's frame velocity; with it, 7 engine files (`portal_frame_*` fields: collider
   parent, contact manifold, narrow phase, the coulomb and twist contact builders) add that velocity as a surface
   velocity of the image (`docs/lessons/ship-mounted-portals.md`).
+- Portal rims (2.3.0): `ipl_ext.rs` registers the shapes of rim bars; `dispatcher.rs` gives a ship's blocks against them
+  Sable's interior check of block pairs and the ship's full extent (`adjust_aabb_for_body_blocks`), see
+  `docs/lessons/straddle-sessions.md`.
 - `dispatcher.rs`: body pairs of different charts never collide. IPSable relied on 16 collision-group bits, which wrap
   above 16 dimensions. Ropes and boxes (no chart on their shape) still rely on the bits.
 

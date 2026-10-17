@@ -18,7 +18,9 @@
     "MixinDhGlShader_PortalClipSource",
     "MixinDhTerrainShader_PortalClipPlane",
     "MixinDhGenericObjectShader_PortalClipPlane",
-    "MixinDhImmersivePortalsAccessor_StallWarning"
+    "MixinDhImmersivePortalsAccessor_StallWarning",
+    "MixinDhClientApi_PortalStencil",
+    "MixinDhGLState_PortalStencil"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -2,7 +2,7 @@
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
 // this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.RapierExt.
+// JNI symbols renamed for ipaeronautics.rapier.RapierExt; portal rim shapes registered for the interior check.
 
 //! IPSable extensions to the sable_rapier natives (portal-physics spec phase 4),
 //! rebased onto sable 2.0.3 (scene handles are raw `Arc<PhysicsScene>` pointers; sable
@@ -17,7 +17,7 @@ use jni::sys::{jboolean, jdouble, jint, jlong};
 use std::collections::HashSet;
 use marten::Real;
 use rapier3d::dynamics::RigidBodyBuilder;
-use rapier3d::geometry::{ColliderBuilder, SharedShape};
+use rapier3d::geometry::{ColliderBuilder, Shape, SharedShape};
 use rapier3d::glamx::{Pose3, Quat};
 use rapier3d::math::Vec3;
 use rapier3d::pipeline::PairFilterContext;
@@ -60,8 +60,11 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createPortalRim<'loca
     let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
     let body = sim.rigid_body_set.insert(RigidBodyBuilder::kinematic_position_based());
     let crate::scene::SimulationSceneData { collider_set, rigid_body_set, .. } = &mut *sim;
+    let mut shapes = Vec::with_capacity(bars.len());
     for (position, x, y, z) in bars {
-        let collider = ColliderBuilder::new(SharedShape::cuboid(x, y, z))
+        let shape = SharedShape::cuboid(x, y, z);
+        shapes.push(shape_address(&*shape));
+        let collider = ColliderBuilder::new(shape)
             .position(Pose3::from_translation(position))
             .friction(0.45)
             .active_hooks(ActiveHooks::FILTER_CONTACT_PAIRS | ActiveHooks::MODIFY_SOLVER_CONTACTS)
@@ -73,9 +76,10 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createPortalRim<'loca
     // them to Java as a body id. A kinematic body is unique to exactly one rim.
     let id = next_portal_rim_id();
     drop(sim);
+    IPL_PORTAL_RIM_SHAPES.write().unwrap_or_else(std::sync::PoisonError::into_inner).extend(shapes.iter().copied());
     let mut rims = IPL_PORTAL_RIMS.write().unwrap_or_else(std::sync::PoisonError::into_inner);
     rims.insert((scene_handle, id), PortalRim {
-        body, exclusions: HashSet::new(), positioned: false,
+        body, exclusions: HashSet::new(), positioned: false, shapes,
     });
     id
 }
@@ -122,6 +126,12 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_removePortalRim<'loca
     let Some(rim) = IPL_PORTAL_RIMS.write().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&(scene_handle, rim_id)) else {
         return;
     };
+    {
+        let mut shapes = IPL_PORTAL_RIM_SHAPES.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        for shape in &rim.shapes {
+            shapes.remove(shape);
+        }
+    }
     if scene_handle == 0 { return; }
     let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
     let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -144,6 +154,24 @@ struct PortalRim {
     body: RigidBodyHandle,
     exclusions: HashSet<RigidBodyHandle>,
     positioned: bool,
+    /// Immersive Portals: Aeronautics: the addresses of its bars' shapes (`IPL_PORTAL_RIM_SHAPES`).
+    shapes: Vec<usize>,
+}
+
+/// Immersive Portals: Aeronautics: the shapes of every rim's bars, by address (a collider's shared shape never moves).
+/// The dispatcher gives ship blocks against these Sable's interior check (`is_portal_rim_shape`).
+static IPL_PORTAL_RIM_SHAPES: std::sync::LazyLock<std::sync::RwLock<HashSet<usize>>> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(HashSet::new()));
+
+fn shape_address(shape: &dyn Shape) -> usize {
+    shape as *const dyn Shape as *const () as usize
+}
+
+/// Immersive Portals: Aeronautics: whether `shape` is a bar of a portal rim. Ship blocks collide with the bars one by
+/// one, without the neighbour check Sable gives voxel pairs: a ship lying on a rim sank in by the contact skin and its
+/// blocks above the opening touched a bar's inner face edge-on, which held the ship like a wall.
+pub fn is_portal_rim_shape(shape: &dyn Shape) -> bool {
+    IPL_PORTAL_RIM_SHAPES.read().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&shape_address(shape))
 }
 
 fn next_portal_rim_id() -> jint {

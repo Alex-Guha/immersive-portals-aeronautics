@@ -2,7 +2,7 @@
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
 // this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// exact chart check for body pairs.
+// exact chart check for body pairs; Sable's interior check for ship blocks against portal rims.
 
 use crate::collider::LevelCollider;
 use log::info;
@@ -323,12 +323,18 @@ impl SableDispatcher {
         let center_of_mass_1 = collider_info.map_or(DVec3::ZERO, |b| b.center_of_mass.unwrap());
 
         let mut local_aabb = g2.compute_aabb(pos12);
+        // Immersive Portals: Aeronautics: a ship's blocks against a portal rim get the interior check of voxel pairs,
+        // and the ship's whole extent.
+        let interior_check = collider_info.is_some() && crate::ipl_ext::is_portal_rim_shape(g2);
 
         let margin: Real = 0.1;
         local_aabb.maxs += Vec3::splat(prediction + margin);
         local_aabb.mins -= Vec3::splat(prediction + margin);
-        let local_aabb =
-            Self::adjust_aabb_for_body(local_aabb, collider_info, center_of_mass_1, prediction);
+        let local_aabb = if interior_check {
+            Self::adjust_aabb_for_body_blocks(local_aabb, collider_info, center_of_mass_1, prediction)
+        } else {
+            Self::adjust_aabb_for_body(local_aabb, collider_info, center_of_mass_1, prediction)
+        };
         let (local_min, local_max) =
             Self::calculate_local_bounds(local_aabb, center_of_mass_1, prediction);
 
@@ -436,6 +442,11 @@ impl SableDispatcher {
                                     &mut manifolds[manifold_index],
                                 )
                                 .expect("uh oh");
+                        }
+
+                        if interior_check {
+                            drop_interior_points(chunk_access, IVec3::new(x, y, z), center, center_of_mass_1,
+                                &mut manifolds[manifold_index], swap);
                         }
 
                         if !manifolds[manifold_index].points.is_empty() {
@@ -806,6 +817,29 @@ impl SableDispatcher {
         local_aabb
     }
 
+    /// Immersive Portals: Aeronautics: `adjust_aabb_for_body` with the body's whole extent. Its local bounds are block
+    /// coordinates, so the body reaches to the maximum plus one; `adjust_aabb_for_body` stops at the maximum, which
+    /// left a ship's last column, row and layer on the positive sides without contacts against a portal rim (a ship
+    /// lying on one tipped over towards them).
+    fn adjust_aabb_for_body_blocks(
+        local_aabb: Aabb,
+        body: Option<&ActiveLevelColliderInfo>,
+        center_of_mass: DVec3,
+        prediction: Real,
+    ) -> Aabb {
+        let Some(body) = body else {
+            return local_aabb;
+        };
+        let (Some(min), Some(max)) = (body.local_bounds_min, body.local_bounds_max) else {
+            return local_aabb;
+        };
+        let body_aabb = Aabb::new(
+            (min.as_dvec3() - center_of_mass).as_vec3() - prediction,
+            ((max + IVec3::ONE).as_dvec3() - center_of_mass).as_vec3() + prediction,
+        );
+        local_aabb.intersection(&body_aabb).unwrap_or(local_aabb)
+    }
+
     /// Calculates local bounds based on AABB and prediction
     #[inline(always)]
     fn calculate_local_bounds(
@@ -893,6 +927,27 @@ fn is_interior_collision<ManifoldData: Default + Clone, ContactData: Default + C
     });
 
     false
+}
+
+/// Immersive Portals: Aeronautics: `is_interior_collision` for one block of a body against a plain shape (a portal
+/// rim): drops the contact points whose block face lies against another block of the same body. `center` is the
+/// block's centre relative to the body's centre of mass; the block is shape 2 of the manifold when `swap`.
+fn drop_interior_points<ManifoldData: Default + Clone, ContactData: Default + Copy>(
+    chunk_access: &dyn ChunkAccess,
+    block: IVec3,
+    center: Vec3,
+    center_of_mass: DVec3,
+    manifold: &mut ContactManifold<ManifoldData, ContactData>,
+    swap: bool,
+) {
+    let physics_state = crate::get_physics_state();
+    let normal = if swap { manifold.local_n2 } else { manifold.local_n1 }.as_dvec3();
+    manifold.points.retain(|point| {
+        let local = if swap { point.local_p2 } else { point.local_p1 };
+        let position = (local * INTERIOR_COLLISION_SCALE_FACTOR + center).as_dvec3() + center_of_mass;
+        !is_inside_voxel_collider(chunk_access, &physics_state, block,
+            position + normal * INTERIOR_COLLISION_CHECK_DISTANCE)
+    });
 }
 
 fn is_inside_voxel_collider(

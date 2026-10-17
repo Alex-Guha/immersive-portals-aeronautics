@@ -180,6 +180,8 @@ final class IPStraddleController {
         STUCK_SINCE.keySet().retainAll(live);
         LET_THROUGH.keySet().retainAll(live);
         IPStraddleSessions.retainGhosts(live);
+        IPPortalRims.retainLetThrough(live);
+        IPPortalRims.tick(tick);
 
         handOffAll(server, handoffs, tick);
     }
@@ -417,6 +419,9 @@ final class IPStraddleController {
         if (nearby.isEmpty()) {
             return;
         }
+        for (final Portal portal : nearby) {
+            IPPortalRims.need(level, portal, tick);
+        }
         if (tooLarge) {
             skipped(ship, nearby.get(0), "its swept bounds are larger than " + (long) MAX_SUBLEVEL_VOLUME + " blocks^3 (" + swept + ")");
             return;
@@ -589,6 +594,7 @@ final class IPStraddleController {
             if (overlapping.isEmpty()) {
                 LET_THROUGH.remove(id);
                 IPStraddleSessions.setGhosts(ship, level, List.of());
+                IPPortalRims.setLetThrough(ship, false);
                 LOGGER.info("[IPStraddle] ship {} is free of the portal frame: it collides with the frame again", id);
             } else if (!current.equals(overlapping.keySet())) {
                 LET_THROUGH.put(id, new HashSet<>(overlapping.keySet()));
@@ -607,6 +613,7 @@ final class IPStraddleController {
         STUCK_SINCE.remove(id);
         LET_THROUGH.put(id, new HashSet<>(overlapping.keySet()));
         IPStraddleSessions.setGhosts(ship, level, new ArrayList<>(overlapping.keySet()));
+        IPPortalRims.setLetThrough(ship, true);
         LOGGER.info("[IPStraddle] ship {} is stuck {} blocks deep in the frame of portal {}: letting it through {} frame block(s) until it is free",
                 id, String.format("%.2f", deepest), deepestPortal.getUUID(), overlapping.size());
     }

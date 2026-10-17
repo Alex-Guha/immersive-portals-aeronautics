@@ -282,9 +282,10 @@ final class IPShipCrossingDetector {
 
     /**
      * How deep the ship is pushed into the portal's frame now: the largest overlap [blocks] of a ship block near the
-     * plane with a solid block of the ship's own world that sits at the plane wholly beside the opening (negative: the
-     * gap to the nearest one; {@link Double#NEGATIVE_INFINITY} when none is within {@value #FRAME_SEARCH} of the ship's
-     * blocks). A ship resting against a frame touches it (about 0); only a hard hit pushes it in by a tenth of a block.
+     * plane with a solid block of the ship's own world that sits at the plane wholly beside the opening, or with the
+     * portal's rim ({@link IPPortalRims}) (negative: the gap to the nearest one; {@link Double#NEGATIVE_INFINITY} when
+     * none is within {@value #FRAME_SEARCH} of the ship's blocks). A ship resting against a frame touches it (about 0);
+     * only a hard hit pushes it in by a tenth of a block.
      */
     static double frameContact(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
                                final Vec3 normal) {
@@ -292,8 +293,8 @@ final class IPShipCrossingDetector {
     }
 
     /**
-     * The frame blocks (as {@link #frameContact}) the ship overlaps by more than {@code minOverlap} now, each with its
-     * largest overlap, added to {@code out}.
+     * The frame blocks (as {@link #frameContact}, without the rim) the ship overlaps by more than {@code minOverlap} now,
+     * each with its largest overlap, added to {@code out}.
      *
      * @return the largest overlap, as {@link #frameContact}
      */
@@ -320,7 +321,8 @@ final class IPShipCrossingDetector {
     }
 
     /**
-     * @param out when not null, receives every frame block within reach with its largest overlap
+     * @param out when not null, receives every frame block within reach with its largest overlap; the portal's rim is
+     *            then left out (it has no blocks to let a stuck ship through)
      */
     private static double frameContact(final Level level, final List<BlockPos> blocks, final Portal portal, final Vec3 normal,
                                        final Frame frame, @org.jetbrains.annotations.Nullable final Map<BlockPos, Double> out) {
@@ -337,6 +339,7 @@ final class IPShipCrossingDetector {
         final double worldW = (Math.abs(axisW.x) + Math.abs(axisW.y) + Math.abs(axisW.z)) * 0.5;
         final double worldH = (Math.abs(axisH.x) + Math.abs(axisH.y) + Math.abs(axisH.z)) * 0.5;
         final Map<BlockPos, Boolean> solid = new HashMap<>();
+        final List<IPPortalRims.Bar> rim = out == null ? IPPortalRims.bars(portal) : List.of();
         double deepest = Double.NEGATIVE_INFINITY;
         for (final BlockPos block : blocks) {
             final double cx = frame.centerX(block), cy = frame.centerY(block), cz = frame.centerZ(block);
@@ -348,6 +351,12 @@ final class IPShipCrossingDetector {
             final double h = (cx - origin.x) * axisH.x + (cy - origin.y) * axisH.y + (cz - origin.z) * axisH.z;
             if (Math.abs(w) + shipW <= halfW && Math.abs(h) + shipH <= halfH) {
                 continue; // wholly inside the opening's prism: nothing beside the opening to touch
+            }
+            for (final IPPortalRims.Bar bar : rim) {
+                final double overlap = frame.overlapWithBox(cx, cy, cz, bar);
+                if (overlap > -FRAME_SEARCH) {
+                    deepest = Math.max(deepest, overlap);
+                }
             }
             final int minX = Mth.floor(cx - frame.halfX - FRAME_SEARCH), maxX = Mth.floor(cx + frame.halfX + FRAME_SEARCH);
             final int minY = Mth.floor(cy - frame.halfY - FRAME_SEARCH), maxY = Mth.floor(cy + frame.halfY + FRAME_SEARCH);
@@ -700,6 +709,37 @@ final class IPShipCrossingDetector {
                 }
             }
             return overlap;
+        }
+
+        /**
+         * {@link #overlapWithCube} for an oriented box (a rim bar).
+         */
+        double overlapWithBox(final double cx, final double cy, final double cz, final IPPortalRims.Bar bar) {
+            final double tx = cx - bar.center().x, ty = cy - bar.center().y, tz = cz - bar.center().z;
+            final double[][] edges = {{this.xx, this.xy, this.xz}, {this.yx, this.yy, this.yz}, {this.zx, this.zy, this.zz}};
+            final Vec3[] axes = bar.axes();
+            double overlap = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < 3; i++) {
+                overlap = Math.min(overlap, this.overlapAlong(axes[i].x, axes[i].y, axes[i].z, tx, ty, tz, bar));
+                overlap = Math.min(overlap, this.overlapAlong(edges[i][0], edges[i][1], edges[i][2], tx, ty, tz, bar));
+                for (final double[] edge : edges) {
+                    overlap = Math.min(overlap, this.overlapAlong(
+                            axes[i].y * edge[2] - axes[i].z * edge[1],
+                            axes[i].z * edge[0] - axes[i].x * edge[2],
+                            axes[i].x * edge[1] - axes[i].y * edge[0], tx, ty, tz, bar));
+                }
+            }
+            return overlap;
+        }
+
+        private double overlapAlong(final double x, final double y, final double z, final double tx, final double ty, final double tz,
+                                    final IPPortalRims.Bar bar) {
+            final double length = Math.sqrt(x * x + y * y + z * z);
+            if (length < 1.0e-6) {
+                return Double.POSITIVE_INFINITY;
+            }
+            final Vec3 u = new Vec3(x / length, y / length, z / length);
+            return this.obbSupport(u.x, u.y, u.z) + bar.support(u) - Math.abs(tx * u.x + ty * u.y + tz * u.z);
         }
 
         private double overlapAlong(final double x, final double y, final double z, final double tx, final double ty, final double tz) {

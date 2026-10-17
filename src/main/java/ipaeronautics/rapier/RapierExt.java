@@ -98,4 +98,31 @@ public final class RapierExt {
      * colliders, given in the body frame of the carrier {@code carrierId}; they follow the carrier from then on.
      */
     public static native void setAnchoredClipRegions(long sceneHandle, int bodyId, long imageHandle, int carrierId, double[] regions);
+
+    /**
+     * Creates a portal rim in the chart of {@code sceneHandle}: a kinematic body of four cuboids framing a hole of
+     * {@code holeWidth} x {@code holeHeight}, each bar {@code width} wide and {@code 2 * halfThickness} thick, in the
+     * body's local XZ plane (X along the hole's width, Z along its height, Y its normal), centred on the local origin.
+     * It collides like terrain of that chart. Place it with {@link #setPortalRimTransform} before the next step.
+     *
+     * @return the rim's id (negative), or -1 on bad arguments
+     */
+    public static native int createPortalRim(long sceneHandle, double holeWidth, double holeHeight, double width, double halfThickness);
+
+    /**
+     * Places a rim: the first call puts it there, later ones move it kinematically (with velocity) during the next step.
+     */
+    public static native void setPortalRimTransform(long sceneHandle, int rimId,
+                                                    double x, double y, double z, double qx, double qy, double qz, double qw);
+
+    /**
+     * Removes a rim. The scene must be the live one it was created in.
+     */
+    public static native void removePortalRim(long sceneHandle, int rimId);
+
+    /**
+     * Excludes ({@code excluded}) or readmits contacts between two bodies, or between a rim ({@code idA}, negative) and
+     * a body.
+     */
+    public static native void setBodyPairExclusion(long sceneHandle, int idA, int idB, boolean excluded);
 }

@@ -67,9 +67,18 @@ public class IPModMainClient {
         if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
             qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleClientSessions.init();
         }
+        // Immersive Aeronautics: a straddling ship's lamps light both sides (Create Dynamic Lights)
+        if (net.neoforged.fml.ModList.get().isLoaded("sable") && net.neoforged.fml.ModList.get().isLoaded("sodiumdynamiclights")
+            && net.neoforged.fml.ModList.get().isLoaded("createdynlight")) {
+            qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleDynLights.init();
+        }
         // Immersive Aeronautics: hot-air overlay cut at the straddle plane (Veil shader patch, registered at construction)
         if (net.neoforged.fml.ModList.get().isLoaded("sable") && net.neoforged.fml.ModList.get().isLoaded("aeronautics")) {
             qouteall.imm_ptl.core.compat.sable_straddle.client.IPBalloonOverlayClip.init();
+        }
+        // Immersive Aeronautics: Distant Horizons' LODs cut away inside the chunks a portal view draws
+        if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
+            qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalDrawnChunks.init();
         }
         ClientWorldLoader.init();
         

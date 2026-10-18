@@ -24,6 +24,7 @@ import qouteall.imm_ptl.core.compat.mixin_create.IPEmbeddedEnvironmentAccessor;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -58,8 +59,8 @@ public final class IPFlywheelStraddleClip {
     private static final String MAIN_START = "void main() {";
 
     private static final boolean SABLE = ModList.get().isLoaded("sable");
-    /** Embedded environments seen recently (weak: Flywheel deletes them). */
-    private static final Set<EmbeddedEnvironment> ENVIRONMENTS = Collections.newSetFromMap(new WeakHashMap<>());
+    /** Embedded environments (weak: Flywheel deletes them). Flywheel's worker threads create them. */
+    private static final Set<EmbeddedEnvironment> ENVIRONMENTS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     /** The planes of the current pass, by environment. */
     private static final Map<EmbeddedEnvironment, float[]> PASS_PLANES = new IdentityHashMap<>();
     private static int buffer;
@@ -175,6 +176,7 @@ public final class IPFlywheelStraddleClip {
     public static void beginPass(final RenderContext context) {
         PASS_PLANES.clear();
         enabled = false;
+        IPCreateCrossingTrace.beginPass(context.level(), farHalf != null);
         try {
             final VisualizationManagerImpl manager = VisualizationManagerImpl.get(context.level());
             if (manager == null) {
@@ -184,7 +186,11 @@ public final class IPFlywheelStraddleClip {
             final Vec3i renderOrigin = engine.renderOrigin();
             int maxIndex = -1;
             final FarHalf far = farHalf;
-            for (final EmbeddedEnvironment environment : ENVIRONMENTS) {
+            final List<EmbeddedEnvironment> environments;
+            synchronized (ENVIRONMENTS) {
+                environments = List.copyOf(ENVIRONMENTS);
+            }
+            for (final EmbeddedEnvironment environment : environments) {
                 final IPEmbeddedEnvironmentAccessor access = (IPEmbeddedEnvironmentAccessor) environment;
                 if (environment.isDeleted() || access.ip_getEngine() != engine) {
                     continue;

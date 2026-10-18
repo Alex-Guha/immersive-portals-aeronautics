@@ -63,7 +63,9 @@ public class MixinCarriageDimensionalEntity_PortalGap {
     )
     private void ip_closePortalGap(final CarriageContraptionEntity entity, final Vec3 position, final Operation<Void> original) {
         final Carriage.DimensionalCarriageEntity dce = (Carriage.DimensionalCarriageEntity) (Object) this;
-        original.call(entity, position == null ? null : position.add(IPCreateCarriageCrossing.shift(entity, dce)));
+        final Vec3 shift = IPCreateCarriageCrossing.shift(entity, dce);
+        qouteall.imm_ptl.core.compat.create_integration.IPCreateCrossingTrace.shift(entity, shift);
+        original.call(entity, position == null ? null : position.add(shift));
         if (entity.level().isClientSide()) {
             IPCreateCarriageCrossingClient.onAligned(entity, IPCreateCarriageCrossing.of(entity, dce));
         }

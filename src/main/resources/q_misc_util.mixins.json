@@ -1,6 +1,9 @@
 {
   "required": true,
   "package": "qouteall.q_misc_util.mixin",
+  "overwrites": {
+    "conformVisibility": true
+  },
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "IELevelStorageAccess_Misc",

@@ -8,12 +8,14 @@
 package qouteall.imm_ptl.core.platform_specific;
 
 import net.minecraft.client.multiplayer.ClientChunkCache;
+import net.minecraft.core.BlockPos;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,6 +34,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlClientChunkMap;
+import qouteall.imm_ptl.core.mixin.common.miscellaneous.IEPortalShape;
 import qouteall.imm_ptl.core.network.ImmPtlNetworkConfig;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.custom_portal_gen.PortalGenInfo;
@@ -69,7 +72,10 @@ public class O_O {
     private static final BlockState obsidianState = Blocks.OBSIDIAN.defaultBlockState();
     
     public static boolean isObsidian(BlockState blockState) {
-        return blockState == obsidianState;
+        // Immersive Aeronautics: also accept the frame blocks other mods add to nether portals (vanilla's frame
+        // test, which Netherstorm extends to its polished obsidian); the test cannot see the block's position here
+        return blockState == obsidianState
+            || IEPortalShape.ip_getFrame().test(blockState, EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
     }
     
     public static void postClientChunkLoadEvent(LevelChunk chunk) {

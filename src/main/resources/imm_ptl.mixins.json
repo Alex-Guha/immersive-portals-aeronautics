@@ -1,6 +1,9 @@
 {
   "required": true,
   "package": "qouteall.imm_ptl.core.mixin",
+  "overwrites": {
+    "conformVisibility": true
+  },
   "compatibilityLevel": "JAVA_17",
   "plugin": "qouteall.imm_ptl.core.IPMixinPlugin",
   "mixins": [
@@ -13,6 +16,7 @@
     "common.MixinServerChunkCache",
     "common.MixinServerLevel",
     "common.chunk_sync.IEChunkMap_Accessor",
+    "common.chunk_sync.IPChunkMapAccessor",
     "common.chunk_sync.IEChunkTaskPriorityQueueSorter",
     "common.chunk_sync.IEDistanceManager",
     "common.chunk_sync.IEServerCommonPacketListenerImpl",
@@ -57,6 +61,7 @@
     "common.mc_util.MixinEntitySection",
     "common.mc_util.MixinEntitySectionStorage",
     "common.miscellaneous.IEEndDragonFight",
+    "common.miscellaneous.IEPortalShape",
     "common.miscellaneous.MixinBlockGetter",
     "common.miscellaneous.MixinEnderDragon",
     "common.miscellaneous.MixinFishingHook",

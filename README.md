@@ -138,6 +138,9 @@ code. Rules: `docs/provenance.md`.
 - Upstream configs run with `defaultRequire: 1`; compat mixins carry `require = 0`. Confirm such injections with
   `-Dmixin.debug.export=true`.
 - Server-class mixins go in a config's `mixins` section, never `client`.
+- Every config sets `"overwrites": {"conformVisibility": true}`: another mod's access transformer can make a method
+  public that we `@Overwrite` as private (Petrolpark's Library widens `ChunkMap.onChunkReadyToSend`), and Mixin then
+  refuses to load the class unless the overwrite may take the target's visibility (2.3.4).
 
 ## Repository layout
 

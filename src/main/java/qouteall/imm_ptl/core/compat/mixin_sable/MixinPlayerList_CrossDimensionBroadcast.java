@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -27,14 +26,11 @@ import qouteall.imm_ptl.core.compat.sable_integration.IPShipThroughPortalSync;
  * Immersive Portals overwrites {@code PlayerList.broadcast} to send them to every player watching the chunk, through
  * portals too; Sable overwrites it again (higher priority, so it wins) with a same-dimension distance check that also
  * understands ships. This runs after Sable's and adds the players in other dimensions
- * ({@link IPShipThroughPortalSync#broadcastToOtherDimensions}).
+ * ({@link IPShipThroughPortalSync#broadcastToOtherDimensions}). Applied only with Sable: without it, Immersive
+ * Portals' own overwrite is in place and already does this.
  */
 @Mixin(value = PlayerList.class, priority = 1100)
 public class MixinPlayerList_CrossDimensionBroadcast {
-    /** Without Sable, Immersive Portals' own overwrite is in place and already does this. */
-    @Unique
-    private static final boolean ip_SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
-
     @Shadow
     @Final
     private MinecraftServer server;
@@ -43,7 +39,7 @@ public class MixinPlayerList_CrossDimensionBroadcast {
     private void ip_broadcastToOtherDimensions(@Nullable final Player except, final double x, final double y, final double z,
                                                final double distance, final ResourceKey<Level> dimension, final Packet<?> packet,
                                                final CallbackInfo ci) {
-        if (!ip_SABLE || packet instanceof ClientboundCustomPayloadPacket) {
+        if (packet instanceof ClientboundCustomPayloadPacket) {
             return;
         }
         final ServerLevel level = this.server.getLevel(dimension);

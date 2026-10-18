@@ -48,7 +48,10 @@ public final class IPDhPortalClip {
     private IPDhPortalClip() {
     }
 
-    /** Patches the vertex shaders that draw DH geometry; returns {@code source} unchanged for anything else. */
+    /**
+     * Patches the vertex shaders that draw DH geometry, and the LOD terrain fragment shader with
+     * {@link IPDhPortalDrawnChunks}' cut; returns {@code source} unchanged for anything else.
+     */
     public static String patchShaderSource(@Nullable String path, @Nullable String source) {
         if (path == null || source == null || !IPDhPortalView.ENABLED) {
             return source;
@@ -66,6 +69,15 @@ public final class IPDhPortalClip {
                     path, source, CLIP_SPACE_UNIFORM,
                     "gl_ClipDistance[0] = dot(gl_Position, " + CLIP_SPACE_UNIFORM + ");"
                 );
+            }
+            String cut = IPDhPortalDrawnChunks.patchTerrainFragment(normalized, source);
+            if (cut == null) {
+                LOGGER.warn("[IPDhPortalClip] DH shader {} has an unexpected layout; LODs in portal views use the distance clip", path);
+                return source;
+            }
+            if (cut != source) {
+                LOGGER.debug("[IPDhPortalClip] patched DH shader {} with the drawn-chunk cut", path);
+                return cut;
             }
         } catch (Throwable e) {
             LOGGER.warn("[IPDhPortalClip] could not patch DH shader {}: {}", path, e.toString());

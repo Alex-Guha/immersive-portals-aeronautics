@@ -16,6 +16,11 @@ import java.util.Set;
  * Skips mixins whose target class belongs to an optional mod that is not installed. Without this, Mixin logs an
  * "@Mixin target ... was not found" warning at boot for each of them (about 20 without DH, Shield Generators, Physics
  * Mod and Iris). Applying is unchanged: such a mixin had nothing to apply to. Targets of other packages always apply.
+ * <p>
+ * Also skips every mixin of our Sable and Create compat packages when that mod is absent, whatever its target: many
+ * of them target vanilla classes (or ours) and reference the mod's classes, which fails when the target loads (Mixin
+ * resolves the mod's classes while attaching; the game does not start without Sable otherwise). None of them does
+ * anything without its mod.
  */
 public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
     private static final Map<String, String> MOD_BY_PACKAGE = Map.of(
@@ -23,7 +28,17 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         "net.diebuddies.", "physicsmod",
         "com.anton.shieldgenerators.", "shield_generators",
         "net.irisshaders.", "iris",
-        "team.lodestar.lodestone.", "lodestone"
+        "team.lodestar.lodestone.", "lodestone",
+        "com.cmdpro.databank.", "databank",
+        "dev.ryanhcode.sable.", "sable",
+        "dev.simulated_team.simulated.", "simulated",
+        "dev.eriksonn.aeronautics.", "aeronautics",
+        "toni.sodiumdynamiclights.", "sodiumdynamiclights"
+    );
+
+    private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(
+        "qouteall.imm_ptl.core.compat.mixin_sable.", "sable",
+        "qouteall.imm_ptl.core.compat.mixin_create.", "create"
     );
 
     @Override
@@ -38,12 +53,21 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        for (Map.Entry<String, String> entry : MOD_BY_MIXIN_PACKAGE.entrySet()) {
+            if (mixinClassName.startsWith(entry.getKey()) && !isLoaded(entry.getValue())) {
+                return false;
+            }
+        }
         for (Map.Entry<String, String> entry : MOD_BY_PACKAGE.entrySet()) {
             if (targetClassName.startsWith(entry.getKey())) {
-                return LoadingModList.get().getModFileById(entry.getValue()) != null;
+                return isLoaded(entry.getValue());
             }
         }
         return true;
+    }
+
+    private static boolean isLoaded(String modId) {
+        return LoadingModList.get().getModFileById(modId) != null;
     }
 
     @Override

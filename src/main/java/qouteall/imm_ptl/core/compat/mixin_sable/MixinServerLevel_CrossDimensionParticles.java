@@ -7,7 +7,6 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -21,16 +20,10 @@ import qouteall.imm_ptl.core.compat.sable_integration.IPShipThroughPortalSync;
  */
 @Mixin(ServerLevel.class)
 public class MixinServerLevel_CrossDimensionParticles {
-    @Unique
-    private static final boolean ip_SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
-
     @Inject(method = "sendParticles(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I", at = @At("RETURN"), require = 0)
     private void ip_sendToOtherDimensions(final ParticleOptions type, final double x, final double y, final double z, final int count,
                                           final double xDist, final double yDist, final double zDist, final double speed,
                                           final CallbackInfoReturnable<Integer> cir) {
-        if (!ip_SABLE) {
-            return;
-        }
         IPShipThroughPortalSync.broadcastToOtherDimensions((ServerLevel) (Object) this, x, y, z, 32.0, null,
                 () -> new ClientboundLevelParticlesPacket(type, false, x, y, z, (float) xDist, (float) yDist, (float) zDist,
                         (float) speed, count));

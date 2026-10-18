@@ -8,6 +8,7 @@
 package qouteall.imm_ptl.peripheral.portal_generation;
 
 import com.google.common.collect.Lists;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
@@ -17,6 +18,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.portal.PortalShape;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.portal.custom_portal_gen.CustomPortalGeneration;
@@ -143,7 +145,38 @@ public class IntrinsicPortalGeneration {
         }
         
         PortalShape areaHelper = newPortal.get();
-        areaHelper.createPortalBlocks();
+        // Immersive Aeronautics: this vanilla portal is wanted; let it past MixinPortalShape_IntrinsicPortal
+        lightingVanillaPortal = true;
+        try {
+            areaHelper.createPortalBlocks();
+        }
+        finally {
+            lightingVanillaPortal = false;
+        }
+        return true;
+    }
+
+    private static final Logger LOGGER = LogUtils.getLogger();
+    
+    // Immersive Aeronautics: set while onCrouchingPlayerIgnite builds a vanilla portal on purpose
+    private static boolean lightingVanillaPortal = false;
+
+    /**
+     * Immersive Aeronautics: another mod asked vanilla's {@link PortalShape} to fill a frame with portal blocks
+     * (Netherstorm lights frames from its own flint-and-steel handler, before the fire that IP listens to is placed).
+     * Unless IP is in vanilla mode, light IP's portal there instead, as if fire had been lit inside the frame.
+     *
+     * @return true if the vanilla portal blocks must not be placed
+     */
+    public static boolean onVanillaPortalBlocksRequested(ServerLevel world, BlockPos insidePos) {
+        if (lightingVanillaPortal || IPGlobal.netherPortalMode == IPGlobal.NetherPortalMode.vanilla) {
+            return false;
+        }
+        boolean lit = onFireLitOnObsidian(world, insidePos, null);
+        LOGGER.info(
+            "Vanilla portal blocks requested at {} {}; lit an immersive portal instead: {}",
+            world.dimension().location(), insidePos.toShortString(), lit
+        );
         return true;
     }
 }

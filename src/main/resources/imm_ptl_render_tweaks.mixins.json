@@ -2,12 +2,18 @@
   "required": false,
   "minVersion": "0.8",
   "package": "qouteall.imm_ptl.core.compat.mixin_render_tweaks",
+  "overwrites": {
+    "conformVisibility": true
+  },
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "client": [
     "MixinPortalRenderer_ShaderDistanceCull",
     "MixinIrisBufferedSource_PortalClip",
-    "MixinLodestonePostProcess_PortalPassSkip"
+    "MixinLodestonePostProcess_PortalPassSkip",
+    "MixinDatabankPostShaders_PortalPassSkip",
+    "MixinSodiumDynamicLights_PerDimensionUpdate",
+    "MixinSodiumDynamicLights_StraddleLights"
   ],
   "injectors": {
     "defaultRequire": 0

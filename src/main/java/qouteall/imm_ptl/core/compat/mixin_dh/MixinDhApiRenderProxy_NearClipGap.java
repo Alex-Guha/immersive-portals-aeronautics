@@ -8,40 +8,37 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_dh;
 
-import com.mojang.logging.LogUtils;
 import com.seibel.distanthorizons.core.render.DhApiRenderProxy;
-import org.slf4j.Logger;
+import com.seibel.distanthorizons.core.util.RenderUtil;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalNearClip;
+import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 /**
- * Forces {@code DhApiRenderProxy.getNearClipPlaneDistanceInBlocks} to 2 blocks so Distant Horizons
- * LODs do not leave a visible gap in front of the camera. This is the DH API path used when an Iris
- * shader pack renders the LODs; the stock terrain pass is handled by {@link MixinDhTerrainShader_NearClipGap}.
+ * {@code DhApiRenderProxy.getNearClipPlaneDistanceInBlocks} in portal passes: no farther than the
+ * destination's drawn terrain reaches ({@link IPDhPortalNearClip}, with room for a fade up to 1.5
+ * times the distance), so LODs seen through a portal do not leave a gap where the destination's
+ * loaded chunks end. This is the DH API path used when an Iris shader pack renders the LODs; the
+ * stock terrain pass is handled by {@link MixinDhTerrainShader_NearClipGap}, which also says why the
+ * player's own view keeps DH's value.
  */
 @Mixin(value = DhApiRenderProxy.class, remap = false)
 public class MixinDhApiRenderProxy_NearClipGap {
-    @Unique
-    private static final Logger ip_LOGGER = LogUtils.getLogger();
-
-    @Unique
-    private static boolean ip_logged = false;
-
     @Inject(
         method = "getNearClipPlaneDistanceInBlocks",
         at = @At("HEAD"),
         cancellable = true,
         require = 0
     )
-    private void ip_removeLodNearClipGapForShaders(float partialTicks, CallbackInfoReturnable<Float> cir) {
-        if (!ip_logged) {
-            ip_logged = true;
-            ip_LOGGER.debug("[IPDhGapFix] DH API near-clip lowered to 2 blocks (covers the Iris shader path)");
+    private void ip_portalViewLodNearClipForShaders(float partialTicks, CallbackInfoReturnable<Float> cir) {
+        if (!PortalRendering.isRendering()) {
+            return;
         }
 
-        cir.setReturnValue(2.0F);
+        double covered = IPDhPortalNearClip.coveredDistance() / 1.5;
+        cir.setReturnValue((float) Math.max(0, Math.min(RenderUtil.getNearClipPlaneInBlocks(), covered)));
     }
 }

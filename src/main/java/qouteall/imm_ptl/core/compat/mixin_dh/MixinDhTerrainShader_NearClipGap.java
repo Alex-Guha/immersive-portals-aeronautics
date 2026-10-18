@@ -9,18 +9,38 @@
 package qouteall.imm_ptl.core.compat.mixin_dh;
 
 import com.mojang.logging.LogUtils;
+import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
+import com.seibel.distanthorizons.common.render.openGl.glObject.shader.GlShaderProgram;
 import com.seibel.distanthorizons.common.render.openGl.terrain.GlDhTerrainShaderProgram_neoforge;
+import com.seibel.distanthorizons.core.config.Config;
+import com.seibel.distanthorizons.core.util.RenderUtil;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalDrawnChunks;
+import qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalNearClip;
+import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 /**
- * Redirects the {@code RenderUtil.getNearClipPlaneInBlocks()} call inside
- * {@code GlDhTerrainShaderProgram_neoforge.fillUniformData} to 0 so the stock Distant Horizons
- * terrain pass has no near-clip gap in front of the camera (fade/SSAO distances stay stock).
- * The Iris shader path is covered by {@link MixinDhApiRenderProxy_NearClipGap}.
+ * Where DH's LOD terrain starts inside portal views (fade/SSAO distances stay stock).
+ * <p>
+ * The player's own view keeps DH's distance clip (a share of the vanilla render distance). In
+ * portal passes the clip is turned off and the terrain fragment shader instead discards LODs in
+ * the chunks the pass draws ({@link IPDhPortalDrawnChunks}; uniforms set at the end of
+ * {@code fillUniformData}, while the program is bound). If DH's shader could not be patched, the
+ * clip falls back to how far the destination's terrain surely reaches ({@link IPDhPortalNearClip}).
+ * DH adds 16 blocks to the redirected value for {@code uClipDistance} (a clip of 0 or less turns
+ * clipping off) and, with its dithered fade, fades LODs in up to 1.5 times that distance. The Iris
+ * shader path is covered by {@link MixinDhApiRenderProxy_NearClipGap}.
+ * <p>
+ * The fork set the clip to 0 everywhere (LODs from 16 blocks), and LODs showed through every gap
+ * in nearby non-full blocks (fences, stairs, slabs) wherever the sky was behind them (2.3.17).
  */
 @Mixin(value = GlDhTerrainShaderProgram_neoforge.class, remap = false)
 public class MixinDhTerrainShader_NearClipGap {
@@ -28,7 +48,22 @@ public class MixinDhTerrainShader_NearClipGap {
     private static final Logger ip_LOGGER = LogUtils.getLogger();
 
     @Unique
-    private static boolean ip_logged = false;
+    private static float ip_lastLoggedClip = Float.NaN;
+
+    @Unique
+    private static boolean ip_loggedCut = false;
+
+    @Unique
+    private int ip_locationsProgram = -1;
+
+    @Unique
+    private int ip_enabledLocation = -1;
+
+    @Unique
+    private int ip_cameraLocation = -1;
+
+    @Unique
+    private int ip_maskLocation = -1;
 
     @Redirect(
         method = "fillUniformData",
@@ -38,12 +73,60 @@ public class MixinDhTerrainShader_NearClipGap {
         ),
         require = 0
     )
-    private float ip_removeLodNearClipGap() {
-        if (!ip_logged) {
-            ip_logged = true;
-            ip_LOGGER.debug("[IPDhGapFix] DH LOD near-clip lowered for terrain pass (uClipDistance ~16 blocks; fade/SSAO distances stock)");
+    private float ip_portalViewLodNearClip() {
+        float dhNearClip = RenderUtil.getNearClipPlaneInBlocks();
+        if (!PortalRendering.isRendering() || Config.Client.Advanced.Debugging.lodOnlyMode.get()) {
+            return dhNearClip;
         }
 
-        return 0.0F;
+        if (IPDhPortalDrawnChunks.isActive() && ip_resolveCutLocations()) {
+            if (!ip_loggedCut) {
+                ip_loggedCut = true;
+                ip_LOGGER.debug("[IPDhGapFix] DH LODs in portal views cut at the drawn chunks, distance clip off");
+            }
+            return -16.0F;
+        }
+
+        double fadeEnd = Config.Client.Advanced.Graphics.Quality.ditherDhFade.get() ? 1.5 : 1.0;
+        float clipDistance = (float) Math.min(dhNearClip + 16.0, IPDhPortalNearClip.coveredDistance() / fadeEnd);
+
+        if (!(Math.abs(clipDistance - ip_lastLoggedClip) < 16)) {
+            ip_lastLoggedClip = clipDistance;
+            ip_LOGGER.debug("[IPDhGapFix] DH LOD clip in portal view {} blocks (DH's own {})", clipDistance, dhNearClip + 16.0);
+        }
+
+        // DH adds the 16
+        return clipDistance - 16.0F;
+    }
+
+    @Inject(
+        method = "fillUniformData",
+        at = @At("TAIL"),
+        require = 0
+    )
+    private void ip_setDrawnChunkCut(DhApiRenderParam renderParameters, CallbackInfo ci) {
+        if (!ip_resolveCutLocations()) {
+            return;
+        }
+        boolean active = IPDhPortalDrawnChunks.isActive() && !Config.Client.Advanced.Debugging.lodOnlyMode.get();
+        GL20.glUniform1i(ip_enabledLocation, active ? 1 : 0);
+        if (active) {
+            float[] camera = IPDhPortalDrawnChunks.cameraInGrid();
+            GL20.glUniform2f(ip_cameraLocation, camera[0], camera[1]);
+            GL30.glUniform1uiv(ip_maskLocation, IPDhPortalDrawnChunks.mask());
+        }
+    }
+
+    /** Looks up the cut's uniforms in the bound program; false if DH's shader was not patched. */
+    @Unique
+    private boolean ip_resolveCutLocations() {
+        int program = ((GlShaderProgram) (Object) this).id;
+        if (program != ip_locationsProgram) {
+            ip_locationsProgram = program;
+            ip_enabledLocation = GL20.glGetUniformLocation(program, IPDhPortalDrawnChunks.ENABLED_UNIFORM);
+            ip_cameraLocation = GL20.glGetUniformLocation(program, IPDhPortalDrawnChunks.CAMERA_UNIFORM);
+            ip_maskLocation = GL20.glGetUniformLocation(program, IPDhPortalDrawnChunks.MASK_UNIFORM);
+        }
+        return ip_enabledLocation >= 0 && ip_cameraLocation >= 0 && ip_maskLocation >= 0;
     }
 }

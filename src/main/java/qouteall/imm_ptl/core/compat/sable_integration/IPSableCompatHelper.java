@@ -18,7 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
-import qouteall.imm_ptl.core.compat.mixin_sable.IPChunkMapAccessor;
+import qouteall.imm_ptl.core.mixin.common.chunk_sync.IPChunkMapAccessor;
 
 /**
  * Sable packet-routing helpers wired into IP's packet redirection.

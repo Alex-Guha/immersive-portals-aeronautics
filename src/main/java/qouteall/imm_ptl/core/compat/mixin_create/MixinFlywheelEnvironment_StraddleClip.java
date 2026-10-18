@@ -18,6 +18,15 @@ import qouteall.imm_ptl.core.compat.create_integration.IPFlywheelStraddleClip;
  */
 @Mixin(value = EmbeddedEnvironment.class, remap = false)
 public class MixinFlywheelEnvironment_StraddleClip {
+    /**
+     * Known from creation: the first flush comes inside the draw, after the pass's planes were set, so an environment
+     * created this frame (a carriage copy the server just spawned) was drawn its first frame with no cut and not hidden.
+     */
+    @Inject(method = "<init>", at = @At("RETURN"), require = 0, expect = 0)
+    private void ip_registerNewEnvironment(final CallbackInfo ci) {
+        IPFlywheelStraddleClip.onFlush((EmbeddedEnvironment) (Object) this);
+    }
+
     @Inject(method = "flush", at = @At("TAIL"), require = 0, expect = 0)
     private void ip_registerEnvironment(final long ptr, final CallbackInfo ci) {
         IPFlywheelStraddleClip.onFlush((EmbeddedEnvironment) (Object) this);

@@ -64,8 +64,9 @@ public final class IPCreateCarriageCrossingClient {
     private static final double SEAM = FrontClipping.ADJUSTMENT;
     private static final float[] REJECT = {0f, 0f, 0f, -1f};
 
-    /** Flywheel embeddings of carriages (the carriage's own and its bogeys'), by embedding. */
-    private static final Map<EmbeddedEnvironment, WeakReference<CarriageContraptionEntity>> EMBEDDINGS = new WeakHashMap<>();
+    /** Flywheel embeddings of carriages (the carriage's own and its bogeys'), by embedding. Flywheel's worker threads add them. */
+    private static final Map<EmbeddedEnvironment, WeakReference<CarriageContraptionEntity>> EMBEDDINGS =
+        java.util.Collections.synchronizedMap(new WeakHashMap<>());
     /** Copies reaching through a portal with no copy on the other side: their far halves are drawn there. */
     private static final Map<CarriageContraptionEntity, IPCreateCarriageCrossing.Crossing> FAR_HALVES = new WeakHashMap<>();
     /** Copies placed by {@link #follow} (their dimension holds no wheel point of the carriage). */
@@ -206,7 +207,7 @@ public final class IPCreateCarriageCrossingClient {
         if (EMBEDDINGS.isEmpty()) {
             return;
         }
-        for (final WeakReference<CarriageContraptionEntity> reference : List.copyOf(EMBEDDINGS.values())) {
+        for (final WeakReference<CarriageContraptionEntity> reference : embeddingOwners()) {
             final CarriageContraptionEntity entity = reference.get();
             if (entity != null && !entity.isRemoved()) {
                 rebuildIfOutdated(entity);
@@ -271,6 +272,12 @@ public final class IPCreateCarriageCrossingClient {
             reference = EMBEDDINGS.get(root);
         }
         final CarriageContraptionEntity entity = reference != null ? reference.get() : null;
+        final float[] plane = flywheelPlane(entity, renderOrigin);
+        IPCreateCrossingTrace.plane(entity, plane);
+        return plane;
+    }
+
+    private static float @Nullable [] flywheelPlane(@Nullable final CarriageContraptionEntity entity, final Vec3i renderOrigin) {
         if (entity != null && (isHidden(entity) || isOutdated(entity, false))) {
             return REJECT;
         }
@@ -285,6 +292,55 @@ public final class IPCreateCarriageCrossingClient {
         final Vec3 rel = crossing.keepPoint().subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
         final double w = -n.dot(rel) + (PortalRendering.isRendering() ? SEAM : 0.0);
         return new float[]{(float) n.x, (float) n.y, (float) n.z, (float) w};
+    }
+
+    private static List<WeakReference<CarriageContraptionEntity>> embeddingOwners() {
+        synchronized (EMBEDDINGS) {
+            return List.copyOf(EMBEDDINGS.values());
+        }
+    }
+
+    /** Every carriage copy with a Flywheel visual on this client (trace). */
+    static List<CarriageContraptionEntity> knownCopies() {
+        final java.util.Set<CarriageContraptionEntity> copies = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (final WeakReference<CarriageContraptionEntity> reference : embeddingOwners()) {
+            final CarriageContraptionEntity entity = reference.get();
+            if (entity != null) {
+                copies.add(entity);
+            }
+        }
+        return List.copyOf(copies);
+    }
+
+    /** A copy's state for the trace. */
+    static String traceState(final CarriageContraptionEntity entity) {
+        final Carriage carriage = entity.getCarriage();
+        final StringBuilder text = new StringBuilder();
+        text.append("wheels ").append(carriage == null ? "?" : IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) ? "Y" : "N")
+            .append(" aligned ").append(ALIGNED_TICKS.getOrDefault(entity, 0))
+            .append(" valid ").append(entity.validForRender ? "Y" : "N")
+            .append(" firstPos ").append(entity.firstPositionUpdate ? "Y" : "N")
+            .append(FOLLOWING.containsKey(entity) ? " following" : "")
+            .append(isStaleCopy(entity) ? " STALE" : "");
+        if (carriage != null) {
+            final Carriage.DimensionalCarriageEntity dce = carriage.getDimensional(entity.level());
+            text.append(" init ").append(dce.pointsInitialised ? "Y" : "N");
+        }
+        final IPCreateCarriageCrossing.Crossing farHalf = FAR_HALVES.get(entity);
+        if (farHalf != null) {
+            text.append(" drawsFarHalfInto ").append(farHalf.portal().getDestDim().location().getPath());
+        }
+        if (!IPCreateCarriageCrossing.STOCK && isHidden(entity)) {
+            text.append(" HIDDEN(").append(carriage == null ? "no carriage" : !entity.validForRender ? "not valid"
+                : !IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) ? "no wheels"
+                : isStaleCopy(entity) ? "stale" : "covered by far half").append(')');
+        }
+        final IPCreateCarriageCrossing.Crossing crossing = crossingOf(entity);
+        if (crossing != null) {
+            text.append(" crossing ").append(crossing.farHalf() ? "reaching" : "split").append(" portal ").append(crossing.portal().getId())
+                .append(String.format(" depth %.3f", -entity.position().subtract(crossing.keepPoint()).dot(crossing.keepNormal())));
+        }
+        return text.toString();
     }
 
     /**
@@ -376,15 +432,20 @@ public final class IPCreateCarriageCrossingClient {
     }
 
     /**
-     * Whether a copy must not be drawn: none of its carriage's wheel points is in its dimension (a copy the server
-     * created before this client's carriage reached it, or one Create keeps a few ticks after the carriage left:
-     * either way it is not placed and stands still), or another copy draws the far half into its dimension while
-     * this one is not ready.
+     * Whether a copy must not be drawn: it has not been placed by this client yet (no carriage bound, or no tick
+     * yet: it stands at its spawn position, the server's, ahead of this client's carriage; Create's vanilla renderer
+     * waits for {@code validForRender} too, Flywheel does not), none of its carriage's wheel points is in its dimension
+     * (a copy the server created before this client's carriage reached it, or one Create keeps a few ticks after the
+     * carriage left: either way it is not placed and stands still), or another copy draws the far half into its
+     * dimension while this one is not ready.
      */
     private static boolean isHidden(final CarriageContraptionEntity entity) {
-        final Carriage carriage = entity.getCarriage();
-        if (carriage == null || IPCreateCarriageCrossing.STOCK) {
+        if (IPCreateCarriageCrossing.STOCK) {
             return false;
+        }
+        final Carriage carriage = entity.getCarriage();
+        if (carriage == null || !entity.validForRender) {
+            return true;
         }
         if (!IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) || isStaleCopy(entity)) {
             return true;
@@ -527,6 +588,12 @@ public final class IPCreateCarriageCrossingClient {
         if (!(entity instanceof final CarriageContraptionEntity carriageEntity) || IPCreateCarriageCrossing.STOCK) {
             return true;
         }
+        final boolean drawn = drawsVanillaPartOf(carriageEntity, localPos);
+        IPCreateCrossingTrace.vanilla(carriageEntity, drawn);
+        return drawn;
+    }
+
+    private static boolean drawsVanillaPartOf(final CarriageContraptionEntity carriageEntity, final net.minecraft.core.BlockPos localPos) {
         if (!isPlaced(carriageEntity)) {
             return false;
         }
@@ -632,7 +699,11 @@ public final class IPCreateCarriageCrossingClient {
             final IPFlywheelStraddleClip.FarHalf selection = (sourceLevel, environment, root, renderOrigin) -> {
                 final CarriageContraptionEntity owner = ownerOf(environment, root);
                 final IPCreateCarriageCrossing.Crossing crossing = owner != null ? carriages.get(owner) : null;
-                return crossing != null && !isOutdated(owner, true) ? farHalfPlane(crossing, renderOrigin) : null;
+                final float[] plane = crossing != null && !isOutdated(owner, true) ? farHalfPlane(crossing, renderOrigin) : null;
+                if (plane != null) {
+                    IPCreateCrossingTrace.plane(owner, plane);
+                }
+                return plane;
             };
             if (!IPFlywheelFarHalf.draw(context, source, rotation, camera, selection)) {
                 return;

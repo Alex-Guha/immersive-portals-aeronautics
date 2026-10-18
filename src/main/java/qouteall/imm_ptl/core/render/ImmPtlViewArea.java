@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -21,6 +28,7 @@ import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlClientChunkMap;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableViewAreaDirty;
 import qouteall.imm_ptl.core.ducks.IERenderSection;
 import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.miscellaneous.GcMonitor;
@@ -163,6 +171,10 @@ public class ImmPtlViewArea extends ViewArea {
 
     @Override
     public void setDirty(int cx, int cy, int cz, boolean isImportant) {
+        // Immersive Portals: Aeronautics: this override bypasses Sable's hook on ViewArea.setDirty
+        if (IPSableViewAreaDirty.routeToShip(level, cx, cy, cz, isImportant)) {
+            return;
+        }
         RenderSection builtChunk = provideBuiltChunkByChunkPos(cx, cy, cz);
         builtChunk.setDirty(isImportant);
     }

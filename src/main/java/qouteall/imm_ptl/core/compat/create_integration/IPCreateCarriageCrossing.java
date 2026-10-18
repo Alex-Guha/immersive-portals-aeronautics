@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.trains.entity.Carriage;
 import com.simibubi.create.content.trains.entity.CarriageBogey;
 import com.simibubi.create.content.trains.entity.CarriageContraptionEntity;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor;
 import qouteall.imm_ptl.core.portal.Mirror;
@@ -53,6 +55,7 @@ import qouteall.imm_ptl.core.portal.Portal;
  * {@code -Dip_aeronautics.stockTrains=true} turns all of this off (Create's glass and whole-block cut).
  */
 public final class IPCreateCarriageCrossing {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final boolean STOCK = Boolean.getBoolean("ip_aeronautics.stockTrains");
     /** A larger gap means the portal found is not the one the track crosses. */
     private static final double MAX_GAP = 4.0;
@@ -75,8 +78,9 @@ public final class IPCreateCarriageCrossing {
     /**
      * @param portal      the portal on the copy's track, or null
      * @param trackNormal the portal plane's normal pointing to the side the track (and the copy's wheels) lie on
+     * @param withWheel   whether a wheel point of the carriage was in the copy's dimension at the search
      */
-    private record Approach(@Nullable Portal portal, Vec3 trackNormal, long searchedAt) {
+    private record Approach(@Nullable Portal portal, Vec3 trackNormal, long searchedAt, boolean withWheel) {
     }
 
     /** The portal of each copy's crossing (weak: Create drops copies). Server and client thread both use it. */
@@ -191,10 +195,21 @@ public final class IPCreateCarriageCrossing {
         final Level level = entity.level();
         final long now = level.getGameTime();
         Approach approach = APPROACHES.get(dce);
+        // a search made while no wheel was here found nothing (a client copy aligned from the anchors Create kept from
+        // an earlier trip, before this client's carriage reached the portal): searched again as the wheels arrive, or
+        // the new copy stood unshifted, up to the gap ahead, for the rest of the interval (the front flashed ahead)
+        final boolean withWheel = hasWheelIn(carriage, level.dimension());
         if (approach == null || now - approach.searchedAt() >= SEARCH_INTERVAL || now < approach.searchedAt()
-            || (approach.portal() != null && approach.portal().isRemoved())) {
+            || (approach.portal() != null && approach.portal().isRemoved()) || approach.withWheel() != withWheel) {
+            final Approach previous = approach;
             approach = search(level, carriage, middle, axis, approach, now);
             APPROACHES.put(dce, approach);
+            if (previous != null && withWheel && !previous.withWheel() && previous.portal() == null
+                && approach.portal() != null && now - previous.searchedAt() < SEARCH_INTERVAL) {
+                LOGGER.debug("[IPTrainCrossing] carriage {} in {}: wheels arrived, portal {} found {} ticks before the next search",
+                    entity.getId(), level.dimension().location(), approach.portal().getId(),
+                    SEARCH_INTERVAL - (now - previous.searchedAt()));
+            }
         }
         final Portal portal = approach.portal();
         if (portal == null) {
@@ -262,7 +277,7 @@ public final class IPCreateCarriageCrossing {
                 bestDistance = Math.abs(distance);
             }
         }
-        return new Approach(best, bestNormal != null ? bestNormal : Vec3.ZERO, now);
+        return new Approach(best, bestNormal != null ? bestNormal : Vec3.ZERO, now, wheel != null);
     }
 
     /** Whether a Create portal track lies in front of the portal at {@code hit} (the carriage axis at anchor height). */
@@ -291,6 +306,21 @@ public final class IPCreateCarriageCrossing {
             }
         }
         return null;
+    }
+
+    /** @return whether a wheel point of the carriage is on track in this dimension (what {@link #wheelIn} looks for) */
+    private static boolean hasWheelIn(final Carriage carriage, final ResourceKey<Level> dimension) {
+        for (final CarriageBogey bogey : carriage.bogeys) {
+            if (bogey == null) {
+                continue;
+            }
+            for (final TravellingPoint point : new TravellingPoint[]{bogey.leading(), bogey.trailing()}) {
+                if (point.node1 != null && point.edge != null && dimension.equals(point.node1.getLocation().dimension)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public static boolean isFinite(final Vec3 v) {

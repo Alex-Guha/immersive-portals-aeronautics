@@ -1,6 +1,9 @@
 {
   "required": true,
   "package": "qouteall.imm_ptl.peripheral.mixin",
+  "overwrites": {
+    "conformVisibility": true
+  },
   "compatibilityLevel": "JAVA_17",
   "plugin": "qouteall.imm_ptl.peripheral.IPPeripheralMixinPlugin",
   "mixins": [
@@ -13,7 +16,8 @@
     "common.dim_stack.MixinMinecraftServer_DimStack_CVB",
     "common.end_portal.MixinEnderEyeItem_CVB",
     "common.nether_portal.MixinAbstractFireBlock_CVB",
-    "common.nether_portal.MixinFlintAndSteelItem_CVB"
+    "common.nether_portal.MixinFlintAndSteelItem_CVB",
+    "common.nether_portal.MixinPortalShape_IntrinsicPortal"
   ],
   "client": [
     "client.MixinBossHealthOverlay_CVB",

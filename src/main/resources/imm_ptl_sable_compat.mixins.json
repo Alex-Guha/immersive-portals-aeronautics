@@ -2,6 +2,9 @@
   "required": false,
   "minVersion": "0.8",
   "package": "qouteall.imm_ptl.core.compat.mixin_sable",
+  "overwrites": {
+    "conformVisibility": true
+  },
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
@@ -13,13 +16,13 @@
     "MixinServerPlayerGameMode_ShipBlockBreakResync",
     "MixinSableAssembly_PortalBreak",
     "IPSubLevelTrackingSystemAccessor",
-    "IPChunkMapAccessor",
     "MixinSableTrackingSystem_DimensionAwareSend",
     "MixinSableTrackingSystem_PortalHandover",
     "MixinSableFullSync_RopeResend",
     "IPSubLevelPhysicsSystemAccessor",
     "MixinSablePhysicsSystem_FusedStep",
     "IPSubLevelContainerAccessor",
+    "IPLevelPlotAccessor",
     "MixinSableServerContainer_FusedTick",
     "IPLevelAcceleratorAccessor",
     "MixinSableEntityCollision_StraddleCut",

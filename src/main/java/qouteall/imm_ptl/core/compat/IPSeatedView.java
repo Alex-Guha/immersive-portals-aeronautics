@@ -46,6 +46,7 @@ public final class IPSeatedView {
     public static void afterFrame(final boolean crossPortal) {
         if (CREATE) {
             IPCreateRiderTrace.afterFrame(crossPortal);
+            qouteall.imm_ptl.core.compat.create_integration.IPCreateCrossingTrace.afterFrame();
         }
     }
 }

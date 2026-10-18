@@ -235,6 +235,9 @@ public class MyGameRenderer {
             helper.lightmapTexture.updateLightTexture(0);
         }
         
+        // Immersive Aeronautics: the portal pass must not leave its view matrix in Databank's post effects
+        Object databankViewMatrix = qouteall.imm_ptl.core.compat.IPDatabankCompat.beforePortalPass();
+        
         //invoke rendering
         invokeWrapper.accept(() -> {
             client.getProfiler().push("render_portal_content");
@@ -243,6 +246,8 @@ public class MyGameRenderer {
             );
             client.getProfiler().pop();
         });
+        
+        qouteall.imm_ptl.core.compat.IPDatabankCompat.afterPortalPass(databankViewMatrix);
         
         SodiumInterface.invoker.switchContextWithCurrentWorldRenderer(newSodiumContext);
         

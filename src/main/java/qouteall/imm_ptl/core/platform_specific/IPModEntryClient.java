@@ -77,7 +77,15 @@ public class IPModEntryClient {
 
         modEventBus.addListener(EntityRenderersEvent.RegisterRenderers.class, IPModEntryClient::initPortalRenderers);
 
-        // Immersive Aeronautics: Create's portal-track rails end in the portal plane; drop those faces (z-fighting)
+        // Gold portal-track texture recoloured from Create's when the block atlas is stitched; registered even without
+        // Create because our atlas file names this source type
+        modEventBus.addListener(
+            net.neoforged.neoforge.client.event.RegisterSpriteSourceTypesEvent.class,
+            qouteall.imm_ptl.core.compat.create_integration.IPCreateGoldPortalTrackSource::onRegisterSpriteSourceTypes
+        );
+
+        // Immersive Aeronautics: Create's portal-track rails end in the portal plane; drop those faces (z-fighting).
+        // The rails' purple glow follows the portal's frame (gold for glowstone, plain for non-obsidian frames)
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(
                 net.neoforged.bus.api.EventPriority.LOWEST,

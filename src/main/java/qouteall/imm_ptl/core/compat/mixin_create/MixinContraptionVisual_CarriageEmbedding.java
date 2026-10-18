@@ -50,6 +50,7 @@ public class MixinContraptionVisual_CarriageEmbedding {
     @Inject(method = "beginFrame", at = @At("HEAD"), require = 0, expect = 0)
     private void ip_rebuildIfOutdated(final DynamicVisual.Context context, final CallbackInfo ci) {
         if (ip_entity != null) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreateCrossingTrace.embedded(ip_entity, context.partialTick());
             IPCreateCarriageCrossingClient.rebuildIfOutdated(ip_entity);
         }
     }

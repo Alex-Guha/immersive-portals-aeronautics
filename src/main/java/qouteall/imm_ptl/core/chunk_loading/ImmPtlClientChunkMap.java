@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.chunk_loading;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -20,6 +27,7 @@ import org.apache.logging.log4j.Logger;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.McHelper;
+import qouteall.imm_ptl.core.compat.sable_integration.IPSableClientPlotChunks;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
 import qouteall.imm_ptl.core.ducks.IEMinecraftClient;
 import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
@@ -73,6 +81,8 @@ public class ImmPtlClientChunkMap extends ClientChunkCache {
             modifyChunkMap(chunkMap -> {
                 chunkMap.remove(chunkPos.toLong());
             });
+            // Immersive Aeronautics: and from its ship's plot
+            IPSableClientPlotChunks.onChunkDropped(this.level, chunkPos);
             
             O_O.postClientChunkUnloadEvent(chunk);
             this.level.unload(chunk);
@@ -156,6 +166,9 @@ public class ImmPtlClientChunkMap extends ClientChunkCache {
         else {
             loadChunkDataFromPacket(buf, nbt, worldChunk, consumer);
         }
+        
+        // Immersive Aeronautics: a ship's chunk also goes to its plot, as Sable's ClientChunkCache hook does without IP
+        IPSableClientPlotChunks.onChunkLoaded(this.level, worldChunk);
         
         this.level.onChunkLoaded(new ChunkPos(x, z));
         O_O.postClientChunkLoadEvent(worldChunk);

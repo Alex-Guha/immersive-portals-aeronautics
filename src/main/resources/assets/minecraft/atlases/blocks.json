@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "type": "immersive_portals:create_gold_portal_track",
+      "resource": "create:block/portal_track",
+      "sprite": "immersive_portals:block/create_portal_track_gold"
+    },
+    {
+      "type": "immersive_portals:create_gold_portal_track",
+      "resource": "create:block/portal_track_mip",
+      "sprite": "immersive_portals:block/create_portal_track_gold_mip"
+    }
+  ]
+}

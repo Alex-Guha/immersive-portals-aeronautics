@@ -2,7 +2,8 @@
  * Copied from Sable 2.0.6 by RyanHCode (https://github.com/ryanhcode/sable), sable_rapier module.
  * Licensed under the PolyForm Shield License 1.0.0 (https://polyformproject.org/licenses/shield/1.0.0),
  * as are this project's changes to it. Modified for Immersive Portals: Aeronautics, 2026:
- * package moved to ipaeronautics.rapier, link-error message points at this mod, world step gated for the fused step.
+ * package moved to ipaeronautics.rapier, link-error message points at this mod, world step gated for the fused step,
+ * joints between ships recorded (IPShipJoints).
  */
 package ipaeronautics.rapier;
 
@@ -66,6 +67,7 @@ import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 
 /**
  * Implementation of {@link PhysicsPipeline} for the rust Rapier 3D physics engine.
@@ -567,6 +569,7 @@ public class RapierPhysicsPipeline implements PhysicsPipeline {
             return null;
         }
 
+        IPShipJoints.track(bodyA, bodyB, constraint);
         return constraint;
     }
 

@@ -16,6 +16,7 @@ import org.lwjgl.opengl.GL11;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
 import qouteall.imm_ptl.core.compat.dh_integration.IPDhTextureGuard;
+import qouteall.imm_ptl.core.render.IPGlobalPortalFade;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
 import qouteall.imm_ptl.core.render.FrontClipping;
@@ -143,7 +144,11 @@ public class RendererUsingStencil extends PortalRenderer {
         }
         
         int outerPortalStencilValue = PortalRendering.getPortalLayer();
-        
+
+        // Immersive Aeronautics: a dimension stack's floor/ceiling fades out towards its view range
+        float visibility = IPGlobalPortalFade.visibility(portal);
+        boolean fading = IPGlobalPortalFade.beginFade(visibility);
+
         client.getProfiler().push("render_view_area");
         
         boolean anySamplePassed = PortalRenderInfo.renderAndDecideVisibility(portal, () -> {
@@ -170,7 +175,11 @@ public class RendererUsingStencil extends PortalRenderer {
         setStencilStateForWorldRendering();
         
         renderPortalContent(portal);
-        
+
+        if (fading) {
+            IPGlobalPortalFade.endFade(visibility, thisPortalStencilValue);
+        }
+
         PortalRendering.popPortalLayer();
         // pop portal layer before restoring depth, for clipping, see ViewAreaRenderer
         
@@ -205,12 +214,13 @@ public class RendererUsingStencil extends PortalRenderer {
         // update it before pushing
         FrontClipping.updateInnerClipping(modelView);
         
+        // Immersive Aeronautics: not over Distant Horizons' LODs in front of the portal (IPDhLodOcclusion)
         ViewAreaRenderer.renderPortalArea(
             portal, Vec3.ZERO,
             modelView,
             RenderSystem.getProjectionMatrix(),
             true, true,
-            true, true
+            true, true, true
         );
     }
     

@@ -24,6 +24,7 @@ import org.joml.Vector3dc;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.sable_integration.IPPhysicsStaffHooks;
 import qouteall.imm_ptl.core.compat.sable_integration.IPSableBridge;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRagdollGuard;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipThroughPortalSync;
@@ -34,8 +35,10 @@ import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalExtension;
 import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -105,9 +108,9 @@ final class IPStraddleController {
     private static final double PARTNER_REACH = 32.0;
     /** Diagnostics: last tick a "declined" line was logged per ship and portal. */
     private static final Map<String, Long> DECLINED_LOGGED = new HashMap<>();
-    /** How long [ticks] a ship wholly through a portal waits for the ships roped to it before crossing alone. */
+    /** How long [ticks] a ship wholly through a portal waits for the ships tied to it before crossing alone. */
     private static final long GROUP_WAIT_TICKS = 100;
-    /** Extra clip depth [blocks] for a ship waiting for the ships roped to it. */
+    /** Extra clip depth [blocks] for a ship waiting for the ships tied to it. */
     private static final double WAITING_EXTRA_DEPTH = 16.0;
     /** Test switch: {@code -Dip_aeronautics.debug.refuseHandoff=true} refuses every straddle hand-off. */
     private static final boolean DEBUG_REFUSE_HANDOFF = Boolean.getBoolean("ip_aeronautics.debug.refuseHandoff");
@@ -120,7 +123,7 @@ final class IPStraddleController {
     }
 
     private static final Map<UUID, Refusal> REFUSALS = new HashMap<>();
-    /** Ships wholly through a portal waiting for the ships roped to them, with the tick they started waiting. */
+    /** Ships wholly through a portal waiting for the ships tied to them, with the tick they started waiting. */
     private static final Map<UUID, Long> WAITING_SINCE = new HashMap<>();
 
     private IPStraddleController() {
@@ -187,9 +190,10 @@ final class IPStraddleController {
     }
 
     /**
-     * Hands off the ships wholly through a portal this tick. Ships tied together by ropes cross as a group, with their
-     * ropes: a ship whose group is not all through the same portal yet waits in its session (physically in the
-     * destination already) for up to {@value #GROUP_WAIT_TICKS} ticks, then crosses alone, its ropes to the others
+     * Hands off the ships wholly through a portal this tick. Ships tied together by ropes or joints ({@link
+     * #crossingGroup}) cross as a group, in the same tick, with their ropes; their joints' owners rebuild the joints in
+     * the destination. A ship whose group is not all through the same portal yet waits in its session (physically in
+     * the destination already) for up to {@value #GROUP_WAIT_TICKS} ticks, then crosses alone, its ropes to the others
      * broken as before.
      */
     private static void handOffAll(final MinecraftServer server, final List<Handoff> handoffs, final long tick) {
@@ -204,20 +208,20 @@ final class IPStraddleController {
             if (done.contains(shipId)) {
                 continue;
             }
-            Set<UUID> group = IPShipRopeCompat.ropeGroup(handoff.level(), handoff.ship());
+            Set<UUID> group = crossingGroup(handoff.level(), handoff.ship());
             Map<UUID, Handoff> members = group.size() > 1 ? groupHandoffs(group, handoff, ready, tick) : Map.of(shipId, handoff);
             if (members == null) {
                 final long since = WAITING_SINCE.computeIfAbsent(shipId, id -> tick);
                 if (tick - since < GROUP_WAIT_TICKS) {
                     if (since == tick) {
-                        LOGGER.info("[IPStraddle] ship {} is through portal {}; waiting for the {} other ship(s) roped to it",
+                        LOGGER.info("[IPStraddle] ship {} is through portal {}; waiting for the {} other ship(s) tied to it",
                                 shipId, handoff.portal().getUUID(), group.size() - 1);
                     }
                     waitForGroup(handoff, tick);
                     done.add(shipId);
                     continue;
                 }
-                LOGGER.info("[IPStraddle] ship {} waited {} ticks for the ships roped to it; crossing alone (those ropes break)",
+                LOGGER.info("[IPStraddle] ship {} waited {} ticks for the ships tied to it; crossing alone (its ropes to them break, its joints to them come apart)",
                         shipId, tick - since);
                 group = Set.of(shipId);
                 members = Map.of(shipId, handoff);
@@ -240,9 +244,40 @@ final class IPStraddleController {
             }
             if (group.size() > 1 && dest != null) {
                 IPShipRopeCompat.shiftLoadedAnchors(dest, shifts);
-                LOGGER.info("[IPStraddle] {} ships roped together crossed as one group", shifts.size());
+                IPShipJoints.shiftLoadedJoints(dest, shifts);
+                LOGGER.info("[IPStraddle] {} ships tied together crossed as one group", shifts.size());
             }
         }
+    }
+
+    /**
+     * @return the ships of {@code level} that cross a portal together with {@code ship}: tied to it by ropes or by
+     * joints between ships (swivel bearings, docking connectors), directly or through other ships, including {@code ship}
+     */
+    static Set<UUID> crossingGroup(final ServerLevel level, final ServerSubLevel ship) {
+        final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+        final Set<UUID> group = new HashSet<>();
+        final Set<UUID> roped = new HashSet<>();
+        final Deque<ServerSubLevel> queue = new ArrayDeque<>();
+        group.add(ship.getUniqueId());
+        queue.add(ship);
+        while (!queue.isEmpty()) {
+            final ServerSubLevel member = queue.poll();
+            final Set<UUID> tied = new HashSet<>(IPShipJoints.partners(member));
+            if (!roped.contains(member.getUniqueId())) {
+                // a rope group is closed: its other members need no lookup of their own
+                final Set<UUID> ropeGroup = IPShipRopeCompat.ropeGroup(level, member);
+                roped.addAll(ropeGroup);
+                tied.addAll(ropeGroup);
+            }
+            for (final UUID id : tied) {
+                if (group.add(id) && container != null && container.getSubLevel(id) instanceof final ServerSubLevel next
+                        && !next.isRemoved()) {
+                    queue.add(next);
+                }
+            }
+        }
+        return group;
     }
 
     /**
@@ -276,7 +311,7 @@ final class IPStraddleController {
     }
 
     /**
-     * Whether a ship roped to {@code ship} is already on the far side of {@code portal}'s plane (its centre past it)
+     * Whether a ship tied to {@code ship} is already on the far side of {@code portal}'s plane (its centre past it)
      * without crossing through that face itself: then {@code ship} must not start crossing it, it would be taken away
      * from it (a partner that went through the face first, and waits or straddles there, does not count). This happens
      * when a ship passed
@@ -286,7 +321,7 @@ final class IPStraddleController {
      * @param normal the face's source-to-destination normal
      */
     private static boolean partnerPastFace(final ServerLevel level, final ServerSubLevel ship, final Portal portal, final Vec3 normal) {
-        final Set<UUID> group = IPShipRopeCompat.ropeGroup(level, ship);
+        final Set<UUID> group = crossingGroup(level, ship);
         if (group.size() < 2) {
             return false;
         }
@@ -314,12 +349,12 @@ final class IPStraddleController {
     }
 
     /**
-     * Whether a ship roped to {@code ship} has a session on another face of {@code portal}'s doorway (the opposite face):
+     * Whether a ship tied to {@code ship} has a session on another face of {@code portal}'s doorway (the opposite face):
      * a group crosses one doorway one way. A ship that went past the plane outside the opening (over the frame) and
      * swings back through the opening's edge would otherwise enter the opposite face while its partner crosses this one.
      */
     private static boolean partnerCrossesOtherFace(final ServerLevel level, final ServerSubLevel ship, final Portal portal) {
-        final Set<UUID> group = IPShipRopeCompat.ropeGroup(level, ship);
+        final Set<UUID> group = crossingGroup(level, ship);
         if (group.size() < 2) {
             return false;
         }
@@ -371,7 +406,7 @@ final class IPStraddleController {
                     return null;
                 }
                 memberHandoff = new Handoff(ship, leader.level(), leader.portal());
-                LOGGER.info("[IPStraddle] ship {} is past portal {} outside its opening; it crosses with the ships roped to it",
+                LOGGER.info("[IPStraddle] ship {} is past portal {} outside its opening; it crosses with the ships tied to it",
                         member, leader.portal().getUUID());
             }
             if (IPSableBridge.whyNotMovable(memberHandoff.ship(), memberHandoff.level(), dest) != null) {
@@ -392,7 +427,7 @@ final class IPStraddleController {
                 && a.getNormal().dot(b.getNormal()) > 0.999 && a.getOriginPos().distanceToSqr(b.getOriginPos()) < 1.0e-6);
     }
 
-    /** A ship waiting for the ships roped to it keeps its session, with clip regions reaching further past the plane. */
+    /** A ship waiting for the ships tied to it keeps its session, with clip regions reaching further past the plane. */
     private static void waitForGroup(final Handoff handoff, final long tick) {
         final Vec3 normal = handoff.portal().getNormal().scale(-1.0);
         if (IPStraddleSessions.openOrRefresh(handoff.ship(), handoff.portal(), handoff.level(), normal, tick)) {
@@ -483,11 +518,11 @@ final class IPStraddleController {
                     continue;
                 }
                 if (!haveSession && partnerPastFace(level, ship, portal, normal)) {
-                    declined(ship, portal, state, "a ship roped to it is already past this face without crossing it");
+                    declined(ship, portal, state, "a ship tied to it is already past this face without crossing it");
                     continue;
                 }
                 if (!haveSession && partnerCrossesOtherFace(level, ship, portal)) {
-                    declined(ship, portal, state, "a ship roped to it crosses the opposite face of this doorway");
+                    declined(ship, portal, state, "a ship tied to it crosses the opposite face of this doorway");
                     continue;
                 }
                 final boolean twinHasSession = twin != null && hasSession(ship, twin);
@@ -519,7 +554,7 @@ final class IPStraddleController {
                     continue;
                 }
                 if (!haveSession && (partnerPastFace(level, ship, portal, normal) || partnerCrossesOtherFace(level, ship, portal))) {
-                    declined(ship, portal, state, "wholly past the plane, but its rope partners are on another passage");
+                    declined(ship, portal, state, "wholly past the plane, but the ships tied to it are on another passage");
                     continue;
                 }
                 final String refusal = refusalReason(ship, level, portal, tick);

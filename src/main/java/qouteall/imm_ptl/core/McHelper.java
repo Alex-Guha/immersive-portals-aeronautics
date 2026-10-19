@@ -304,7 +304,13 @@ public class McHelper {
     public static Vec3 getVehicleOffsetFromPassenger(Entity vehicle, Entity passenger) {
         Vec3 vehicleAttachmentPoint = passenger.getVehicleAttachmentPoint(vehicle);
 
-        return vehicleAttachmentPoint;
+        // Immersive Aeronautics: positionRider puts the passenger at the vehicle's riding position less the
+        // passenger's attachment point, so the vehicle sits that riding offset below. Without it the vehicle was
+        // placed at its own seat and the rider lifted by the seat height on every crossing (1.6 blocks for the
+        // Aether's parachutes, which then bounced across a dimension stack's floor forever).
+        Vec3 ridingOffset = vehicle.getPassengerRidingPosition(passenger).subtract(vehicle.position());
+
+        return vehicleAttachmentPoint.subtract(ridingOffset);
     }
     
     public static void adjustVehicle(Entity entity) {

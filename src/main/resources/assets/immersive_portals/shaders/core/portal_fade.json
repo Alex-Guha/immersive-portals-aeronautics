@@ -1,0 +1,10 @@
+{
+  "vertex": "blit_screen_noblend",
+  "fragment": "portal_fade",
+  "samplers": [
+    { "name": "DiffuseSampler" }
+  ],
+  "uniforms": [
+    { "name": "FadeAlpha", "type": "float", "count": 1, "values": [ 0.0 ] }
+  ]
+}

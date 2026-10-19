@@ -93,6 +93,8 @@ public class IPModMain {
         WorldInfoSender.init();
         
         GlobalPortalStorage.init();
+        // Immersive Aeronautics: other mods' void-fall teleports (the Aether's) left alone while crossing a dimension stack
+        qouteall.imm_ptl.core.portal.global_portals.VerticalConnectorTravelGuard.init();
         
         EntitySync.init();
         

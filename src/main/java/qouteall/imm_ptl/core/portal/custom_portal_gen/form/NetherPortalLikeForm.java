@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal.custom_portal_gen.form;
 
 import net.minecraft.core.BlockPos;
@@ -69,6 +76,14 @@ public abstract class NetherPortalLikeForm extends PortalGenForm {
         
         BlockPos toPos = cpg.mapPosition(fromShape.innerAreaBox.getCenter(), fromWorld, toWorld);
         
+        // Immersive Aeronautics: search as far as vanilla does: the configured range (128) in the destination's
+        // blocks divided by its coordinate scale, so 16 blocks into the nether and 128 out of it. IP searched 128 both
+        // ways, so a portal lit up to about a thousand blocks from an empty frame's overworld position linked to it
+        // (a ship's portal, broken and relit after flying far, linked back to its old exit). The search covers whole
+        // chunks around the mapped position, so it reaches 2 to 3 chunks into the nether.
+        int searchRadius = (int) Math.max(
+            1, Math.round(IPGlobal.netherPortalFindingRadius / Math.max(1.0, toWorld.dimensionType().coordinateScale()))
+        );
         FrameSearching.FrameSearchingFunc<PortalGenInfo> frameMatchingFunc =
             getFrameMatchingFunc(fromWorld, toWorld, fromShape);
         NetherPortalGeneration.startGeneratingPortal(
@@ -76,7 +91,7 @@ public abstract class NetherPortalLikeForm extends PortalGenForm {
             toWorld,
             fromShape,
             toPos,
-            IPGlobal.netherPortalFindingRadius,
+            searchRadius,
             otherSideFramePredicate,
             toShape -> {
                 generateNewFrame(fromWorld, fromShape, toWorld, toShape);

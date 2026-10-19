@@ -49,6 +49,12 @@ public class IPConfig implements ConfigData {
     public boolean correctCrossPortalEntityRendering = true;
     @ConfigEntry.Category("client")
     public boolean reducedPortalRendering = false;
+    // Immersive Aeronautics: how far away a dimension stack's floor or ceiling is drawn, in chunks (0: the render
+    // distance; more needs Distant Horizons); it fades out over the last quarter (IPGlobalPortalFade)
+    @ConfigEntry.Category("client")
+    @ConfigEntry.BoundedDiscrete(min = 0, max = 256)
+    @ConfigEntry.Gui.Tooltip
+    public int dimensionStackViewDistance = 0;
     @ConfigEntry.Category("client")
     public boolean netherPortalOverlay = false;
     @ConfigEntry.Category("client")

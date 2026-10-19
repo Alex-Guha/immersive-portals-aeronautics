@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.platform_specific.mixin.common;
 
 import net.minecraft.server.level.ServerLevel;
@@ -13,14 +20,21 @@ import qouteall.imm_ptl.core.IPPerServerInfo;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
 import qouteall.imm_ptl.core.mc_utils.ServerTaskList;
 import qouteall.imm_ptl.core.portal.custom_portal_gen.CustomPortalGenManager;
+import qouteall.imm_ptl.core.portal.global_portals.VerticalConnectorTravelGuard;
 
 @Mixin(ServerPlayer.class)
 public class MixinServerPlayerEntity_MA {
-    @Inject(method = "changeDimension", at = @At("HEAD"))
+    @Inject(method = "changeDimension", at = @At("HEAD"), cancellable = true)
     private void onChangeDimensionByVanilla(
         DimensionTransition dimensionTransition, CallbackInfoReturnable<Entity> cir
     ) {
         ServerPlayer this_ = (ServerPlayer) (Object) this;
+        // Immersive Aeronautics: another mod's teleport of a player crossing a dimension stack's floor or ceiling
+        // (the Aether's fall to the overworld) does not happen, and must not reach the bookkeeping below
+        if (VerticalConnectorTravelGuard.blocksTravel(this_, dimensionTransition.newLevel().dimension())) {
+            cir.setReturnValue(null);
+            return;
+        }
         onBeforeDimensionTravel(this_);
     }
     

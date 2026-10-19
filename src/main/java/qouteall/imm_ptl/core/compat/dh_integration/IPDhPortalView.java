@@ -10,6 +10,7 @@ import java.util.Map;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -65,6 +66,15 @@ public final class IPDhPortalView {
             }
         }
         VIEW_POSITIONS = result;
+    }
+
+    private static Boolean dhLoaded = null;
+
+    public static boolean isDhLoaded() {
+        if (dhLoaded == null) {
+            dhLoaded = ModList.get() != null && ModList.get().isLoaded("distanthorizons");
+        }
+        return dhLoaded;
     }
 
     /** The position in {@code dim} the player last looked at through a portal, or null if never. */

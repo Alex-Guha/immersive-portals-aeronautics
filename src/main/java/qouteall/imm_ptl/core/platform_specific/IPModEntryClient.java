@@ -92,6 +92,15 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
             );
+            // Immersive Aeronautics: the far half of a pipe going into a portal with no pipe on the other side
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PostClientTickEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onClientTick
+            );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onAddSectionGeometry
+            );
         }
 
         boolean isSodiumPresent =

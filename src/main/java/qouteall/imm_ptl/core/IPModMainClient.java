@@ -79,6 +79,8 @@ public class IPModMainClient {
         // Immersive Aeronautics: Distant Horizons' LODs cut away inside the chunks a portal view draws
         if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
             qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalDrawnChunks.init();
+            // Immersive Aeronautics: portals behind DH's LODs hidden (dimension stack floors and ceilings)
+            qouteall.imm_ptl.core.compat.dh_integration.IPDhLodOcclusionCapture.init();
         }
         ClientWorldLoader.init();
         

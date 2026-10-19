@@ -24,11 +24,20 @@
     "MixinPhysicsStaffDragSession_Portals",
     "MixinPhysicsStaffDragPacket_Portals",
     "MixinPhysicsStaffActionPacket_Portals",
+    "MixinLaserBehaviour_Portals",
+    "MixinLaserSensorInteractor_Portals",
+    "MixinOpticalSensor_Portals",
     "IPControlsContextAccessor",
     "MixinControlsServerHandler_FollowCarriage",
     "MixinAbstractContraptionEntity_TrainControls",
     "MixinControlsMovementBehaviour_KeepDriver",
-    "MixinControlsInputPacket_AnyLevel"
+    "MixinControlsInputPacket_AnyLevel",
+    "IPPipeConnectionAccessor",
+    "IPFluidNetworkAccessor",
+    "MixinFluidPropagator_PortalPipes",
+    "MixinFluidPipeBlock_PortalPipes",
+    "MixinPipeConnection_PortalPipes",
+    "MixinPumpBlockEntity_PortalPipes"
   ],
   "injectors": {
     "defaultRequire": 0
@@ -66,8 +75,12 @@
     "MixinPhysicsStaffRenderHandler_Portals",
     "IPPhysicsStaffBeamAccessor",
     "MixinPhysicsStaffItemRenderer_Portals",
+    "IPLaserRendererInvoker",
+    "MixinAbstractLaserRenderer_Portals",
+    "MixinLaserPointerRenderer_PortalClip",
     "MixinOutliner_StaffSelection",
     "MixinHotAirBurnerRenderer_StraddleClip",
-    "MixinControlsHandler_FollowCarriage"
+    "MixinControlsHandler_FollowCarriage",
+    "MixinPipeAttachmentModel_PortalPipes"
   ]
 }

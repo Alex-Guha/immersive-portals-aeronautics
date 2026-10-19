@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.render;
 
 import com.llamalad7.mixinextras.sugar.Local;
@@ -50,6 +57,7 @@ import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
 import qouteall.imm_ptl.core.render.FrontClipping;
+import qouteall.imm_ptl.core.render.IPPortalPassDepthClear;
 import qouteall.imm_ptl.core.render.ImmPtlViewArea;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
@@ -480,6 +488,11 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
         if (PortalRendering.isRenderingOddNumberOfMirrors()) {
             MyRenderHelper.applyMirrorFaceCulling();
         }
+        
+        // Immersive Aeronautics: depth clears while drawing the sky stay inside the portal (Cirrus)
+        if (!ci.isCancelled()) {
+            IPPortalPassDepthClear.setRenderingSky(true);
+        }
     }
     
     @Inject(
@@ -491,6 +504,8 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
         boolean bl, Runnable runnable, CallbackInfo ci
     ) {
         MyRenderHelper.recoverFaceCulling();
+        // Immersive Aeronautics
+        IPPortalPassDepthClear.setRenderingSky(false);
     }
     
     // correct the eye position for sky rendering

@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
 
 import java.util.ArrayList;
@@ -75,6 +76,7 @@ public final class IPStraddle {
         IPStraddleSessions.reset();
         IPShipCrossingDetector.reset();
         IPStraddleController.reset();
+        IPShipJoints.reset();
         IPPortalRims.reset();
         IPStraddleDebugTrace.reset();
         IPStraddleSync.reset();

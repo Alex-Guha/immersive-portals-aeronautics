@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -89,7 +96,39 @@ public class MyRenderHelper {
                 throw new RuntimeException(e);
             }
         });
-        
+
+        // Immersive Aeronautics: the view-area shader that also hides portals behind Distant Horizons' LODs
+        loadShaderSignal.connect((resourceManager, resultConsumer) -> {
+            try {
+                ShaderInstance shader = new ShaderInstance(
+                    getResourceFactory(resourceManager),
+                    "portal_area_lod",
+                    DefaultVertexFormat.POSITION_COLOR
+                );
+                resultConsumer.accept(shader);
+                portalAreaLodShader = shader;
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // Immersive Aeronautics: a fading global portal's backdrop blended back (IPGlobalPortalFade)
+        loadShaderSignal.connect((resourceManager, resultConsumer) -> {
+            try {
+                ShaderInstance shader = new ShaderInstance(
+                    getResourceFactory(resourceManager),
+                    "portal_fade",
+                    DefaultVertexFormat.BLIT_SCREEN
+                );
+                resultConsumer.accept(shader);
+                portalFadeShader = shader;
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         loadShaderSignal.connect((resourceManager, resultConsumer) -> {
             try {
                 ShaderInstance shader = new ShaderInstance(
@@ -141,6 +180,10 @@ public class MyRenderHelper {
     
     public static DrawFbInAreaShader drawFbInAreaShader;
     public static ShaderInstance portalAreaShader;
+    // Immersive Aeronautics: see IPDhLodOcclusion
+    public static ShaderInstance portalAreaLodShader;
+    // Immersive Aeronautics: see IPGlobalPortalFade
+    public static ShaderInstance portalFadeShader;
     public static ShaderInstance blitScreenNoBlendShader;
     
     public static void drawPortalAreaWithFramebuffer(

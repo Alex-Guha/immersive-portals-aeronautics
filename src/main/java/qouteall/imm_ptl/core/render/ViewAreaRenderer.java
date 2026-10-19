@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -13,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.IPGlobal;
+import qouteall.imm_ptl.core.compat.dh_integration.IPDhLodOcclusion;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -28,7 +36,23 @@ public class ViewAreaRenderer {
         boolean doFaceCulling, boolean doModifyColor,
         boolean doModifyDepth, boolean doClip
     ) {
-        
+        renderPortalArea(
+            portal, fogColor, modelViewMatrix, projectionMatrix,
+            doFaceCulling, doModifyColor, doModifyDepth, doClip, false
+        );
+    }
+
+    /**
+     * Immersive Aeronautics: {@code hideBehindDhLods} also discards the parts of the view area behind this pass's
+     * Distant Horizons LODs, which never reach the depth buffer ({@link IPDhLodOcclusion}).
+     */
+    public static void renderPortalArea(
+        Portal portal, Vec3 fogColor,
+        Matrix4f modelViewMatrix, Matrix4f projectionMatrix,
+        boolean doFaceCulling, boolean doModifyColor,
+        boolean doModifyDepth, boolean doClip, boolean hideBehindDhLods
+    ) {
+
         if (doFaceCulling) {
             GlStateManager._enableCull();
         }
@@ -82,7 +106,14 @@ public class ViewAreaRenderer {
         CHelper.enableDepthClamp();
         
         ShaderInstance shader = MyRenderHelper.portalAreaShader;
-        RenderSystem.setShader(() -> shader);
+        // Immersive Aeronautics: the LOD-aware variant when this pass has DH's depth
+        if (hideBehindDhLods && MyRenderHelper.portalAreaLodShader != null
+            && IPDhLodOcclusion.applyTo(MyRenderHelper.portalAreaLodShader)
+        ) {
+            shader = MyRenderHelper.portalAreaLodShader;
+        }
+        ShaderInstance chosenShader = shader;
+        RenderSystem.setShader(() -> chosenShader);
         
         shader.MODEL_VIEW_MATRIX.set(modelViewMatrix);
         shader.PROJECTION_MATRIX.set(projectionMatrix);

@@ -5,6 +5,10 @@ package qouteall.imm_ptl.core.compat.sable_straddle;
 
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
+import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -14,8 +18,9 @@ import net.minecraft.network.chat.Component;
 import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
 
 /**
- * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hook
- * {@code /ip_aeronautics straddle debug rope <from> <to>} (operators only).
+ * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
+ * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel} and {@code debug joints} (operators
+ * only).
  * Registered only with Sable present.
  */
 public final class IPStraddleCommand {
@@ -35,7 +40,9 @@ public final class IPStraddleCommand {
                                 .then(Commands.literal("rope")
                                         .then(Commands.argument("from", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("to", BlockPosArgument.blockPos())
-                                                        .executes(IPStraddleCommand::tieRope)))))));
+                                                        .executes(IPStraddleCommand::tieRope))))
+                                .then(Commands.literal("swivel").executes(IPStraddleCommand::assembleSwivels))
+                                .then(Commands.literal("joints").executes(IPStraddleCommand::listJoints)))));
     }
 
     private static int setEnabled(final CommandContext<CommandSourceStack> context, final boolean on) {
@@ -59,6 +66,33 @@ public final class IPStraddleCommand {
         }
         context.getSource().sendSuccess(() -> Component.literal("Tied " + from.toShortString() + " to " + to.toShortString()), true);
         return 1;
+    }
+
+    /** Test hook: assembles every unassembled swivel bearing on the ships of the command's dimension. */
+    private static int assembleSwivels(final CommandContext<CommandSourceStack> context) {
+        final int count = IPShipJoints.assembleSwivelBearings(context.getSource().getLevel());
+        context.getSource().sendSuccess(() -> Component.literal("Assembling " + count + " swivel bearing(s)"), true);
+        return count;
+    }
+
+    /** Test hook: lists the ships of the command's dimension joined to other ships, with their partners. */
+    private static int listJoints(final CommandContext<CommandSourceStack> context) {
+        final ServerSubLevelContainer container = SubLevelContainer.getContainer(context.getSource().getLevel());
+        int jointed = 0;
+        if (container != null) {
+            for (final ServerSubLevel ship : container.getAllSubLevels()) {
+                final var partners = IPShipJoints.partners(ship);
+                if (!partners.isEmpty()) {
+                    jointed++;
+                    final String line = "Ship " + ship.getUniqueId() + " jointed to " + partners;
+                    context.getSource().sendSuccess(() -> Component.literal(line), true);
+                }
+            }
+        }
+        final int total = jointed;
+        context.getSource().sendSuccess(() -> Component.literal(total + " jointed ship(s) in "
+                + context.getSource().getLevel().dimension().location()), true);
+        return total;
     }
 
     private static int status(final CommandContext<CommandSourceStack> context) {

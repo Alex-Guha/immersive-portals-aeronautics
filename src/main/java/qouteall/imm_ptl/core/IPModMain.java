@@ -119,6 +119,11 @@ public class IPModMain {
             qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors.init();
         }
 
+        // Immersive Aeronautics: Create shafts through portals
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShafts.init();
+        }
+
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             PortalCommand.register(event.getDispatcher(), event.getBuildContext());
             // Immersive Aeronautics: ship straddling switch (Sable classes only load with Sable present)

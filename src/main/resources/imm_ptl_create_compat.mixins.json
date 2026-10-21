@@ -37,7 +37,10 @@
     "MixinFluidPropagator_PortalPipes",
     "MixinFluidPipeBlock_PortalPipes",
     "MixinPipeConnection_PortalPipes",
-    "MixinPumpBlockEntity_PortalPipes"
+    "MixinPumpBlockEntity_PortalPipes",
+    "MixinKineticBlockEntity_PortalShafts",
+    "MixinKineticNetwork_PortalShafts",
+    "IPRotationPropagatorInvoker"
   ],
   "injectors": {
     "defaultRequire": 0
@@ -81,6 +84,9 @@
     "MixinOutliner_StaffSelection",
     "MixinHotAirBurnerRenderer_StraddleClip",
     "MixinControlsHandler_FollowCarriage",
-    "MixinPipeAttachmentModel_PortalPipes"
+    "MixinPipeAttachmentModel_PortalPipes",
+    "IPLevelRendererSectionInvoker",
+    "MixinClientLevel_PortalPipeStubs",
+    "MixinKineticBlockEntity_PortalShaftPhase"
   ]
 }

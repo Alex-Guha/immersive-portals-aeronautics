@@ -152,6 +152,17 @@ versionRange="${minecraft_version_range}"
 ordering="NONE"
 side="BOTH"
 
+# Create Transferables carries Create shafts and fluid pipes through portals, which we do natively (pipes since 2.4.14,
+# shafts since 2.4.19): with both installed, both act on the same blocks. NeoForge refuses to launch with the pair and
+# shows the reason.
+[[dependencies.ip_aeronautics]]
+modId="transferables"
+type="incompatible"
+reason="Immersive Portals: Aeronautics already carries Create shafts and fluid pipes through portals. Remove Create Transferables."
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.

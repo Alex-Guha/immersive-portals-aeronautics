@@ -98,8 +98,21 @@ public class IPModEntryClient {
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onClientTick
             );
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PreGameRenderEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onPreGameRender
+            );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onAddSectionGeometry
+            );
+            // Immersive Aeronautics: the turning half shafts inside portal blocks, between a shaft and the portal plane
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PostClientTickEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onClientTick
+            );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PreGameRenderEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onPreGameRender
             );
         }
 

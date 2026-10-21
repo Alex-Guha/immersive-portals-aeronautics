@@ -108,7 +108,10 @@ final class IPStraddleController {
     private static final double PARTNER_REACH = 32.0;
     /** Diagnostics: last tick a "declined" line was logged per ship and portal. */
     private static final Map<String, Long> DECLINED_LOGGED = new HashMap<>();
-    /** How long [ticks] a ship wholly through a portal waits for the ships tied to it before crossing alone. */
+    /**
+     * How long [ticks] a ship wholly through a portal waits for the ships roped to it before crossing alone. Ships tied
+     * only by joints wait as long as the joints hold.
+     */
     private static final long GROUP_WAIT_TICKS = 100;
     /** Extra clip depth [blocks] for a ship waiting for the ships tied to it. */
     private static final double WAITING_EXTRA_DEPTH = 16.0;
@@ -193,8 +196,10 @@ final class IPStraddleController {
      * Hands off the ships wholly through a portal this tick. Ships tied together by ropes or joints ({@link
      * #crossingGroup}) cross as a group, in the same tick, with their ropes; their joints' owners rebuild the joints in
      * the destination. A ship whose group is not all through the same portal yet waits in its session (physically in
-     * the destination already) for up to {@value #GROUP_WAIT_TICKS} ticks, then crosses alone, its ropes to the others
-     * broken as before.
+     * the destination already). In a group with ropes it waits up to {@value #GROUP_WAIT_TICKS} ticks, then crosses
+     * alone, its ropes to the others broken as before (a roped ship can drift a rope's length past the plane, beyond
+     * its session's reach). A ship tied only by joints waits as long as they hold: its partners keep it within reach of
+     * the plane, and the group sits in the portal like one straddling ship.
      */
     private static void handOffAll(final MinecraftServer server, final List<Handoff> handoffs, final long tick) {
         final Map<UUID, Handoff> ready = new HashMap<>();
@@ -208,14 +213,16 @@ final class IPStraddleController {
             if (done.contains(shipId)) {
                 continue;
             }
-            Set<UUID> group = crossingGroup(handoff.level(), handoff.ship());
+            final boolean[] roped = {false};
+            Set<UUID> group = crossingGroup(handoff.level(), handoff.ship(), roped);
             Map<UUID, Handoff> members = group.size() > 1 ? groupHandoffs(group, handoff, ready, tick) : Map.of(shipId, handoff);
             if (members == null) {
                 final long since = WAITING_SINCE.computeIfAbsent(shipId, id -> tick);
-                if (tick - since < GROUP_WAIT_TICKS) {
+                if (!roped[0] || tick - since < GROUP_WAIT_TICKS) {
                     if (since == tick) {
-                        LOGGER.info("[IPStraddle] ship {} is through portal {}; waiting for the {} other ship(s) tied to it",
-                                shipId, handoff.portal().getUUID(), group.size() - 1);
+                        LOGGER.info("[IPStraddle] ship {} is through portal {}; waiting for the {} other ship(s) tied to it ({})",
+                                shipId, handoff.portal().getUUID(), group.size() - 1,
+                                roped[0] ? "roped: up to " + GROUP_WAIT_TICKS + " ticks" : "jointed: while the joints hold");
                     }
                     waitForGroup(handoff, tick);
                     done.add(shipId);
@@ -255,20 +262,28 @@ final class IPStraddleController {
      * joints between ships (swivel bearings, docking connectors), directly or through other ships, including {@code ship}
      */
     static Set<UUID> crossingGroup(final ServerLevel level, final ServerSubLevel ship) {
+        return crossingGroup(level, ship, null);
+    }
+
+    /** @param roped if not null, its element is set when a rope ties any two ships of the group */
+    private static Set<UUID> crossingGroup(final ServerLevel level, final ServerSubLevel ship, @Nullable final boolean[] roped) {
         final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         final Set<UUID> group = new HashSet<>();
-        final Set<UUID> roped = new HashSet<>();
+        final Set<UUID> inRopeGroup = new HashSet<>();
         final Deque<ServerSubLevel> queue = new ArrayDeque<>();
         group.add(ship.getUniqueId());
         queue.add(ship);
         while (!queue.isEmpty()) {
             final ServerSubLevel member = queue.poll();
             final Set<UUID> tied = new HashSet<>(IPShipJoints.partners(member));
-            if (!roped.contains(member.getUniqueId())) {
+            if (!inRopeGroup.contains(member.getUniqueId())) {
                 // a rope group is closed: its other members need no lookup of their own
                 final Set<UUID> ropeGroup = IPShipRopeCompat.ropeGroup(level, member);
-                roped.addAll(ropeGroup);
+                inRopeGroup.addAll(ropeGroup);
                 tied.addAll(ropeGroup);
+                if (roped != null && ropeGroup.size() > 1) {
+                    roped[0] = true;
+                }
             }
             for (final UUID id : tied) {
                 if (group.add(id) && container != null && container.getSubLevel(id) instanceof final ServerSubLevel next

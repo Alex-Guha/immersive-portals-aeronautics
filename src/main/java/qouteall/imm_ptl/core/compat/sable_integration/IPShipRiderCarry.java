@@ -39,7 +39,8 @@ import qouteall.imm_ptl.core.teleportation.ServerTeleportationManager;
 
 /**
  * Carries entities along with a ship through a portal. {@link #capture} collects entities in the ship's
- * plot-space chunks, entities inside its world AABB (excluding IP's own entities) and players riding a vehicle
+ * plot-space chunks, entities inside its world AABB (excluding IP's own entities and Create trains with their riders,
+ * which Create moves between dimensions itself) and players riding a vehicle
  * in the plot, recording mount links and Create seat positions, and gives everyone a
  * {@value #CARRIED_PORTAL_COOLDOWN_TICKS}-tick portal cooldown. {@link #replay} moves vehicles first (vehicle +
  * passengers as a unit via IP), players via {@code forceTeleportPlayer} and other entities via
@@ -112,16 +113,27 @@ public final class IPShipRiderCarry {
             }
         }
 
-        // (b) everything inside the hull in world space
+        // (b) everything inside the hull in world space, except a train the ship rests on and its passengers
         AABB hull = IPSableBridge.worldAabb(sub).inflate(1.0);
+        int leftOnTrain = 0;
 
         for (Entity entity : level.getEntities((Entity) null, hull, e -> true)) {
-            if (!seen.contains(entity.getUUID()) && !isPortalInfrastructure(entity)) {
+            if (seen.contains(entity.getUUID()) || isPortalInfrastructure(entity)) {
+                continue;
+            }
+
+            if (IPShipCreateCompat.isOnTrain(entity)) {
+                leftOnTrain++;
+            } else {
                 Vec3 offset = entity.position().subtract(subPos);
                 if (!(offset.lengthSqr() > MAX_RIDER_OFFSET_SQR) && seen.add(entity.getUUID())) {
                     bindings.add(new Binding(entity.getUUID(), entity.position(), entity.getYRot(), entity.getXRot(), false));
                 }
             }
+        }
+
+        if (leftOnTrain > 0) {
+            LOGGER.info("[IPShipPortal] ship {} leaves {} train carriage copy(ies) and rider(s) under it to Create", sub.getUniqueId(), leftOnTrain);
         }
 
         // (c) players riding a vehicle that is on the ship (plus the vehicle, and the seat block to re-sit on)

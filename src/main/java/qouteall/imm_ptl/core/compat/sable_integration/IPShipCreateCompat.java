@@ -16,6 +16,7 @@ import com.simibubi.create.content.contraptions.glue.SuperGlueEntity;
 import com.simibubi.create.content.contraptions.piston.LinearActuatorBlockEntity;
 import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.trains.entity.CarriageContraptionEntity;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import java.util.ArrayList;
@@ -126,7 +127,29 @@ public final class IPShipCreateCompat {
         }
     }
 
+    /**
+     * Whether {@code entity} is a Create train carriage or rides one. A train is never cargo of a ship resting on it:
+     * Create moves carriages between dimensions itself, one copy per dimension, all sharing one UUID, and a copy
+     * removed as {@code CHANGED_DIMENSION} saves as an empty tag, from which Create later deletes the whole train.
+     */
+    public static boolean isOnTrain(Entity entity) {
+        if (!CREATE_LOADED) {
+            return false;
+        } else {
+            try {
+                return IPShipCreateCompat.Impl.isOnTrain(entity);
+            } catch (Throwable e) {
+                LOGGER.warn("[IPShipPortal] create: train check failed for {}: {}", entity, e.toString());
+                return false;
+            }
+        }
+    }
+
     private static final class Impl {
+        static boolean isOnTrain(Entity entity) {
+            return entity.getRootVehicle() instanceof CarriageContraptionEntity;
+        }
+
         private static List<BlockEntity> blockEntitiesOf(ServerLevel level, ServerSubLevel sub) {
             ArrayList<BlockEntity> result = new ArrayList<>();
 

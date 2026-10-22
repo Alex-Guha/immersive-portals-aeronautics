@@ -18,7 +18,6 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.neoforged.neoforge.common.NeoForge;
 import org.joml.Matrix4f;
-import org.joml.Quaternionfc;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -39,7 +38,6 @@ import qouteall.imm_ptl.core.render.CrossPortalViewRendering;
 import qouteall.imm_ptl.core.render.GuiPortalRendering;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
-import qouteall.imm_ptl.core.render.TransformationManager;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
@@ -310,21 +308,9 @@ public abstract class MixinGameRenderer implements IEGameRenderer {
         return result;
     }
     
-    @WrapOperation(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lorg/joml/Matrix4f;rotation(Lorg/joml/Quaternionfc;)Lorg/joml/Matrix4f;",
-            remap = false
-        )
-    )
-    private Matrix4f wrapCameraTransformation(
-        Matrix4f instance, Quaternionfc quat, Operation<Matrix4f> original
-    ) {
-        Matrix4f r = original.call(instance, quat);
-        return TransformationManager.processTransformation(mainCamera, r);
-    }
-    
+    // Immersive Aeronautics: the camera transformation wrapper (Matrix4f.rotation in renderLevel) moved to
+    // MixinGameRenderer_CameraTransform, which applies at a higher priority and has a fallback (Figura dropped it)
+
     @Override
     public void ip_setLightmapTextureManager(LightTexture manager) {
         lightTexture = manager;

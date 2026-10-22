@@ -61,7 +61,6 @@ import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
-import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 
 /**
  * The far half of a pipe going into a portal when no pipe waits on the other side. {@link IPCreatePortalPipeModel}
@@ -153,7 +152,7 @@ public final class IPCreatePortalPipeStubs {
         final Map<ClientLevel, List<ShipStub>> onShips = new IdentityHashMap<>();
         for (final ClientLevel world : worlds.values()) {
             for (final Entity entity : world.entitiesForRendering()) {
-                if (entity instanceof BreakablePortalEntity portal) {
+                if (entity instanceof Portal portal) {
                     scan(world, portal, worlds, found, onShips);
                 }
             }

@@ -60,7 +60,6 @@ import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
-import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 
 /**
  * The shaft inside a portal block. A shaft going into a nether-style portal ends at the portal block's face, half a
@@ -149,7 +148,7 @@ public final class IPCreatePortalShaftHalves {
         final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts = IPCreatePortalShaftPhase.newFound();
         for (final ClientLevel world : worlds.values()) {
             for (final Entity entity : world.entitiesForRendering()) {
-                if (entity instanceof BreakablePortalEntity portal) {
+                if (entity instanceof Portal portal) {
                     scan(world, portal, worlds, found, shifts);
                 }
             }

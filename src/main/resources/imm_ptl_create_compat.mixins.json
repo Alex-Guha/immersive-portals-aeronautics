@@ -9,6 +9,9 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "MixinCreateAllPortalTracks",
+    "MixinCreateTeleportersFrameCheck_PortalBlocks",
+    "MixinTrackBlock_PortalTracks",
+    "MixinTrackBlockEntity_PortalTracks",
     "MixinCreateContraptionCollision",
     "MixinIPTrainRiderTeleport",
     "MixinCarriageDimensionalEntity_SeamlessRiderTeleport",

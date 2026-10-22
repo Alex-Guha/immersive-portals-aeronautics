@@ -23,17 +23,18 @@ import java.util.Set;
  * anything without its mod.
  */
 public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
-    private static final Map<String, String> MOD_BY_PACKAGE = Map.of(
-        "com.seibel.distanthorizons.", "distanthorizons",
-        "net.diebuddies.", "physicsmod",
-        "com.anton.shieldgenerators.", "shield_generators",
-        "net.irisshaders.", "iris",
-        "team.lodestar.lodestone.", "lodestone",
-        "com.cmdpro.databank.", "databank",
-        "dev.ryanhcode.sable.", "sable",
-        "dev.simulated_team.simulated.", "simulated",
-        "dev.eriksonn.aeronautics.", "aeronautics",
-        "toni.sodiumdynamiclights.", "sodiumdynamiclights"
+    private static final Map<String, String> MOD_BY_PACKAGE = Map.ofEntries(
+        Map.entry("com.seibel.distanthorizons.", "distanthorizons"),
+        Map.entry("net.diebuddies.", "physicsmod"),
+        Map.entry("com.anton.shieldgenerators.", "shield_generators"),
+        Map.entry("net.irisshaders.", "iris"),
+        Map.entry("team.lodestar.lodestone.", "lodestone"),
+        Map.entry("com.cmdpro.databank.", "databank"),
+        Map.entry("dev.ryanhcode.sable.", "sable"),
+        Map.entry("dev.simulated_team.simulated.", "simulated"),
+        Map.entry("dev.eriksonn.aeronautics.", "aeronautics"),
+        Map.entry("toni.sodiumdynamiclights.", "sodiumdynamiclights"),
+        Map.entry("net.createteleporters.", "createteleporters")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(

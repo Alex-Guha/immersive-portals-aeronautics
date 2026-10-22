@@ -111,6 +111,7 @@
     "client.render.MixinEntityRenderDispatcher",
     "client.render.MixinFrustum_FixDeadLoop",
     "client.render.MixinGameRenderer",
+    "client.render.MixinGameRenderer_CameraTransform",
     "client.render.MixinGlStateManager",
     "client.render.MixinLevelRenderer",
     "client.render.MixinLevelRenderer_BeforeIris",

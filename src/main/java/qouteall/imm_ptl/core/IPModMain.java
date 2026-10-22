@@ -122,6 +122,8 @@ public class IPModMain {
         // Immersive Aeronautics: Create shafts through portals
         if (net.neoforged.fml.ModList.get().isLoaded("create")) {
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShafts.init();
+            // portal blocks in framed plain portals (Create Teleporters'), so tracks, shafts and pipes bridge them
+            qouteall.imm_ptl.core.compat.IPFramedPortalBlocks.init();
         }
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {

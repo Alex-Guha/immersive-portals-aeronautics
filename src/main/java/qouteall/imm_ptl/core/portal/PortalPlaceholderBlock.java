@@ -1,7 +1,15 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -84,6 +92,19 @@ public class PortalPlaceholderBlock extends Block {
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(AXIS);
+    }
+    
+    // Immersive Aeronautics: Create tracks laid up to a portal before it opened get their bridge into it now
+    private static final boolean CREATE = net.neoforged.fml.ModList.get().isLoaded("create");
+    
+    @Override
+    protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
+        super.onPlace(state, level, pos, oldState, movedByPiston);
+        if (CREATE && level instanceof ServerLevel serverLevel && !oldState.is(this)) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTracks.onPortalBlockPlaced(
+                serverLevel, pos, state.getValue(AXIS)
+            );
+        }
     }
     
     @Override

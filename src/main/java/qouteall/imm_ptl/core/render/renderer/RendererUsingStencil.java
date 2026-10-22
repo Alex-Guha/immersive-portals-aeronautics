@@ -113,13 +113,26 @@ public class RendererUsingStencil extends PortalRenderer {
         }
         
         client.getMainRenderTarget().bindWrite(false);
-        
+
+        GlStateManager._enableDepthTest();
+        // Immersive Aeronautics: the stencil state is set, not inherited from the last frame's GUI
+        resetStencilForFrame();
+
+    }
+
+    /**
+     * Immersive Aeronautics: the outer world is drawn with the stencil test on until the portal pass, so its stencil
+     * state is set here instead of inherited from the last frame's GUI. Catnip's StencilElement (Create's config
+     * screen) leaves glStencilFunc(GL_EQUAL, 1) behind, which hid everything drawn before the translucent layer;
+     * a write mask other than 0xFF would also leave the clear below incomplete.
+     */
+    public static void resetStencilForFrame() {
+        GL11.glStencilMask(0xFF);
         GL11.glClearStencil(0);
         GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT);
-        
-        GlStateManager._enableDepthTest();
+        GL11.glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        GL11.glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         GL11.glEnable(GL_STENCIL_TEST);
-        
     }
     
     @Override

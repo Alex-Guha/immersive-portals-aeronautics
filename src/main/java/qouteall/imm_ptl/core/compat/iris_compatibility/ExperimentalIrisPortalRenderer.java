@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat.iris_compatibility;
 
 import com.mojang.blaze3d.platform.GlStateManager;
@@ -83,13 +90,11 @@ public class ExperimentalIrisPortalRenderer extends PortalRenderer {
         }
         
         client.getMainRenderTarget().bindWrite(false);
-        
-        GL11.glClearStencil(0);
-        GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT);
-        
+
         GlStateManager._enableDepthTest();
-        GL11.glEnable(GL_STENCIL_TEST);
-        
+        // Immersive Aeronautics: the stencil state is set, not inherited from the last frame's GUI
+        RendererUsingStencil.resetStencilForFrame();
+
     }
     
     @Override

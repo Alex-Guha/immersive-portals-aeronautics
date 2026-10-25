@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.compat.mixin.iris;
 
 import net.caffeinemc.mods.sodium.client.gl.shader.uniform.GlUniformFloat4v;
@@ -45,7 +52,10 @@ public class MixinIrisSodiumShader {
     private void onSetup(CallbackInfo ci) {
         if (uIPClippingEquation != null) {
             if (FrontClipping.isClippingEnabled) {
-                double[] equation = FrontClipping.getActiveClipPlaneEquationAfterModelView();
+                // Immersive Aeronautics: world terrain only (Sable draws ships with vanilla shader instances), so
+                // without the 1 cm band at mid-block planes, as in Sodium's own shader (MixinSodiumDefaultShaderInterface):
+                // with a pack, pipe stubs ending in a nether portal's plane showed their last centimetre on its back
+                double[] equation = FrontClipping.getActiveTerrainClipPlaneEquationAfterModelView();
                 uIPClippingEquation.set(new float[]{
                     (float) equation[0], (float) equation[1], (float) equation[2], (float) equation[3]
                 });

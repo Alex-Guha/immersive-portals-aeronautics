@@ -1,0 +1,24 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "qouteall.imm_ptl.core.compat.mixin_voxy",
+  "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "IPVoxyIrisPipelineManagerAccessor",
+    "IPVoxyIrisRenderPipelineAccessor",
+    "IPVoxyViewportSelectorAccessor",
+    "MixinLevelRenderer_VoxyCreationLevel",
+    "MixinSodiumDefaultChunkRenderer_VoxyStencil",
+    "MixinVoxyAbstractRenderPipeline_PortalStencil",
+    "MixinVoxyCommon_ShutdownAllRenderers",
+    "MixinVoxyMipGen_OneAtATime",
+    "MixinVoxyRenderGenerationService_PortalSideResults",
+    "MixinVoxyRenderPipelineFactory_OwnDimension",
+    "MixinVoxyRenderSystem_OwnHeightRange",
+    "MixinVoxyRenderSystem_PortalView"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

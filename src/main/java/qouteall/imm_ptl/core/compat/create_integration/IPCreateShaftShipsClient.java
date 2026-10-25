@@ -8,13 +8,16 @@ import dev.engine_room.flywheel.impl.visualization.VisualManagerImpl;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
 import dev.ryanhcode.sable.neoforge.mixinhelper.compatibility.flywheel.SubLevelEmbedding;
 import dev.ryanhcode.sable.neoforge.mixinterface.compatibility.flywheel.BlockEntityStorageExtension;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4d;
 
 /**
  * The client Sable side of the half shafts in portal blocks ({@link IPCreatePortalShaftHalves}): a ship's Flywheel
  * visuals are drawn in one embedding per ship, which Sable moves with the ship each frame
  * ({@code BlockEntityStorageMixin}); half shafts on a ship are instances of that embedding, so they follow the ship
- * and get its light and IP's straddle cut as its block entities do. Only loaded when Sable is.
+ * and get its light and IP's straddle cut as its block entities do. With Flywheel's backend off they are drawn
+ * through the ship's render pose instead ({@link #renderPose}). Only loaded when Sable is.
  */
 final class IPCreateShaftShipsClient {
     private IPCreateShaftShipsClient() {
@@ -36,5 +39,13 @@ final class IPCreateShaftShipsClient {
         } catch (final IllegalArgumentException notClientSide) {
             return null;
         }
+    }
+
+    /** Plot coordinates to world coordinates as {@code frame}'s ship is drawn this frame, or null if it is not a ship. */
+    static @Nullable Matrix4d renderPose(final IPCreatePortalShafts.Frame frame) {
+        if (!(frame instanceof IPCreateShaftShips.ShipFrame ship) || !(ship.subLevel() instanceof ClientSubLevel client)) {
+            return null;
+        }
+        return client.renderPose().bakeIntoMatrix(new Matrix4d());
     }
 }

@@ -17,7 +17,8 @@ import qouteall.imm_ptl.core.compat.create_integration.IPCreateTrainControls;
 
 /**
  * A train driven through a portal ({@link IPCreateTrainControls}): Create's reach test to a contraption in another
- * dimension than the player goes through a portal next to the player, and every stop of a carriage's driver is logged.
+ * dimension than the player goes through a portal next to the player, as does a failed one to a carriage in the
+ * player's level (a portal within it), and every stop of a carriage's driver is logged.
  */
 @Mixin(value = AbstractContraptionEntity.class, remap = false)
 public class MixinAbstractContraptionEntity_TrainControls {
@@ -29,6 +30,18 @@ public class MixinAbstractContraptionEntity_TrainControls {
                                        final CallbackInfoReturnable<Boolean> cir) {
         final AbstractContraptionEntity self = (AbstractContraptionEntity) (Object) this;
         if (player.level() != self.level()) {
+            cir.setReturnValue(IPCreateTrainControls.canReach(self, player, localPos, distance));
+        }
+    }
+
+    @Inject(
+        method = "canInteractWithBlock(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/phys/Vec3;D)Z",
+        at = @At("RETURN"), cancellable = true, require = 0, expect = 0
+    )
+    private void ip_reachThroughPortalWithin(final Player player, final Vec3 localPos, final double distance,
+                                             final CallbackInfoReturnable<Boolean> cir) {
+        final AbstractContraptionEntity self = (AbstractContraptionEntity) (Object) this;
+        if (!cir.getReturnValueZ() && self instanceof CarriageContraptionEntity && player.level() == self.level()) {
             cir.setReturnValue(IPCreateTrainControls.canReach(self, player, localPos, distance));
         }
     }

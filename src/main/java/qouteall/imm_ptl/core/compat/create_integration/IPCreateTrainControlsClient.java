@@ -24,8 +24,9 @@ import org.slf4j.Logger;
  * Create's {@code ControlsHandler} holds the carriage copy whose controls were clicked, sends every input with that
  * entity's id, and stops controlling once the entity is removed: the copy on the side the carriage has left is
  * discarded a few ticks after, while its driver may still be on that side (standing by, or at the carriage's back).
- * The controls switch to the carriage's copy in the player's dimension when there is one, and otherwise keep the copy
- * they have while it lives, even past a portal (the server finds it and measures reach through the portal). When it is
+ * The controls switch to the carriage's copy the player rides, else keep the copy they have while it is in the
+ * player's level, else switch to the copy in that level nearest the player; otherwise they keep the copy they have
+ * while it lives, even past a portal (the server finds it and measures reach through the portal). When it is
  * removed they switch to any live copy, and resend the held keys at once. While no copy lives but the train still
  * exists, Create's tick is skipped (no input, no stop) for up to {@link #GRACE_TICKS}.
  */
@@ -58,7 +59,7 @@ public final class IPCreateTrainControlsClient {
             waitingTicks = 0;
             return Action.CONTINUE;
         }
-        final CarriageContraptionEntity copy = IPCreateTrainControls.bestCopy(carriage, player.level());
+        final CarriageContraptionEntity copy = IPCreateTrainControls.bestCopy(carriage, player);
         if (copy == carriage) {
             waitingTicks = 0;
             return Action.CONTINUE;

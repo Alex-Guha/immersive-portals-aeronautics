@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
 import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.content.trains.entity.Carriage;
+import com.simibubi.create.content.trains.entity.CarriageBogey;
 import com.simibubi.create.content.trains.entity.CarriageContraption;
 import com.simibubi.create.content.trains.entity.CarriageContraptionEntity;
 import dev.engine_room.flywheel.api.backend.RenderContext;
@@ -64,6 +65,8 @@ public final class IPCreateCarriageCrossingClient {
     private static final double SEAM = FrontClipping.ADJUSTMENT;
     private static final float[] REJECT = {0f, 0f, 0f, -1f};
 
+    /** The carriage copy whose bogeys are being placed on this thread ({@code translateBogey} has no entity). */
+    private static final ThreadLocal<CarriageContraptionEntity> BOGEY_COPY = new ThreadLocal<>();
     /** Flywheel embeddings of carriages (the carriage's own and its bogeys'), by embedding. Flywheel's worker threads add them. */
     private static final Map<EmbeddedEnvironment, WeakReference<CarriageContraptionEntity>> EMBEDDINGS =
         java.util.Collections.synchronizedMap(new WeakHashMap<>());
@@ -91,7 +94,7 @@ public final class IPCreateCarriageCrossingClient {
             return;
         }
         final boolean live = entity.getCarriage() != null
-            && IPCreateCarriageCrossing.hasPointIn(entity.getCarriage(), entity.level().dimension());
+            && IPCreateCarriageCrossing.hasPointIn(entity.getCarriage(), IPCreateTrainSides.keyOf(entity));
         if (!live && !IPCreateCarriageCrossing.STOCK) {
             // no wheel point in this dimension: Create's anchors here are stale; follow() places and cuts the copy
             FAR_HALVES.remove(entity);
@@ -112,7 +115,7 @@ public final class IPCreateCarriageCrossingClient {
         holder.ip_setCrossing(crossing);
         refreshRendered(entity);
         if (crossing == null && contraption instanceof final CarriageContraption carriageContraption
-            && !carriageContraption.notInPortal()) {
+            && !carriageContraption.notInPortal() && !usesCreateCut(contraption)) {
             final long key = ((long) carriageContraption.portalCutoffMin << 32) ^ (carriageContraption.portalCutoffMax & 0xffffffffL);
             final Long previousKey = CUT_LOGGED.put(entity, key);
             if (previousKey == null || previousKey != key) {
@@ -233,12 +236,49 @@ public final class IPCreateCarriageCrossingClient {
     }
 
     private static long renderedKey(final CarriageContraption contraption) {
-        // on the client Create's cut never applies (MixinCarriageContraption_SeamlessCrossing)
-        return !IPCreateCarriageCrossing.STOCK
+        // on the client Create's cut applies only with stockTrains (MixinCarriageContraption_SeamlessCrossing)
+        return !usesCreateCut(contraption)
             || contraption instanceof final IPCarriageCrossingHolder holder && holder.ip_getCrossing() != null
             || contraption.notInPortal()
             ? Long.MIN_VALUE
             : ((long) contraption.portalCutoffMin << 32) ^ (contraption.portalCutoffMax & 0xffffffffL);
+    }
+
+    /**
+     * Whether Create's own whole-block cut (and purple glass) applies to a copy on the client: only with
+     * {@code -Dip_aeronautics.stockTrains=true}. Otherwise copies are drawn whole, cut at the plane by a crossing of
+     * ours, at portals into another dimension and within one alike.
+     */
+    public static boolean usesCreateCut(final Contraption contraption) {
+        return IPCreateCarriageCrossing.STOCK;
+    }
+
+    public static void beginBogey(@Nullable final Entity entity) {
+        BOGEY_COPY.set(entity instanceof final CarriageContraptionEntity copy ? copy : null);
+    }
+
+    public static void endBogey() {
+        BOGEY_COPY.remove();
+    }
+
+    /**
+     * An angle of a bogey as the copy placing it shows it: Create's (the bogey's real heading, kept current by
+     * {@code MixinCarriageBogey_TrainSides}) when the bogey's wheels are on this copy's side of a portal, else
+     * {@code alongCopy}, the copy's own heading, as Create does for a bogey in another dimension. A copy's part past its
+     * portal is placed straight on through it, so a bogey there (or one split by the portal) runs along the copy; with
+     * its real heading it showed turned by the portal's rotation (90 degrees between perpendicular portals).
+     */
+    public static float bogeyAngle(final CarriageBogey bogey, final float createAngle, final float alongCopy) {
+        final CarriageContraptionEntity copy = BOGEY_COPY.get();
+        final Carriage carriage = copy == null ? null : copy.getCarriage();
+        // a carriage with one copy, or derailed (Create's angle then carries its derail tilt), is Create's
+        if (carriage == null || IPCreateCarriageCrossing.STOCK || carriage.train.derailed
+            || ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().size() < 2) {
+            return createAngle;
+        }
+        final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> side =
+            IPCreateTrainSides.bogeySide(bogey, bogey.getDimension());
+        return side != null && side.equals(IPCreateTrainSides.keyOf(copy)) ? createAngle : alongCopy;
     }
 
     @Nullable
@@ -316,23 +356,24 @@ public final class IPCreateCarriageCrossingClient {
     static String traceState(final CarriageContraptionEntity entity) {
         final Carriage carriage = entity.getCarriage();
         final StringBuilder text = new StringBuilder();
-        text.append("wheels ").append(carriage == null ? "?" : IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) ? "Y" : "N")
+        text.append("wheels ").append(carriage == null ? "?" : IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity)) ? "Y" : "N")
             .append(" aligned ").append(ALIGNED_TICKS.getOrDefault(entity, 0))
             .append(" valid ").append(entity.validForRender ? "Y" : "N")
             .append(" firstPos ").append(entity.firstPositionUpdate ? "Y" : "N")
             .append(FOLLOWING.containsKey(entity) ? " following" : "")
             .append(isStaleCopy(entity) ? " STALE" : "");
         if (carriage != null) {
-            final Carriage.DimensionalCarriageEntity dce = carriage.getDimensional(entity.level());
-            text.append(" init ").append(dce.pointsInitialised ? "Y" : "N");
+            final Carriage.DimensionalCarriageEntity dce = IPCreateTrainSides.existingRecordOf(carriage, entity);
+            text.append(" key ").append(IPCreateTrainSides.keyOf(entity).location().getPath())
+                .append(" init ").append(dce == null ? "no record" : dce.pointsInitialised ? "Y" : "N");
         }
         final IPCreateCarriageCrossing.Crossing farHalf = FAR_HALVES.get(entity);
         if (farHalf != null) {
-            text.append(" drawsFarHalfInto ").append(farHalf.portal().getDestDim().location().getPath());
+            text.append(" drawsFarHalfInto ").append(farHalf.otherKey().location().getPath());
         }
         if (!IPCreateCarriageCrossing.STOCK && isHidden(entity)) {
             text.append(" HIDDEN(").append(carriage == null ? "no carriage" : !entity.validForRender ? "not valid"
-                : !IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) ? "no wheels"
+                : !IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity)) ? "no wheels"
                 : isStaleCopy(entity) ? "stale" : "covered by far half").append(')');
         }
         final IPCreateCarriageCrossing.Crossing crossing = crossingOf(entity);
@@ -369,15 +410,16 @@ public final class IPCreateCarriageCrossingClient {
     /**
      * The crossing of a copy that is not split but reaches through an IP portal: the carriage's axis (through its
      * rotation anchors) goes through the portal's opening and its bounding box reaches past the plane. Kept is the side
-     * of the carriage's middle.
+     * of the carriage's middle. At a portal within the copy's dimension, the copy past it will have the side key of the
+     * pair's face there.
      */
     @Nullable
     private static IPCreateCarriageCrossing.Crossing reachingThrough(final CarriageContraptionEntity entity) {
         final Carriage carriage = entity.getCarriage();
-        if (carriage == null || !IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension())) {
+        if (carriage == null || !IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity))) {
             return null;
         }
-        final Carriage.DimensionalCarriageEntity dce = carriage.getDimensional(entity.level());
+        final Carriage.DimensionalCarriageEntity dce = IPCreateTrainSides.existingRecordOf(carriage, entity);
         final Vec3 first = dce.rotationAnchors.getFirst();
         final Vec3 second = dce.rotationAnchors.getSecond();
         if (first == null || second == null || !IPCreateCarriageCrossing.isFinite(first)
@@ -388,9 +430,9 @@ public final class IPCreateCarriageCrossingClient {
         final Vec3 axis = first.subtract(second).normalize();
         final AABB box = entity.getBoundingBox();
         final List<Portal> portals = IPPortalLookup.touching(entity.level(), box.inflate(0.5),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && !p.getDestDim().equals(entity.level().dimension())
-                && Math.abs(p.getScale() - 1.0) < 1.0E-6);
+            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6);
         Portal best = null;
+        Vec3 bestHit = null;
         double bestDistance = Double.MAX_VALUE;
         for (final Portal portal : portals) {
             final Vec3 normal = portal.getNormal();
@@ -410,6 +452,7 @@ public final class IPCreateCarriageCrossingClient {
             }
             if (Math.abs(distance) < bestDistance) {
                 best = portal;
+                bestHit = hit;
                 bestDistance = Math.abs(distance);
             }
         }
@@ -417,7 +460,23 @@ public final class IPCreateCarriageCrossingClient {
             return null;
         }
         final double sign = best.getDistanceToPlane(middle) < 0.0 ? -1.0 : 1.0;
-        return new IPCreateCarriageCrossing.Crossing(best, best.getOriginPos(), best.getNormal().scale(sign), true);
+        return new IPCreateCarriageCrossing.Crossing(best, best.getOriginPos(), best.getNormal().scale(sign), true,
+            otherKeyThrough(best, bestHit));
+    }
+
+    /**
+     * The key a copy past this portal has: its destination dimension, or for a portal within one dimension the side
+     * key of the portal-edge face nearest where the carriage's axis comes out (the axis runs at bogey height, the face
+     * at track level half a block from the plane).
+     */
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> otherKeyThrough(
+        final Portal portal, final Vec3 hit) {
+        if (!portal.getDestDim().equals(portal.level().dimension())) {
+            return portal.getDestDim();
+        }
+        final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> face =
+            IPCreateTrainSides.faceKeyNear(portal.getDestDim(), portal.transformPoint(hit), 3.0);
+        return face != null ? face : portal.getDestDim();
     }
 
     private static boolean reachesPast(final AABB box, final Vec3 point, final Vec3 keepNormal) {
@@ -447,7 +506,7 @@ public final class IPCreateCarriageCrossingClient {
         if (carriage == null || !entity.validForRender) {
             return true;
         }
-        if (!IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) || isStaleCopy(entity)) {
+        if (!IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity)) || isStaleCopy(entity)) {
             return true;
         }
         return isCoveredByFarHalf(entity);
@@ -466,7 +525,7 @@ public final class IPCreateCarriageCrossingClient {
         if (IPCreateCarriageCrossing.STOCK || carriage == null) {
             return false;
         }
-        final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension = entity.level().dimension();
+        final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension = IPCreateTrainSides.keyOf(entity);
         FOLLOWING.remove(entity);
         if (IPCreateCarriageCrossing.hasPointIn(carriage, dimension)) {
             return false;
@@ -483,7 +542,7 @@ public final class IPCreateCarriageCrossingClient {
             final Vec3 first = leader.rotationAnchors.getFirst();
             final Vec3 second = leader.rotationAnchors.getSecond();
             if (leaderEntity == null || leaderEntity.isRemoved() || crossing == null
-                || !crossing.portal().getDestDim().equals(dimension) || anchor == null || first == null || second == null
+                || !crossing.otherKey().equals(dimension) || anchor == null || first == null || second == null
                 || !IPCreateCarriageCrossing.isFinite(anchor) || !IPCreateCarriageCrossing.isFinite(first)
                 || !IPCreateCarriageCrossing.isFinite(second)) {
                 continue;
@@ -511,10 +570,10 @@ public final class IPCreateCarriageCrossingClient {
             FOLLOWING.put(entity, Boolean.TRUE);
             // its cut: this dimension's portal back to the leader, keeping the side away from the leader's part
             final Vec3 keepPoint = portal.transformPoint(crossing.keepPoint());
-            final Portal back = portalBack(entity.level(), keepPoint, entry.getKey());
+            final Portal back = portalBack(entity.level(), keepPoint, IPCreateTrainSides.realDimension(entry.getKey()));
             if (entity.getContraption() instanceof final IPCarriageCrossingHolder holder) {
                 holder.ip_setCrossing(back == null ? null : new IPCreateCarriageCrossing.Crossing(back, keepPoint,
-                    portal.transformLocalVecNonScale(crossing.keepNormal()).scale(-1.0), false));
+                    portal.transformLocalVecNonScale(crossing.keepNormal()).scale(-1.0), false, entry.getKey()));
                 refreshRendered(entity);
             }
             return true;
@@ -543,7 +602,7 @@ public final class IPCreateCarriageCrossingClient {
         final Carriage carriage = entity.getCarriage();
         return carriage == null || IPCreateCarriageCrossing.STOCK
             || (!isStaleCopy(entity)
-            && (IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()) || FOLLOWING.containsKey(entity)));
+            && (IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity)) || FOLLOWING.containsKey(entity)));
     }
 
     /**
@@ -555,8 +614,7 @@ public final class IPCreateCarriageCrossingClient {
         if (carriage == null) {
             return false;
         }
-        final Carriage.DimensionalCarriageEntity own =
-            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(entity.level().dimension());
+        final Carriage.DimensionalCarriageEntity own = IPCreateTrainSides.existingRecordOf(carriage, entity);
         final CarriageContraptionEntity current = own != null ? own.entity.get() : null;
         final boolean stale = current != null && current != entity && !current.isRemoved();
         if (stale && STALE_LOGGED.put(entity, Boolean.TRUE) == null) {
@@ -573,7 +631,7 @@ public final class IPCreateCarriageCrossingClient {
             return false;
         }
         final Carriage.DimensionalCarriageEntity other =
-            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(crossing.portal().getDestDim());
+            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(crossing.otherKey());
         final CarriageContraptionEntity copy = other != null ? other.entity.get() : null;
         return copy != null && copy != entity && !copy.isRemoved() && isPlaced(copy);
     }
@@ -613,8 +671,7 @@ public final class IPCreateCarriageCrossingClient {
             return "no carriage";
         }
         final StringBuilder text = new StringBuilder();
-        final Carriage.DimensionalCarriageEntity own =
-            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(entity.level().dimension());
+        final Carriage.DimensionalCarriageEntity own = IPCreateTrainSides.existingRecordOf(carriage, entity);
         if (own != null) {
             IPCreateCarriageCrossing.of(entity, own);
             text.append("crossing: ").append(IPCreateCarriageCrossing.lastFailure()).append("; ");
@@ -623,7 +680,7 @@ public final class IPCreateCarriageCrossingClient {
             com.simibubi.create.Create.RAILWAYS.sided(entity.level()).trains.get(carriage.train.id);
         text.append("train object current: ").append(current == carriage.train)
             .append(", carriage in it: ").append(current != null && current.carriages.contains(carriage)).append("; ");
-        text.append("wheels here: ").append(IPCreateCarriageCrossing.hasPointIn(carriage, entity.level().dimension()));
+        text.append("wheels here: ").append(IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(entity)));
         text.append("; following: ").append(FOLLOWING.containsKey(entity));
         for (final Map.Entry<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>, Carriage.DimensionalCarriageEntity> entry :
             ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().entrySet()) {
@@ -647,22 +704,23 @@ public final class IPCreateCarriageCrossingClient {
             return false;
         }
         final Carriage.DimensionalCarriageEntity other =
-            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(crossing.portal().getDestDim());
+            ((qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor) carriage).ip_getEntities().get(crossing.otherKey());
         final CarriageContraptionEntity copy = other != null ? other.entity.get() : null;
-        return copy != null && !copy.isRemoved() && copy.validForRender && ALIGNED_TICKS.getOrDefault(copy, 0) >= 2;
+        return copy != null && copy != entity && !copy.isRemoved() && copy.validForRender && ALIGNED_TICKS.getOrDefault(copy, 0) >= 2;
     }
 
     /**
-     * Whether another copy of this copy's carriage draws its far half into this copy's dimension.
+     * Whether another copy of this copy's carriage draws its far half into this copy's dimension (or portal side).
      */
     private static boolean isCoveredByFarHalf(final CarriageContraptionEntity entity) {
         if (FAR_HALVES.isEmpty() || entity.getCarriage() == null) {
             return false;
         }
+        final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> key = IPCreateTrainSides.keyOf(entity);
         for (final Map.Entry<CarriageContraptionEntity, IPCreateCarriageCrossing.Crossing> entry : FAR_HALVES.entrySet()) {
             final CarriageContraptionEntity other = entry.getKey();
             if (other != entity && !other.isRemoved() && other.getCarriage() == entity.getCarriage()
-                && entry.getValue().portal().getDestDim().equals(entity.level().dimension())) {
+                && entry.getValue().otherKey().equals(key)) {
                 return true;
             }
         }
@@ -670,8 +728,9 @@ public final class IPCreateCarriageCrossingClient {
     }
 
     /**
-     * After a level's Flywheel pass: draws the parts of carriages of other dimensions that reach into this one through
-     * a portal, with their own dimension's engine and the camera mapped back through that portal; one draw per portal.
+     * After a level's Flywheel pass: draws the parts of carriages that reach into this level through a portal (from
+     * another dimension, or from elsewhere in this one), with their own level's engine and the camera mapped back
+     * through that portal; one draw per portal.
      */
     public static void drawFarHalves(final RenderContext context) {
         if (FAR_HALVES.isEmpty()) {
@@ -683,7 +742,7 @@ public final class IPCreateCarriageCrossingClient {
             final CarriageContraptionEntity entity = entry.getKey();
             final Portal portal = entry.getValue().portal();
             if (entity.isRemoved() || portal.isRemoved() || !(entity.level() instanceof ClientLevel)
-                || entity.level() == level || !portal.getDestDim().equals(level.dimension())) {
+                || !portal.getDestDim().equals(level.dimension())) {
                 continue;
             }
             byPortal.computeIfAbsent(portal, p -> new java.util.IdentityHashMap<>()).put(entity, entry.getValue());

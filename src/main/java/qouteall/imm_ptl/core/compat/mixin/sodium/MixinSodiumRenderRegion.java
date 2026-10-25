@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.IESodiumRenderRegion;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.q_misc_util.Helper;
 
@@ -30,6 +31,10 @@ public class MixinSodiumRenderRegion implements IESodiumRenderRegion {
     
     @Unique
     private @Nullable ObjectArrayList<ChunkRenderList> chunkRenderListsForPortalRendering = null;
+    
+    /** Immersive Aeronautics: the portal layers' lists for Iris's shadow pass. See {@link #getRenderList()}. */
+    @Unique
+    private @Nullable ObjectArrayList<ChunkRenderList> ip_shadowListsForPortalRendering = null;
     
     /** The render list the cached draw batches were last filled from. See {@link MixinSodiumDefaultChunkRenderer}. */
     @Unique
@@ -65,14 +70,23 @@ public class MixinSodiumRenderRegion implements IESodiumRenderRegion {
         
         RenderRegion this_ = (RenderRegion) (Object) this;
         
-        if (chunkRenderListsForPortalRendering == null) {
+        // Immersive Aeronautics: with a shader pack a portal pass runs Iris's shadow pass too. Iris swaps renderList
+        // (and the cached batches) to a shadow list of its own for it, but the layer's list was handed out anyway, so
+        // the shadow pass overwrote the sections and face sets the portal view then drew (whole chunk surfaces missing
+        // in portal views). Each layer gets a shadow list of its own, apart from the player's view's shadow list,
+        // which Iris may reuse in the next frame.
+        boolean shadow = IrisInterface.invoker.isRenderingShadowMap();
+        if (shadow && ip_shadowListsForPortalRendering == null) {
+            ip_shadowListsForPortalRendering = new ObjectArrayList<>();
+        }
+        if (!shadow && chunkRenderListsForPortalRendering == null) {
             chunkRenderListsForPortalRendering = new ObjectArrayList<>();
         }
         
         int layer = PortalRendering.getPortalLayer();
         int index = layer - 1;
         ChunkRenderList result = Helper.arrayListComputeIfAbsent(
-            chunkRenderListsForPortalRendering,
+            shadow ? ip_shadowListsForPortalRendering : chunkRenderListsForPortalRendering,
             index,
             () -> new ChunkRenderList(this_)
         );

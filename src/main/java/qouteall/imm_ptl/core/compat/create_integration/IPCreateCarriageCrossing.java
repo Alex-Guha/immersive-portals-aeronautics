@@ -33,7 +33,9 @@ import qouteall.imm_ptl.core.portal.Portal;
 /**
  * A Create carriage crossing an IP portal (docs/lessons/create.md). Create keeps one carriage entity per dimension the
  * carriage spans; each is placed from the bogeys in its own dimension and, for the part in the other one, from a straight
- * extrapolation through the portal-track node ({@code DimensionalCarriageEntity.pivot}).
+ * extrapolation through the portal-track node ({@code DimensionalCarriageEntity.pivot}). At a portal back into the same
+ * dimension the two copies are keyed by portal side instead ({@link IPCreateTrainSides}); everything here goes by a
+ * copy's key ({@code IPCreateTrainSides.keyOf}), so both kinds of portal are crossed the same way.
  * <p>
  * Create counts the step between the two portal-track nodes as length 0 ({@code TrackEdge.getLength} of an
  * inter-dimensional edge), but the nodes sit on the faces of the track blocks while an IP portal's plane runs through
@@ -98,15 +100,17 @@ public final class IPCreateCarriageCrossing {
      * @param keepNormal the plane's normal, pointing to the side this copy's own part lies on
      * @param farHalf    the carriage is not split (Create has no copy on the other side yet, or no longer): the part
      *                   past the plane is drawn in the other dimension through the portal (client only)
+     * @param otherKey   the key of the carriage's copy past the portal ({@code Carriage.entities}): the portal's
+     *                   destination dimension, or for a portal within one dimension the side key of its far face
      */
-    public record Crossing(Portal portal, Vec3 keepPoint, Vec3 keepNormal, boolean farHalf) {
+    public record Crossing(Portal portal, Vec3 keepPoint, Vec3 keepNormal, boolean farHalf, ResourceKey<Level> otherKey) {
         /** @return whether a world position of this copy's dimension lies past the portal plane */
         public boolean isBeyond(final Vec3 position) {
             return position.subtract(keepPoint).dot(keepNormal) < 0.0;
         }
     }
 
-    private record CachedPortal(TrackNodeLocation node, ResourceKey<Level> otherDim, Portal portal) {
+    private record CachedPortal(TrackNodeLocation node, ResourceKey<Level> otherKey, Portal portal) {
     }
 
     /** The last crossing of each copy, for a copy Create keeps a few ticks after the carriage left. */
@@ -114,7 +118,7 @@ public final class IPCreateCarriageCrossing {
         Collections.synchronizedMap(new WeakHashMap<>());
 
     /**
-     * @return the crossing of this copy of a carriage, or null if the carriage is not split between this dimension
+     * @return the crossing of this copy of a carriage, or null if the carriage is not split between this copy's key
      * and one other through an IP portal
      */
     @Nullable
@@ -127,36 +131,37 @@ public final class IPCreateCarriageCrossing {
             return fail("no carriage");
         }
         final Level level = entity.level();
-        final ResourceKey<Level> dimension = level.dimension();
+        final ResourceKey<Level> key = IPCreateTrainSides.keyOf(entity);
         TrackNodeLocation otherNode = null;
-        ResourceKey<Level> otherDim = null;
+        ResourceKey<Level> otherKey = null;
         for (final Map.Entry<ResourceKey<Level>, Carriage.DimensionalCarriageEntity> entry :
             ((IPCarriageAccessor) carriage).ip_getEntities().entrySet()) {
-            if (entry.getKey().equals(dimension) || entry.getValue() == null || entry.getValue().pivot == null) {
+            if (entry.getValue() == dce || entry.getKey().equals(key) || entry.getValue() == null
+                || entry.getValue().pivot == null) {
                 continue;
             }
             if (otherNode != null) {
-                // spread over three dimensions: leave it to Create
+                // spread over three dimensions (or portal sides): leave it to Create
                 return fail("portal nodes in three dimensions");
             }
             otherNode = entry.getValue().pivot;
-            otherDim = entry.getKey();
+            otherKey = entry.getKey();
         }
         if (otherNode == null) {
             // Create keeps a copy for a few ticks after the carriage has left its dimension (manageEntities'
             // discardTicks); the other copy's node is gone by then. That copy lies entirely past the plane: it keeps
             // its last cut, which hides it
             final Crossing last = LAST.get(dce);
-            if (last != null && !hasPointIn(carriage, dimension)) {
+            if (last != null && !hasPointIn(carriage, key)) {
                 return last;
             }
             LAST.remove(dce);
             return fail("no portal node in another dimension");
         }
         final Vec3 node = dce.pivot.getLocation();
-        final Portal portal = portalAt(level, dce, dce.pivot, otherDim);
+        final Portal portal = portalAt(level, dce, dce.pivot, otherKey, otherNode);
         if (portal == null) {
-            return fail("no IP portal to " + otherDim.location() + " at node " + node);
+            return fail("no IP portal to " + otherKey.location() + " at node " + node);
         }
         final Vec3 gap = portal.inverseTransformPoint(otherNode.getLocation()).subtract(node);
         if (gap.lengthSqr() > MAX_GAP * MAX_GAP) {
@@ -168,7 +173,7 @@ public final class IPCreateCarriageCrossing {
             normal = normal.scale(-1.0);
         }
         GAPS.put(portal.getUUID(), gap.length());
-        final Crossing crossing = new Crossing(portal, origin, normal, false);
+        final Crossing crossing = new Crossing(portal, origin, normal, false, otherKey);
         LAST.put(dce, crossing);
         return crossing;
     }
@@ -198,11 +203,12 @@ public final class IPCreateCarriageCrossing {
         // a search made while no wheel was here found nothing (a client copy aligned from the anchors Create kept from
         // an earlier trip, before this client's carriage reached the portal): searched again as the wheels arrive, or
         // the new copy stood unshifted, up to the gap ahead, for the rest of the interval (the front flashed ahead)
-        final boolean withWheel = hasWheelIn(carriage, level.dimension());
+        final ResourceKey<Level> key = IPCreateTrainSides.keyOf(entity);
+        final boolean withWheel = hasWheelIn(carriage, key);
         if (approach == null || now - approach.searchedAt() >= SEARCH_INTERVAL || now < approach.searchedAt()
             || (approach.portal() != null && approach.portal().isRemoved()) || approach.withWheel() != withWheel) {
             final Approach previous = approach;
-            approach = search(level, carriage, middle, axis, approach, now);
+            approach = search(level, key, carriage, middle, axis, approach, now);
             APPROACHES.put(dce, approach);
             if (previous != null && withWheel && !previous.withWheel() && previous.portal() == null
                 && approach.portal() != null && now - previous.searchedAt() < SEARCH_INTERVAL) {
@@ -229,15 +235,15 @@ public final class IPCreateCarriageCrossing {
 
     /**
      * Finds the portal whose opening the carriage's axis runs through, within SEARCH of its middle, with a Create
-     * portal track in front of it on the side of the carriage's wheels in this dimension.
+     * portal track in front of it on the side of the carriage's wheels under this copy's key. Portals back into the
+     * same dimension count too: a portal track in front of one is a portal edge of ours ({@link IPCreatePortalEdges}).
      */
-    private static Approach search(final Level level, final Carriage carriage, final Vec3 middle, final Vec3 axis,
-                                   @Nullable final Approach previous, final long now) {
-        final Vec3 wheel = wheelIn(carriage, level.dimension());
+    private static Approach search(final Level level, final ResourceKey<Level> key, final Carriage carriage,
+                                   final Vec3 middle, final Vec3 axis, @Nullable final Approach previous, final long now) {
+        final Vec3 wheel = wheelIn(carriage, key);
         final List<Portal> candidates = IPPortalLookup.touching(
             level, new AABB(middle, middle).inflate(SEARCH),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && !p.getDestDim().equals(level.dimension())
-                && Math.abs(p.getScale() - 1.0) < 1.0E-6
+            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6
         );
         Portal best = null;
         Vec3 bestNormal = null;
@@ -292,7 +298,7 @@ public final class IPCreateCarriageCrossing {
         return false;
     }
 
-    /** @return the position of a wheel point of the carriage in this dimension, or null */
+    /** @return the position of a wheel point of the carriage under this key (a dimension or a portal side), or null */
     @Nullable
     private static Vec3 wheelIn(final Carriage carriage, final ResourceKey<Level> dimension) {
         for (final CarriageBogey bogey : carriage.bogeys) {
@@ -300,7 +306,7 @@ public final class IPCreateCarriageCrossing {
                 continue;
             }
             for (final TravellingPoint point : new TravellingPoint[]{bogey.leading(), bogey.trailing()}) {
-                if (point.node1 != null && point.edge != null && dimension.equals(point.node1.getLocation().dimension)) {
+                if (point.node1 != null && point.edge != null && dimension.equals(IPCreateTrainSides.pointKey(carriage, point))) {
                     return point.getPosition(carriage.train.graph);
                 }
             }
@@ -315,7 +321,7 @@ public final class IPCreateCarriageCrossing {
                 continue;
             }
             for (final TravellingPoint point : new TravellingPoint[]{bogey.leading(), bogey.trailing()}) {
-                if (point.node1 != null && point.edge != null && dimension.equals(point.node1.getLocation().dimension)) {
+                if (point.node1 != null && point.edge != null && dimension.equals(IPCreateTrainSides.pointKey(carriage, point))) {
                     return true;
                 }
             }
@@ -327,14 +333,17 @@ public final class IPCreateCarriageCrossing {
         return Double.isFinite(v.x) && Double.isFinite(v.y) && Double.isFinite(v.z);
     }
 
-    /** @return whether a wheel point of the carriage is in this dimension (as Create's manageEntities counts it) */
+    /**
+     * @return whether a wheel point of the carriage is in this dimension, or on this side of a portal within one
+     * dimension (as Create's manageEntities counts it, keys of {@link IPCreateTrainSides})
+     */
     public static boolean hasPointIn(final Carriage carriage, final ResourceKey<Level> dimension) {
         for (final CarriageBogey bogey : carriage.bogeys) {
             if (bogey == null) {
                 continue;
             }
             for (final TravellingPoint point : new TravellingPoint[]{bogey.leading(), bogey.trailing()}) {
-                if (point.node1 == null || dimension.equals(point.node1.getLocation().dimension)) {
+                if (point.node1 == null || dimension.equals(IPCreateTrainSides.pointKey(carriage, point))) {
                     return true;
                 }
             }
@@ -357,18 +366,27 @@ public final class IPCreateCarriageCrossing {
         return reason != null ? reason : "?";
     }
 
+    /**
+     * The IP portal at a copy's portal-track node leading to the other copy's node: into the other dimension, or
+     * within this one to the pair's other face (within {@link #MAX_GAP} of where the portal maps this node).
+     */
     @Nullable
     private static Portal portalAt(final Level level, final Carriage.DimensionalCarriageEntity dce,
-                                   final TrackNodeLocation node, final ResourceKey<Level> otherDim) {
+                                   final TrackNodeLocation node, final ResourceKey<Level> otherKey,
+                                   final TrackNodeLocation otherNode) {
         final CachedPortal cached = PORTALS.get(dce);
-        if (cached != null && cached.node().equals(node) && cached.otherDim().equals(otherDim)
+        if (cached != null && cached.node().equals(node) && cached.otherKey().equals(otherKey)
             && !cached.portal().isRemoved() && cached.portal().level() == level) {
             return cached.portal();
         }
+        final ResourceKey<Level> otherDim = IPCreateTrainSides.realDimension(otherKey);
+        final boolean within = otherDim.equals(level.dimension());
         final Vec3 location = node.getLocation();
+        final Vec3 otherLocation = otherNode.getLocation();
         final List<Portal> candidates = IPPortalLookup.touching(
             level, new AABB(location, location).inflate(1.5),
             p -> !(p instanceof Mirror) && p.getTeleportable() && otherDim.equals(p.getDestDim())
+                && (!within || p.transformPoint(location).distanceToSqr(otherLocation) < MAX_GAP * MAX_GAP)
         );
         Portal best = null;
         double bestDistance = Double.MAX_VALUE;
@@ -381,7 +399,7 @@ public final class IPCreateCarriageCrossing {
             }
         }
         if (best != null) {
-            PORTALS.put(dce, new CachedPortal(node, otherDim, best));
+            PORTALS.put(dce, new CachedPortal(node, otherKey, best));
         } else {
             PORTALS.remove(dce);
         }

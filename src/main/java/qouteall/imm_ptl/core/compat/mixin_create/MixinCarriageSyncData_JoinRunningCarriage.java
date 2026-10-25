@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageCrossing;
+import qouteall.imm_ptl.core.compat.create_integration.IPCreateTrainSides;
 
 /**
  * The first sync data of a carriage copy that is not initialised on the client yet ({@code dce.pointsInitialised})
@@ -32,13 +33,14 @@ public class MixinCarriageSyncData_JoinRunningCarriage {
         if (IPCreateCarriageCrossing.STOCK || carriage == null || entity == null) {
             return;
         }
-        final Carriage.DimensionalCarriageEntity dce = carriage.getDimensional(entity.level());
+        final Carriage.DimensionalCarriageEntity own = IPCreateTrainSides.recordOf(carriage, entity);
+        final Carriage.DimensionalCarriageEntity dce = own != null ? own : carriage.getDimensional(entity.level());
         if (dce.pointsInitialised) {
             return;
         }
         for (final Map.Entry<ResourceKey<Level>, Carriage.DimensionalCarriageEntity> entry :
             ((IPCarriageAccessor) carriage).ip_getEntities().entrySet()) {
-            if (entry.getKey().equals(entity.level().dimension()) || entry.getValue() == null) {
+            if (entry.getValue() == dce || entry.getValue() == null) {
                 continue;
             }
             final Carriage.DimensionalCarriageEntity other = entry.getValue();

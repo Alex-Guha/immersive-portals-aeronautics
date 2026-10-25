@@ -10,9 +10,6 @@
 package qouteall.imm_ptl.core.platform_specific;
 
 import com.google.gson.JsonObject;
-import me.shedaniel.autoconfig.ConfigData;
-import me.shedaniel.autoconfig.annotation.Config;
-import me.shedaniel.autoconfig.annotation.ConfigEntry;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.IPGlobal;
@@ -22,89 +19,52 @@ import qouteall.q_misc_util.Helper;
 
 import java.util.HashSet;
 
-@Config(name = "immersive_portals")
-public class IPConfig implements ConfigData {
+// Immersive Aeronautics: a plain class saved by IPConfigHolder (was Cloth Config's AutoConfig); the options the
+// config screen shows, their bounds and tooltips are listed in IPConfigScreen
+public class IPConfig {
     // json does not allow comments...
-    @ConfigEntry.Gui.Excluded
     public String check_the_wiki_for_more_information = "https://qouteall.fun/immptl/wiki/Config-Options";
     
     // client visible configs
     
-    @ConfigEntry.Category("client")
-    @ConfigEntry.BoundedDiscrete(min = 0, max = 10)
-    @ConfigEntry.Gui.Tooltip
     public int maxPortalLayer = 5;
-    @ConfigEntry.Category("client")
-    @ConfigEntry.Gui.Tooltip
     public boolean lagAttackProof = true;
-    @ConfigEntry.Category("client")
     public boolean enableCrossPortalSound = true;
-    @ConfigEntry.Category("client")
-    @ConfigEntry.Gui.Tooltip
     public boolean pureMirror = false;
-    @ConfigEntry.Category("client")
     public boolean renderYourselfInPortal = true;
-    @ConfigEntry.Category("client")
-    @ConfigEntry.Gui.Tooltip
     public boolean correctCrossPortalEntityRendering = true;
-    @ConfigEntry.Category("client")
     public boolean reducedPortalRendering = false;
     // Immersive Aeronautics: how far away a dimension stack's floor or ceiling is drawn, in chunks (0: the render
     // distance; more needs Distant Horizons); it fades out over the last quarter (IPGlobalPortalFade)
-    @ConfigEntry.Category("client")
-    @ConfigEntry.BoundedDiscrete(min = 0, max = 256)
-    @ConfigEntry.Gui.Tooltip
     public int dimensionStackViewDistance = 0;
-    @ConfigEntry.Category("client")
     public boolean netherPortalOverlay = false;
-    @ConfigEntry.Category("client")
     public boolean enableNetherPortalEffect = true;
-    @ConfigEntry.Category("client")
-    @ConfigEntry.Gui.Tooltip
     public boolean enableClientPerformanceAdjustment = true;
-    @ConfigEntry.Category("client")
     public boolean clientTolerantVersionMismatchWithServer = false;
-    @ConfigEntry.Category("client")
-    @ConfigEntry.Gui.Tooltip
     public boolean compatibilityRenderMode = false;
     
     // client invisible configs
     
-    @ConfigEntry.Gui.Excluded
     public boolean checkModInfoFromInternet = false;
-    @ConfigEntry.Gui.Excluded
     public boolean enableUpdateNotification = false;
-    @ConfigEntry.Gui.Excluded
     public boolean sharedBlockMeshBufferOptimization = true;
-    @ConfigEntry.Gui.Excluded
     public boolean enableClippingMechanism = true;
-    @ConfigEntry.Gui.Excluded
     public boolean visibilityPrediction = true;
-    @ConfigEntry.Gui.Excluded
     public boolean useDepthClampForPortalRendering = true;
-    @ConfigEntry.Gui.Excluded
     public boolean enableCrossPortalView = true;
-    @ConfigEntry.Gui.Excluded
     public int portalRenderLimit = 200;
-    @ConfigEntry.Gui.Excluded
     public boolean doCheckGlError = false;
-    @ConfigEntry.Gui.Excluded
     public boolean shaderpackWarning = true;
-    @ConfigEntry.Gui.Excluded
     public int portalWandCursorAlignment = 2; // zero for no align
-    @ConfigEntry.Gui.Excluded
     public boolean saveMemoryInBufferPack = false;
-    @ConfigEntry.Gui.Excluded
     public boolean initialScreenShown = true;
     
     // common visible configs
     
-    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)
     public IPGlobal.NetherPortalMode netherPortalMode =
         IPFeatureControl.enableVanillaBehaviorChangingByDefault() ?
             IPGlobal.NetherPortalMode.adaptive : IPGlobal.NetherPortalMode.vanilla;
     
-    @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.BUTTON)
     public IPGlobal.EndPortalMode endPortalMode =
         IPFeatureControl.enableVanillaBehaviorChangingByDefault() ?
             IPGlobal.EndPortalMode.normal : IPGlobal.EndPortalMode.vanilla;
@@ -114,52 +74,32 @@ public class IPConfig implements ConfigData {
     
     public boolean enableWarning = true;
     public boolean lightVanillaNetherPortalWhenCrouching = true;
-    @ConfigEntry.Gui.Tooltip
     public boolean enableServerPerformanceAdjustment = true;
     public boolean enableDatapackPortalGen = true;
-    @ConfigEntry.BoundedDiscrete(min = 1, max = 32)
-    @ConfigEntry.Gui.Tooltip
     public int indirectLoadingRadiusCap = 8;
-    @ConfigEntry.BoundedDiscrete(min = 3, max = 64)
     public int regularPortalLengthLimit = 64;
-    @ConfigEntry.BoundedDiscrete(min = 4, max = 128)
     public int scaleLimit = 30;
-    @ConfigEntry.Gui.Tooltip
     public boolean easeCreativePermission = true;
-    @ConfigEntry.Gui.Tooltip
     public boolean easeCommandStickPermission = false;
     public boolean portalsChangeGravityByDefault = false;
     public boolean portalWandUsableOnSurvivalMode = false;
     // Immersive Aeronautics: portals on Sable ships (docs/plans/ship-mounted-portals.md)
-    @ConfigEntry.Gui.Tooltip
     public boolean shipMountedPortals = true;
 
     // common invisible configs
     
-    @ConfigEntry.Gui.Excluded
     public int portalSearchingRange = 128;
-    @ConfigEntry.Gui.Excluded
     public boolean serverSideNormalChunkLoading = true;
-    @ConfigEntry.Gui.Excluded
     public boolean teleportationDebug = false;
-    @ConfigEntry.Gui.Excluded
     public boolean looseMovementCheck = false;
-    @ConfigEntry.Gui.Excluded
     public boolean chunkPacketDebug = false;
-    @ConfigEntry.Gui.Excluded
     public boolean enableImmPtlChunkLoading = true;
-    @ConfigEntry.Gui.Excluded
     public boolean serverTolerantVersionMismatchWithClient = false;
-    @ConfigEntry.Gui.Excluded
     public boolean serverRejectClientWithoutImmPtl = true;
-    @ConfigEntry.Gui.Excluded
     public boolean serverTeleportLogging = false;
-    @ConfigEntry.Gui.Excluded
     public boolean enableCrossPortalInteraction = true;
-    @ConfigEntry.Gui.Excluded
     public HashSet<String> disabledWarnings = new HashSet<>();
     
-    @ConfigEntry.Gui.Excluded
     @Nullable
     public JsonObject dimStackPreset = null;
     

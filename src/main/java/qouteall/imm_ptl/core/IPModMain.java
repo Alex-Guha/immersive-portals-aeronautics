@@ -9,10 +9,7 @@ package qouteall.imm_ptl.core;
 
 import com.mojang.logging.LogUtils;
 import de.nick1st.imm_ptl.networking.Payloads;
-import me.shedaniel.autoconfig.AutoConfig;
-import me.shedaniel.autoconfig.serializer.GsonConfigSerializer;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.IEventBus;
@@ -39,7 +36,7 @@ import qouteall.imm_ptl.core.miscellaneous.GcMonitor;
 import qouteall.imm_ptl.core.network.ImmPtlNetworkConfig;
 import qouteall.imm_ptl.core.network.ImmPtlNetworking;
 import qouteall.imm_ptl.core.network.PacketRedirection;
-import qouteall.imm_ptl.core.platform_specific.IPConfig;
+import qouteall.imm_ptl.core.platform_specific.IPConfigHolder;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.BreakableMirror;
 import qouteall.imm_ptl.core.portal.EndPortalEntity;
@@ -122,6 +119,8 @@ public class IPModMain {
         // Immersive Aeronautics: Create shafts through portals
         if (net.neoforged.fml.ModList.get().isLoaded("create")) {
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShafts.init();
+            // trains through portals within one dimension: their portal edges, synced to clients
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEdges.init();
             // portal blocks in framed plain portals (Create Teleporters'), so tracks, shafts and pipes bridge them
             qouteall.imm_ptl.core.compat.IPFramedPortalBlocks.init();
         }
@@ -176,13 +175,8 @@ public class IPModMain {
         }
         
         Helper.log("Loading Immersive Portals config");
-        IPGlobal.configHolder = AutoConfig.register(IPConfig.class, GsonConfigSerializer::new);
-        IPGlobal.configHolder.registerSaveListener((configHolder, ipConfig) -> {
-            ipConfig.onConfigChanged();
-            return InteractionResult.SUCCESS;
-        });
-        IPConfig ipConfig = IPConfig.getConfig();
-        ipConfig.onConfigChanged();
+        // Immersive Aeronautics: our own loader (was Cloth Config's AutoConfig); it applies the config as it loads
+        IPGlobal.configHolder = IPConfigHolder.load();
     }
 
     public static void registerBlocksForge(RegisterEvent.RegisterHelper<Block> registerHelper) {

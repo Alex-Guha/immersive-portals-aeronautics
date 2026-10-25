@@ -9,7 +9,6 @@ package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.shaders.Program;
 import com.mojang.logging.LogUtils;
-import me.shedaniel.cloth.clothconfig.shadowed.org.yaml.snakeyaml.Yaml;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
@@ -36,8 +35,7 @@ public class ShaderCodeTransformation {
         return false;
     }
     
-    // snakeyaml does not allow passing generic type
-    // so use another wrapper type to make list generic type work
+    // the wrapper type gives the list its generic type
     public static class ConfigsObj {
         public List<Config> configs;
     }
@@ -60,12 +58,11 @@ public class ShaderCodeTransformation {
     
     public static void init() {
         if (IPGlobal.enableClippingMechanism) {
-            Yaml yaml = new Yaml();
-            
-            String yamlStr = McHelper.readTextResource(McHelper.newResourceLocation(
-                "immersive_portals:shaders/shader_transformation.yaml"
+            // Immersive Aeronautics: JSON read with Gson (was YAML read with Cloth Config's shaded SnakeYAML)
+            String jsonStr = McHelper.readTextResource(McHelper.newResourceLocation(
+                "immersive_portals:shaders/shader_transformation.json"
             ));
-            ConfigsObj configsObj = yaml.loadAs(yamlStr, ConfigsObj.class);
+            ConfigsObj configsObj = IPGlobal.gson.fromJson(jsonStr, ConfigsObj.class);
             
             configs = configsObj.configs;
             
@@ -111,7 +108,7 @@ public class ShaderCodeTransformation {
     }
     
     /**
-     * Immersive Aeronautics: the vanilla terrain shaders (the first entry of shader_transformation.yaml), which also draw
+     * Immersive Aeronautics: the vanilla terrain shaders (the first entry of shader_transformation.json), which also draw
      * Sable ships and get the straddle clip plane {@code ipa_ShipClipEquation} (gl_ClipDistance[1]).
      */
     public static final Set<String> TERRAIN_SHADERS = Set.of(
@@ -120,17 +117,32 @@ public class ShaderCodeTransformation {
     
     /**
      * Immersive Aeronautics: an Iris shader pack's vanilla-path programs standing in for the vanilla terrain shaders
-     * (Iris's {@code ShaderKey} names; shader_transformation.yaml patches them as {@code iris_<name>}). They draw Sable
+     * (Iris's {@code ShaderKey} names; shader_transformation.json patches them as {@code iris_<name>}). They draw Sable
      * ships while a pack is active and get both planes, IP's and the straddle cut.
      */
     public static final Set<String> IRIS_TERRAIN_SHADERS = Set.of(
         "terrain_solid", "terrain_cutout", "terrain_translucent", "moving_block"
     );
 
+    /**
+     * Immersive Aeronautics: an Iris shader pack's vanilla-path entity, block entity, text and particle programs
+     * ({@code ShaderKey} names), patched with IP's clip plane like the vanilla entity shaders.
+     */
+    public static final Set<String> IRIS_ENTITY_SHADERS = Set.of(
+        "entities_alpha", "entities_solid", "entities_solid_diffuse", "entities_solid_bright", "entities_cutout",
+        "entities_cutout_diffuse", "entities_translucent", "entities_eyes", "entities_eyes_trans", "block_entity",
+        "block_entity_bright", "block_entity_diffuse", "be_translucent", "text_be", "text_intensity_be", "text",
+        "text_intensity", "text_bg", "leash", "beacon", "glint", "crumbling", "particles", "particles_trans"
+    );
+
     private static final String IRIS_EXTENDED_SHADER = "net.irisshaders.iris.pipeline.programs.ExtendedShader";
 
     public static boolean isIrisTerrainShader(String shaderName, Object shader) {
         return IRIS_TERRAIN_SHADERS.contains(shaderName) && shader.getClass().getName().equals(IRIS_EXTENDED_SHADER);
+    }
+
+    public static boolean isIrisEntityShader(String shaderName, Object shader) {
+        return IRIS_ENTITY_SHADERS.contains(shaderName) && shader.getClass().getName().equals(IRIS_EXTENDED_SHADER);
     }
 
     public static boolean shouldAddUniform(String shaderName) {

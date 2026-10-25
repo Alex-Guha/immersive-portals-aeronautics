@@ -36,6 +36,7 @@ public final class IPCreateCrossingTrace {
     private static final Logger LOGGER = LogUtils.getLogger();
     static final boolean ENABLED = Boolean.getBoolean("ip_aeronautics.debug.trainTrace");
     private static final int MAX_LINES = 15000;
+    private static int failures;
 
     /** This frame's draws per copy: "pass result" -> count. */
     private static final Map<CarriageContraptionEntity, Map<String, int[]>> DRAWS = new IdentityHashMap<>();
@@ -106,8 +107,10 @@ public final class IPCreateCrossingTrace {
         try {
             log();
         } catch (final Throwable t) {
-            LOGGER.warn("[IPTrainTrace] failed: {}", t.toString());
-            lines = MAX_LINES;
+            // a frame that cannot be described is skipped (2.5.7.4 turned the trace off at the first one)
+            if (failures++ < 3) {
+                LOGGER.warn("[IPTrainTrace] frame {} not traced", frame, t);
+            }
         } finally {
             DRAWS.clear();
             EMBEDDED.clear();
@@ -141,7 +144,7 @@ public final class IPCreateCrossingTrace {
             CarriageContraptionEntity reference = copies.getFirst();
             for (final CarriageContraptionEntity copy : copies) {
                 if (copy.level() == client.level && copy.getCarriage() != null
-                    && IPCreateCarriageCrossing.hasPointIn(copy.getCarriage(), copy.level().dimension())) {
+                    && IPCreateCarriageCrossing.hasPointIn(copy.getCarriage(), IPCreateTrainSides.keyOf(copy))) {
                     reference = copy;
                 }
             }
@@ -157,7 +160,10 @@ public final class IPCreateCrossingTrace {
             for (final CarriageContraptionEntity copy : copies) {
                 final Vec3 position = lerp(copy, partialTick);
                 text.append("\n    #").append(copy.getId()).append(copy == reference ? " (ref) " : " ")
-                    .append(dim(copy.level().dimension())).append(" tick ").append(copy.level().getGameTime())
+                    .append(dim(copy.level().dimension()))
+                    .append(IPCreateTrainSides.isSideCopy(copy)
+                        ? " side " + fmt(IPCreateTrainSides.face(IPCreateTrainSides.keyOf(copy)).getLocation()) : "")
+                    .append(" tick ").append(copy.level().getGameTime())
                     .append('/').append(copy.tickCount)
                     .append(" [").append(IPCreateCarriageCrossingClient.traceState(copy)).append(']')
                     .append(" pos ").append(fmt(position)).append(" x ").append(fmt(copy.position()));
@@ -201,15 +207,17 @@ public final class IPCreateCrossingTrace {
     /** A copy's position mapped into the reference copy's dimension through the portal of either one's crossing. */
     @Nullable
     private static Vec3 mapInto(final CarriageContraptionEntity copy, final Vec3 position, final CarriageContraptionEntity reference) {
-        if (copy.level() == reference.level()) {
+        final ResourceKey<Level> copyKey = IPCreateTrainSides.keyOf(copy);
+        final ResourceKey<Level> referenceKey = IPCreateTrainSides.keyOf(reference);
+        if (copyKey.equals(referenceKey)) {
             return position;
         }
         final IPCreateCarriageCrossing.Crossing own = IPCreateCarriageCrossingClient.crossingOf(copy);
-        if (own != null && own.portal().getDestDim().equals(reference.level().dimension())) {
+        if (own != null && own.otherKey().equals(referenceKey)) {
             return own.portal().transformPoint(position);
         }
         final IPCreateCarriageCrossing.Crossing ref = IPCreateCarriageCrossingClient.crossingOf(reference);
-        if (ref != null && ref.portal().getDestDim().equals(copy.level().dimension())) {
+        if (ref != null && ref.otherKey().equals(copyKey)) {
             final Portal portal = ref.portal();
             return portal.inverseTransformPoint(position);
         }

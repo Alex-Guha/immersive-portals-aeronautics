@@ -89,7 +89,8 @@ final class IPSablePortalSyncClient {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft != null && minecraft.isSameThread() && !minecraft.isPaused()) {
                 LocalPlayer player = minecraft.player;
-                if (player != null) {
+                // IP's world list is empty from a vanilla dimension change until IP sets it up again
+                if (player != null && ClientWorldLoader.getIsInitialized()) {
                     Level currentLevel = player.level();
                     inPortalTick = true;
 

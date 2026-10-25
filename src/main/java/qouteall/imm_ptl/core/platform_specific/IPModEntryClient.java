@@ -127,6 +127,10 @@ public class IPModEntryClient {
                 IPGlobal.PreGameRenderEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onPreGameRender
             );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onRenderStage
+            );
         }
 
         boolean isSodiumPresent =

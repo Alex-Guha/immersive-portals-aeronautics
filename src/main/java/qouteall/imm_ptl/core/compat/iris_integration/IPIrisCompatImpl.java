@@ -8,7 +8,16 @@
  */
 package qouteall.imm_ptl.core.compat.iris_integration;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import net.irisshaders.iris.api.v0.IrisApi;
+import net.irisshaders.iris.layer.BlockEntityRenderStateShard;
+import net.irisshaders.iris.layer.BufferSourceWrapper;
+import net.irisshaders.iris.layer.OuterWrappedRenderType;
+import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
+import net.irisshaders.iris.uniforms.CapturedRenderingState;
+import net.irisshaders.iris.vertices.ImmediateState;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Iris-touching half of {@link IPIrisCompat}; only loaded when Iris is present.
@@ -20,5 +29,22 @@ final class IPIrisCompatImpl {
 
     static boolean isShaderPackInUse() {
         return IrisApi.getInstance().isShaderPackInUse();
+    }
+
+    /** Iris's {@code MixinBlockEntityRenderDispatcher.iris$wrapBufferSource}, for {@link IPIrisCompat#beginBlockEntity}. */
+    static MultiBufferSource beginBlockEntity(MultiBufferSource source, BlockState state) {
+        Object2IntMap<BlockState> blockStateIds = WorldRenderingSettings.INSTANCE.getBlockStateIds();
+        if (blockStateIds == null || !ImmediateState.isRenderingLevel) {
+            return source;
+        }
+        CapturedRenderingState.INSTANCE.setCurrentBlockEntity(blockStateIds.getOrDefault(state, -1));
+        return new BufferSourceWrapper(
+            source, renderType -> OuterWrappedRenderType.wrapExactlyOnce("iris:block_entity", renderType, BlockEntityRenderStateShard.INSTANCE)
+        );
+    }
+
+    /** Iris's {@code iris$afterRender}. */
+    static void endBlockEntity() {
+        CapturedRenderingState.INSTANCE.setCurrentBlockEntity(0);
     }
 }

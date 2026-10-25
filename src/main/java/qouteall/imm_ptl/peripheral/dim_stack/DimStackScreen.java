@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.dim_stack;
 
 import net.minecraft.client.Minecraft;
@@ -10,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qouteall.imm_ptl.core.CHelper;
+import qouteall.imm_ptl.peripheral.alternate_dimension.AlternateDimensions;
 import qouteall.q_misc_util.my_util.GuiHelper;
 
 import java.util.function.Consumer;
@@ -303,7 +311,12 @@ public class DimStackScreen extends Screen {
             new SelectDimensionScreen(
                 this,
                 dimensionType -> {
-                    controller.addEntry(insertingPosition, new DimStackEntry(dimensionType));
+                    // Immersive Aeronautics: a second Void (or other alternate dimension) is a copy of its own
+                    controller.addEntry(insertingPosition, new DimStackEntry(
+                        AlternateDimensions.getDimensionForNewStackEntry(
+                            dimensionType, controller.model.dimStackInfo.entries
+                        )
+                    ));
                 },
                 controller.getDimensionList()
             )

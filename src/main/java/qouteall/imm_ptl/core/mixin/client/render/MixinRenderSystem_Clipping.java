@@ -14,7 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.IPGlobal;
-import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
 import qouteall.imm_ptl.core.render.FrontClipping;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -29,21 +28,17 @@ public class MixinRenderSystem_Clipping {
     )
     private static void onSetShader(Supplier<ShaderInstance> supplier, CallbackInfo ci) {
         if (IPGlobal.enableClippingMechanism) {
-            // Immersive Aeronautics: only an active shader pack replaces the vanilla shaders; with Iris
-            // merely installed the uniform must still be fed, or entities and block entities (chests,
-            // beds, heads on ships) are not clipped in portal views
-            if (!IrisInterface.invoker.isShaders()) {
-                if (CrossPortalEntityRenderer.isRenderingEntityNormally ||
-                    CrossPortalEntityRenderer.isRenderingEntityProjection
-                ) {
-                    FrontClipping.updateClippingEquationUniformForCurrentShader(true);
-                }
-                else if (RenderStates.isRenderingPortalWeather) {
-                    FrontClipping.updateClippingEquationUniformForCurrentShader(false);
-                }
-                else {
-                    FrontClipping.unsetClippingUniform();
-                }
+            // Immersive Aeronautics: fed with a shader pack too. With Iris merely installed the vanilla shaders need
+            // it, or entities and block entities (chests, beds, heads on ships) are not clipped in portal views; with
+            // a pack, its entity and block entity programs carry the plane as well (shader_transformation.json), and
+            // a pack program without it has no uniform to feed.
+            if (CrossPortalEntityRenderer.isRenderingEntityNormally ||
+                CrossPortalEntityRenderer.isRenderingEntityProjection
+            ) {
+                FrontClipping.updateClippingEquationUniformForCurrentShader(true);
+            }
+            else if (RenderStates.isRenderingPortalWeather) {
+                FrontClipping.updateClippingEquationUniformForCurrentShader(false);
             }
             else {
                 FrontClipping.unsetClippingUniform();

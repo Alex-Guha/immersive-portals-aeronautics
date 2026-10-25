@@ -28,8 +28,8 @@ import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
  * takes a block with a provider as a portal for its tracks. Create's own linking ({@code TrackBlock.connectToPortal})
  * places the exit track itself; at IP portals the player lays both ends and {@link IPCreatePortalTracks} links them
  * through {@link #exitSpot}: the block just past the other end of the portal, on the side the portal's transform
- * carries a train out to. Within one dimension only Create Teleporters' portals, whose train code gives each side of
- * the portal its own key ({@link IPCreateTeleportersTrains}).
+ * carries a train out to. Within one dimension too: the pair's edge becomes a portal edge ({@link IPCreatePortalEdges})
+ * and each side of the portal a key of its own ({@link IPCreateTrainSides}).
  */
 public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -63,9 +63,9 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
 
     /**
      * Where the exit track lies for a track entering a portal: {@code pos} in {@code level}, its face towards the portal
-     * {@code towardPortal}; {@code sameDimension} holds Create Teleporters' bases when both ends are in one dimension.
+     * {@code towardPortal}.
      */
-    public record ExitSpot(ServerLevel level, BlockPos pos, Direction towardPortal, @Nullable IPCreateTeleportersTrains.Bases sameDimension) {
+    public record ExitSpot(ServerLevel level, BlockPos pos, Direction towardPortal) {
     }
 
     /** The exit spot for the track at {@code inboundTrack} (its face towards the portal block), or null (logged). */
@@ -82,15 +82,6 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
         if (destLevel == null) {
             logNoExit(level, portalPos, "destination level " + portal.getDestDim().location() + " is not loaded");
             return null;
-        }
-
-        IPCreateTeleportersTrains.Bases sameDimension = null;
-        if (destLevel == level) {
-            sameDimension = IPCreateTeleportersTrains.bases(level, portal);
-            if (sameDimension == null) {
-                logNoExit(level, portalPos, "same-dimension portal without Create Teleporters portal bases at both ends");
-                return null;
-            }
         }
 
         BlockPos destPos = BlockPos.containing(portal.transformPoint(Vec3.atCenterOf(portalPos)));
@@ -112,7 +103,11 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
         for (int i = 0; i < MAX_RUN; i++) {
             pos = pos.relative(forward);
             if (destLevel.getBlockState(pos).getBlock() != PortalPlaceholderBlock.instance) {
-                return new ExitSpot(destLevel, pos, forward.getOpposite(), sameDimension);
+                if (destLevel == level && pos.equals(inboundTrack.getPos())) {
+                    logNoExit(level, portalPos, "the portal leads back to the same track");
+                    return null;
+                }
+                return new ExitSpot(destLevel, pos, forward.getOpposite());
             }
         }
         logNoExit(level, portalPos, "the portal at " + destPortalBlock + " is more than " + MAX_RUN + " blocks deep");
@@ -128,8 +123,7 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
         List<Portal> candidates = qouteall.imm_ptl.core.compat.IPPortalLookup.touching(
             level, new AABB(pos).inflate(2.0),
             // Create's portal tracks cannot move: never on a ship-mounted portal
-            p -> p.getTeleportable()
-                && (!p.getDestDim().equals(level.dimension()) || IPCreateTeleportersTrains.isTheirs(p))
+            p -> p.getTeleportable() && !(p instanceof qouteall.imm_ptl.core.portal.Mirror)
                 && !qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isShipMounted(p)
         );
         Portal best = null;

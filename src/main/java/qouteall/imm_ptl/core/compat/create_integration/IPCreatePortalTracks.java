@@ -4,13 +4,14 @@
 package qouteall.imm_ptl.core.compat.create_integration;
 
 import com.mojang.logging.LogUtils;
+import com.simibubi.create.AllTags;
+import com.simibubi.create.content.trains.graph.TrackNodeLocation;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackBlockEntity;
 import com.simibubi.create.content.trains.track.TrackShape;
 import net.createmod.catnip.math.BlockFace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -19,8 +20,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Collection;
 
 /**
  * Create tracks through IP portals. Create's own linking ({@code TrackBlock.connectToPortal}) places the exit track at
@@ -37,16 +37,13 @@ import java.util.Set;
  *     ({@link #onPortalBlockPlaced}).</li>
  * </ul>
  * Pairs Create linked itself before (an exit track it placed for free) keep Create's behaviour, so no free track turns
- * into a drop.
+ * into a drop. A pair within one dimension becomes a portal edge in Create's graph ({@link #onGraphWalk}).
  */
 public final class IPCreatePortalTracks {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String TAG = "[IPCreatePortalTracks] ";
     /** A bridge piece of ours (a portal track whose ends were laid by a player), linked or waiting. */
     private static final String OWN = "ip_aeronautics:own_portal_track";
-
-    /** Pairs unlinked because they did not become a portal edge: not linked again this session. */
-    private static final Set<GlobalPos> REFUSED = new HashSet<>();
 
     private IPCreatePortalTracks() {
     }
@@ -66,8 +63,7 @@ public final class IPCreatePortalTracks {
             if (level.getBlockState(pos.relative(toPortal)).getBlock() != PortalPlaceholderBlock.instance) {
                 continue;
             }
-            final IPCreatePortalTrackProvider.ExitSpot spot = REFUSED.contains(GlobalPos.of(level.dimension(), pos))
-                ? null : IPCreatePortalTrackProvider.exitSpot(level, new BlockFace(pos, toPortal));
+            final IPCreatePortalTrackProvider.ExitSpot spot = IPCreatePortalTrackProvider.exitSpot(level, new BlockFace(pos, toPortal));
             final BlockState other = spot == null ? null : spot.level().getBlockState(spot.pos());
             if (spot != null && isLinkable(spot.level(), spot.pos(), other, spot.towardPortal())) {
                 link(level, pos, state, toPortal, spot, other);
@@ -125,11 +121,44 @@ public final class IPCreatePortalTracks {
             // its state is unchanged, so Create adds its new link to the graph only on a tick of its own
             spot.level().scheduleTick(spot.pos(), otherBridge.getBlock(), 1);
         }
-        if (spot.sameDimension() != null) {
-            IPCreateTeleportersTrains.tag(level, pos, spot.pos(), spot.sameDimension());
-        }
         LOGGER.info(TAG + "linked the tracks at {} in {} and {} in {} through the portal",
             pos, level.dimension().location(), spot.pos(), spot.level().dimension().location());
+    }
+
+    /**
+     * {@code TrackBlock.getConnected} (server, graph walks): at an end of ours linked within one dimension, records the
+     * pair as a portal edge ({@link IPCreatePortalEdges}) and makes both portal faces graph nodes, as Create does for a
+     * pair across dimensions ({@code ITrackBlock.addToListIfConnected}). Pairs tagged for Create Teleporters' own train
+     * code (2.5.3-2.5.7) are left to it while it is installed.
+     */
+    public static void onGraphWalk(final ServerLevel level, final BlockPos pos, final BlockState state,
+                                   final Collection<TrackNodeLocation.DiscoveredLocation> found) {
+        if (!(state.getBlock() instanceof final TrackBlock block) || !state.getValue(TrackBlock.HAS_BE)
+            || !state.getValue(TrackBlock.SHAPE).isPortal()
+            || !(level.getBlockEntity(pos) instanceof final TrackBlockEntity track) || track.boundLocation == null
+            || !track.boundLocation.getFirst().equals(level.dimension()) || !track.getPersistentData().getBoolean(OWN)
+            || IPCreateTeleportersTrains.isLeftToIt(track)) {
+            return;
+        }
+        final BlockPos boundPos = track.boundLocation.getSecond();
+        final BlockState boundState = level.getBlockState(boundPos);
+        if (!AllTags.AllBlockTags.TRACKS.matches(boundState) || !(boundState.getBlock() instanceof final TrackBlock boundBlock)) {
+            return;
+        }
+        // the two portal faces exactly as Create's getConnected places them for a bound pair
+        final TrackNodeLocation face = face(level, block, pos, state);
+        final TrackNodeLocation boundFace = face(level, boundBlock, boundPos, boundState);
+        IPCreatePortalEdges.add(face, boundFace);
+        for (final TrackNodeLocation.DiscoveredLocation location : found) {
+            if (location.equals(face) || location.equals(boundFace)) {
+                location.forceNode();
+            }
+        }
+    }
+
+    private static TrackNodeLocation face(final ServerLevel level, final TrackBlock block, final BlockPos pos, final BlockState state) {
+        final Vec3 center = Vec3.atBottomCenterOf(pos).add(0, block.getElevationAtCenter(level, pos, state), 0);
+        return new TrackNodeLocation(block.getTrackAxes(level, pos, state).getFirst().scale(0.5).add(center)).in(level);
     }
 
     /**
@@ -180,19 +209,6 @@ public final class IPCreatePortalTracks {
         track.getPersistentData().remove(OWN);
         LOGGER.info(TAG + "the portal at the track at {} in {} is gone: an ordinary track again", pos, level.dimension().location());
         return straight(state);
-    }
-
-    /** Unlinks both ends of a pair of ours (left as waiting bridges), and never links them again this session. */
-    public static void unlink(final ServerLevel level, final BlockPos pos) {
-        if (!(level.getBlockEntity(pos) instanceof final TrackBlockEntity track) || !isOwn(level, pos)) {
-            return;
-        }
-        if (track.boundLocation != null) {
-            REFUSED.add(GlobalPos.of(track.boundLocation.getFirst(), track.boundLocation.getSecond()));
-        }
-        REFUSED.add(GlobalPos.of(level.dimension(), pos));
-        unlinkPartner(level, pos, track);
-        waitAgain(level, pos, level.getBlockState(pos));
     }
 
     private static boolean isOwn(final ServerLevel level, final BlockPos pos) {

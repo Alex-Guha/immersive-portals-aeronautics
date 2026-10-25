@@ -46,7 +46,7 @@ import java.util.List;
  *     after the ship, outside any per-ship clip).</li>
  * </ul>
  * Only the vanilla terrain shaders and an Iris shader pack's terrain programs carry the plane
- * (shader_transformation.yaml). A shader without it (a pack's shadow programs) gets no source cut, and no projection is
+ * (shader_transformation.json). A shader without it (a pack's shadow programs) gets no source cut, and no projection is
  * drawn with it.
  */
 public final class IPStraddleRender {

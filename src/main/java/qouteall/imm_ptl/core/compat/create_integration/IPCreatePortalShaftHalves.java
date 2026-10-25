@@ -3,9 +3,12 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityVisual;
 import com.simibubi.create.content.kinetics.base.RotatingInstance;
 import com.simibubi.create.foundation.render.AllInstanceTypes;
@@ -15,6 +18,7 @@ import dev.engine_room.flywheel.api.visual.Effect;
 import dev.engine_room.flywheel.api.visual.EffectVisual;
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.api.visualization.VisualizationManager;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
 import dev.engine_room.flywheel.api.model.Model;
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder;
@@ -29,9 +33,13 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import net.createmod.catnip.animation.AnimationTickHolder;
+import net.createmod.catnip.render.SuperBufferFactory;
+import net.createmod.catnip.render.SuperByteBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.resources.model.BakedModel;
@@ -47,14 +55,18 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
+import org.joml.Matrix4d;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPGlobal;
+import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.compat.mixin_create.IPRotationPropagatorInvoker;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
@@ -67,7 +79,8 @@ import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
  * a block short. Each portal block next to a shaft end gets Create's half shaft from the plane to that end, turning
  * with it; with no shaft at the far end the far portal block gets the other half, from the far plane outwards, so the
  * shaft visibly goes through. Both are Flywheel instances of one effect per client world (they turn, so they cannot be
- * chunk geometry like the pipe stubs in {@link IPCreatePortalPipeStubs}).
+ * chunk geometry like the pipe stubs in {@link IPCreatePortalPipeStubs}). With Flywheel's backend off (always under a
+ * shader pack) Create draws its shafts as block entities, and so do the halves ({@link #onRenderStage}).
  * <p>
  * Found on the client thread every 10 ticks across all client worlds, and before the next frame after a block entity
  * or portal block changes. Frameless portals get none (their plane may lie on the shaft's own face).
@@ -109,6 +122,10 @@ public final class IPCreatePortalShaftHalves {
      */
     private static final RendererReloadCache<PartialModel, Model> OPEN_HALF =
         new RendererReloadCache<>(partial -> new BakedModelBuilder(new WithoutCentreFace(partial.get())).build());
+    /** The same for Create's block entity renderers (Flywheel's backend off), as Create buffers its partials. */
+    private static final RendererReloadCache<PartialModel, SuperByteBuffer> OPEN_HALF_BUFFER = new RendererReloadCache<>(
+        partial -> SuperBufferFactory.getInstance().createForBlock(new WithoutCentreFace(partial.get()), KineticBlockEntityRenderer.shaft(Direction.Axis.Z))
+    );
 
     /** Per client world, its effect (weak: client worlds come and go). */
     private static final Map<ClientLevel, Halves> EFFECTS = new WeakHashMap<>();
@@ -139,6 +156,10 @@ public final class IPCreatePortalShaftHalves {
     }
 
     private static void search() {
+        // IP's world list is empty from a vanilla dimension change (respawn packet) until IP sets it up again
+        if (!ClientWorldLoader.getIsInitialized()) {
+            return;
+        }
         changed = false;
         final Map<ResourceKey<Level>, ClientLevel> worlds = new HashMap<>();
         for (final ClientLevel world : ClientWorldLoader.getClientWorlds()) {
@@ -164,6 +185,9 @@ public final class IPCreatePortalShaftHalves {
                 effect = new Halves(world);
                 EFFECTS.put(world, effect);
             }
+            if (!effect.all.equals(halves)) {
+                effect.all = List.copyOf(halves);
+            }
             final VisualizationManagerImpl manager = effect.attach();
             final List<Half> drawn = new ArrayList<>(halves.size());
             for (final Half half : halves) {
@@ -181,6 +205,63 @@ public final class IPCreatePortalShaftHalves {
                 effect.halves = List.copyOf(drawn);
             }
         }
+    }
+
+    /**
+     * Draws the half shafts of the world being drawn while Flywheel cannot (Create's own test in
+     * {@code KineticBlockEntityRenderer.renderSafe}): as Create then draws its shafts, at Create's angle
+     * ({@code getAngleForBe}), and with a shader pack as Iris's block entities, so the pack draws them with its block
+     * entity program and IP's clip plane. After the block entities, within IP's entity clip in portal passes; flushed
+     * here without Iris (Iris flushes its batch later, clipped by {@code IPIrisBatchClip}). No shadows with a pack:
+     * Iris's shadow pass runs no render stage.
+     */
+    public static void onRenderStage(final RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+            return;
+        }
+        final Minecraft minecraft = Minecraft.getInstance();
+        final ClientLevel level = minecraft.level;
+        final Halves effect = level == null ? null : EFFECTS.get(level);
+        if (effect == null || effect.all.isEmpty() || VisualizationManager.supportsVisualization(level)) {
+            return;
+        }
+        final SuperByteBuffer model = OPEN_HALF_BUFFER.get(AllPartialModels.SHAFT_HALF);
+        final Vec3 camera = event.getCamera().getPosition();
+        final MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
+        final MultiBufferSource source = IPIrisCompat.beginBlockEntity(buffers, KineticBlockEntityRenderer.shaft(Direction.Axis.Z));
+        try {
+            final VertexConsumer consumer = source.getBuffer(RenderType.solid());
+            final PoseStack pose = new PoseStack();
+            for (final Half half : effect.all) {
+                // drawing space is the world's minus the camera, as for block entities
+                final Matrix4d place = new Matrix4d().translation(-camera.x, -camera.y, -camera.z);
+                if (half.ship() != null) {
+                    final Matrix4d ship = SABLE ? IPCreateShaftShipsClient.renderPose(half.ship()) : null;
+                    if (ship == null) {
+                        continue;
+                    }
+                    place.mul(ship);
+                }
+                place.translate(half.cell().getX(), half.cell().getY(), half.cell().getZ());
+                final Matrix4f drawing = new Matrix4f(place);
+                pose.last().pose().set(drawing);
+                pose.last().normal().set(new Matrix3f(drawing).normal());
+                final KineticBlockEntity be = half.source();
+                final Level beLevel = be.getLevel();
+                final float speed = be.isRemoved() || beLevel == null ? 0 : faceSpeed(be, half.sourceSide());
+                final float degrees = speed == 0 ? half.offset()
+                    : (AnimationTickHolder.getRenderTime(beLevel) * speed * 3f / 10 + half.offset()) % 360;
+                model.center()
+                    .rotate(new Quaternionf().rotationAxis((float) Math.toRadians(degrees), half.axis()))
+                    .rotate(half.base())
+                    .uncenter();
+                model.light(LevelRenderer.getLightColor(level, half.cell()));
+                model.renderInto(pose, consumer);
+            }
+        } finally {
+            IPIrisCompat.endBlockEntity();
+        }
+        buffers.endBatch(RenderType.solid());
     }
 
     private static void scan(
@@ -364,6 +445,12 @@ public final class IPCreatePortalShaftHalves {
         return new Quaternionf().rotateTo(0, 0, 1, side.getStepX(), side.getStepY(), side.getStepZ());
     }
 
+    /** Create's speed of the shaft on that face, as drawn (0 while overstressed). */
+    private static float faceSpeed(final KineticBlockEntity be, final Direction side) {
+        final float speed = be.getSpeed();
+        return speed == 0 ? 0 : speed * IPRotationPropagatorInvoker.ip$getAxisModifier(be, side);
+    }
+
     /** The kinetic block entity at {@code pos} with a shaft on {@code side}, or null. */
     private static @Nullable KineticBlockEntity shaftEnd(final ClientLevel world, final BlockPos pos, final Direction side) {
         final BlockEntity be = world.getBlockEntity(pos);
@@ -418,7 +505,10 @@ public final class IPCreatePortalShaftHalves {
     /** The half shafts of one client world, as one Flywheel effect in that world's visualization. */
     private static final class Halves implements Effect {
         private final ClientLevel level;
+        /** What Flywheel draws: the world's halves and the ship halves whose embedding exists. */
         volatile List<Half> halves = List.of();
+        /** Every half found in the world, for {@link #onRenderStage}. */
+        List<Half> all = List.of();
         private WeakReference<VisualizationManagerImpl> manager = new WeakReference<>(null);
 
         Halves(final ClientLevel level) {
@@ -501,13 +591,7 @@ public final class IPCreatePortalShaftHalves {
             }
         }
 
-        /** Create's speed of the shaft on that face, as drawn (0 while overstressed). */
-        private static float faceSpeed(final KineticBlockEntity be, final Direction side) {
-            final float speed = be.getSpeed();
-            return speed == 0 ? 0 : speed * IPRotationPropagatorInvoker.ip$getAxisModifier(be, side);
-        }
-
-        private void rebuild(final List<Half> now) {
+            private void rebuild(final List<Half> now) {
             deleteInstances();
             shown = now;
             speeds = new float[now.size()];

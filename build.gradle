@@ -129,6 +129,7 @@ mixin {
     configs.add("imm_ptl_sable_compat.mixins.json")
     configs.add("imm_ptl_create_compat.mixins.json")
     configs.add("imm_ptl_dh_compat.mixins.json")
+    configs.add("imm_ptl_voxy_compat.mixins.json")
     configs.add("imm_ptl_physicsmod_compat.mixins.json")
     configs.add("imm_ptl_render_tweaks.mixins.json")
 }
@@ -140,7 +141,6 @@ dependencies {
     implementation "maven.modrinth:sodium:mc1.21.1-0.8.13-neoforge"
     implementation "maven.modrinth:iris:1.8.14-beta.1+1.21.1-neoforge"
 
-    implementation "maven.modrinth:cloth-config:15.0.140+neoforge"
     implementation "maven.modrinth:pehkui:3.8.3+1.21-neoforge"
 
     // Create (brings Flywheel, Ponder, Registrate transitively)

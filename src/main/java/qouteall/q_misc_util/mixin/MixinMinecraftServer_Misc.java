@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.q_misc_util.mixin;
 
 import com.mojang.datafixers.DataFixer;
@@ -63,5 +70,11 @@ public abstract class MixinMinecraftServer_Misc extends ReentrantBlockableEventL
     @Override
     public LevelStorageSource.LevelStorageAccess ip_getStorageSource() {
         return storageSource;
+    }
+    
+    // Immersive Aeronautics
+    @Override
+    public Executor ip_getExecutor() {
+        return executor;
     }
 }

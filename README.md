@@ -102,7 +102,7 @@ scripts/build-natives.sh            # ipa_rapier for all six targets, ~4 min (Do
 
 ### Dependencies
 
-Pinned in `build.gradle` and `gradle.properties`: NeoForge 21.1.152, Sodium 0.8.13, Iris 1.8.14-beta.1, Cloth Config,
+Pinned in `build.gradle` and `gradle.properties`: NeoForge 21.1.152, Sodium 0.8.13, Iris 1.8.14-beta.1,
 Pehkui, Create 6.0.10, and compile-only Sable 2.0.6, Create Aeronautics 1.3.2, Distant Horizons 3.3.3, Physics Mod
 3.0.34. Modrinth maven coordinates are version ids (e.g. `maven.modrinth:sable:fg9dTRz9`); look them up with
 `curl https://api.modrinth.com/v2/project/<slug>/version`. After bumping Sodium, Iris, NeoForge or Sable, run

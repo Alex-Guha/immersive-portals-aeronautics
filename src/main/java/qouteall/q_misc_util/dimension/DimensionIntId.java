@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.q_misc_util.dimension;
 
 import com.mojang.logging.LogUtils;
@@ -9,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.NotNull;
@@ -40,6 +48,25 @@ public class DimensionIntId {
  //               onServerDimensionChanged(server);
  //           }
  //       );
+        // Immersive Aeronautics: DimLib's event is gone in the NeoForge port. A level that a mod adds while the
+        // server runs (Infinite Dimensions) gets an id here and every player is told, else packets for it fail
+        // with "Missing Dimension"
+        NeoForge.EVENT_BUS.addListener(LevelEvent.Load.class, e -> {
+            if (e.getLevel() instanceof ServerLevel level) {
+                onServerLevelLoaded(level);
+            }
+        });
+    }
+    
+    private static void onServerLevelLoaded(ServerLevel level) {
+        MinecraftServer server = level.getServer();
+        DimIntIdMap map = IPPerServerInfo.of(server).dimIntIdMap;
+        // null while the server creates its levels: onServerStarted takes them all
+        if (map == null || map.containsDimId(level.dimension())) {
+            return;
+        }
+        LOGGER.info("Dimension {} was added while the server runs", level.dimension().location());
+        onServerDimensionChanged(server);
     }
     
     //@Environment(EnvType.CLIENT)

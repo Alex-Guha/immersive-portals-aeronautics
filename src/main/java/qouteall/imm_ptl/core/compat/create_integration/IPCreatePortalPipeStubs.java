@@ -142,6 +142,10 @@ public final class IPCreatePortalPipeStubs {
     }
 
     private static void search(final boolean important) {
+        // IP's world list is empty from a vanilla dimension change (respawn packet) until IP sets it up again
+        if (!ClientWorldLoader.getIsInitialized()) {
+            return;
+        }
         changed = false;
         changedImportant = false;
         final Map<ResourceKey<Level>, ClientLevel> worlds = new HashMap<>();

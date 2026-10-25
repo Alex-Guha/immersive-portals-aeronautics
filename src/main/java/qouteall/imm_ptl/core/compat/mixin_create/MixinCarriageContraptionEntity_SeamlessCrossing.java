@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageCrossing;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageCrossingClient;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreateClientCarriageDriver;
+import qouteall.imm_ptl.core.compat.create_integration.IPCreateTrainSides;
 
 /**
  * Client side of a carriage crossing an IP portal:
@@ -40,11 +41,12 @@ public class MixinCarriageContraptionEntity_SeamlessCrossing {
         if (IPCreateCarriageCrossing.STOCK || carriage == null || !self.level().isClientSide() || self.isRemoved()) {
             return;
         }
-        final Carriage.DimensionalCarriageEntity dce = carriage.getDimensional(self.level());
+        final Carriage.DimensionalCarriageEntity own = IPCreateTrainSides.recordOf(carriage, self);
+        final Carriage.DimensionalCarriageEntity dce = own != null ? own : carriage.getDimensional(self.level());
         if (dce.pointsInitialised) {
             return;
         }
-        if (!IPCreateCarriageCrossing.hasPointIn(carriage, self.level().dimension())) {
+        if (!IPCreateCarriageCrossing.hasPointIn(carriage, IPCreateTrainSides.keyOf(self))) {
             // not reached by this client's carriage yet: follow the copy that is (a rider may sit on this one)
             self.xo = self.getX();
             self.yo = self.getY();

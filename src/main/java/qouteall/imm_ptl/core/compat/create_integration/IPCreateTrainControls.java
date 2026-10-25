@@ -45,11 +45,12 @@ import qouteall.imm_ptl.core.portal.Portal;
  *     the player's reach), measured in one dimension only;</li>
  *     <li>the driver's level no longer holds them ({@code ControlsServerHandler.tick} keeps held keys per level).</li>
  * </ul>
- * Stock Create does all of this at its own portals too. Here, reach to a copy in another dimension is measured through
- * a portal next to the driver ({@link #canReach}). The held keys move to the driver's level and to the best live copy
- * of the carriage ({@link #bestCopy}: the one in the driver's dimension, else any), together with its
- * {@code CONTROLLED_BY}, and removing a copy while another one lives doesn't stop the driver. Every copy drives the same
- * {@code Train}. The client follows on its side ({@link IPCreateTrainControlsClient}).
+ * Stock Create does all of this at its own portals too. Here, reach to a copy in another dimension, or past a portal
+ * within the driver's level, is measured through a portal next to the driver ({@link #canReach}). The held keys move
+ * to the driver's level and to the best live copy of the carriage ({@link #bestCopy}: the one the driver rides, else
+ * one in the driver's level, else any), together with its {@code CONTROLLED_BY}, and removing a copy while another one
+ * lives doesn't stop the driver. Every copy drives the same {@code Train}. At a portal within one dimension both copies
+ * are in the driver's level. The client follows on its side ({@link IPCreateTrainControlsClient}).
  */
 public final class IPCreateTrainControls {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -81,7 +82,7 @@ public final class IPCreateTrainControls {
             if (player == null) {
                 continue;
             }
-            final CarriageContraptionEntity to = bestCopy(from, player.level());
+            final CarriageContraptionEntity to = bestCopy(from, player);
             if (to == null || (to == from && player.level() == level)) {
                 continue;
             }
@@ -130,9 +131,10 @@ public final class IPCreateTrainControls {
     }
 
     /**
-     * {@code AbstractContraptionEntity.canInteractWithBlock} for a player in another dimension than the contraption:
-     * Create's reach test ({@code Player.canInteractWithBlock}: within the player's block reach plus {@code distance} of
-     * the block) through a portal near the player that leads to the contraption's dimension.
+     * {@code AbstractContraptionEntity.canInteractWithBlock} for a player in another dimension than the contraption, or
+     * out of reach of a carriage in the same one: Create's reach test ({@code Player.canInteractWithBlock}: within the
+     * player's block reach plus {@code distance} of the block) through a portal near the player that leads to the
+     * contraption's dimension.
      */
     public static boolean canReach(final AbstractContraptionEntity entity, final Player player, final Vec3 localPos,
                                    final double distance) {
@@ -188,26 +190,45 @@ public final class IPCreateTrainControls {
     }
 
     /**
-     * The copy of {@code entity}'s carriage a driver in {@code driverLevel} should steer: the one in that level, else
-     * {@code entity} while it lives, else any live copy. Null when none lives.
+     * The copy of {@code entity}'s carriage a driver should steer: the one they ride; else {@code entity} while it
+     * lives in the driver's level; else the copy in that level nearest the driver (at a portal within one dimension
+     * both copies are in it); else {@code entity} while it lives, else any live copy. Null when none lives.
      */
-    public static @Nullable CarriageContraptionEntity bestCopy(final CarriageContraptionEntity entity, final Level driverLevel) {
-        final CarriageContraptionEntity own = copyIn(entity, driverLevel);
+    public static @Nullable CarriageContraptionEntity bestCopy(final CarriageContraptionEntity entity, final Player driver) {
+        if (driver.getVehicle() instanceof final CarriageContraptionEntity ridden && !ridden.isRemoved()
+            && ridden.getCarriage() != null && ridden.getCarriage() == entity.getCarriage()) {
+            return ridden;
+        }
+        if (!entity.isRemoved() && entity.level() == driver.level()) {
+            return entity;
+        }
+        final CarriageContraptionEntity own = copyIn(entity, driver);
         if (own != null) {
             return own;
         }
         return entity.isRemoved() ? otherLiveCopy(entity, null) : entity;
     }
 
-    /** @return the copy of {@code entity}'s carriage placed in {@code level}, if there is one */
-    public static @Nullable CarriageContraptionEntity copyIn(final CarriageContraptionEntity entity, final Level level) {
+    /** @return the live copy of {@code entity}'s carriage in the player's level nearest the player, if there is one */
+    private static @Nullable CarriageContraptionEntity copyIn(final CarriageContraptionEntity entity, final Player player) {
         final Carriage carriage = entity.getCarriage();
         if (carriage == null) {
             return null;
         }
-        final Carriage.DimensionalCarriageEntity dce = carriage.getDimensionalIfPresent(level.dimension());
-        final CarriageContraptionEntity copy = dce == null ? null : dce.entity.get();
-        return copy == null || copy.isRemoved() || copy.level() != level ? null : copy;
+        CarriageContraptionEntity best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (final Carriage.DimensionalCarriageEntity dce : ((IPCarriageAccessor) carriage).ip_getEntities().values()) {
+            final CarriageContraptionEntity copy = dce == null ? null : dce.entity.get();
+            if (copy == null || copy.isRemoved() || copy.level() != player.level()) {
+                continue;
+            }
+            final double distance = copy.distanceToSqr(player);
+            if (distance < bestDistance) {
+                best = copy;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     /** A live copy of {@code entity}'s carriage other than {@code entity}, the one in {@code preferred} if any. */

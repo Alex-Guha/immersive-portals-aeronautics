@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral;
 
 import com.mojang.serialization.MapCodec;
@@ -13,6 +20,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import qouteall.imm_ptl.core.McHelper;
+import qouteall.imm_ptl.peripheral.alternate_dimension.AlternateDimensions;
 import qouteall.imm_ptl.peripheral.alternate_dimension.ChaosBiomeSource;
 import qouteall.imm_ptl.peripheral.alternate_dimension.ErrorTerrainGenerator;
 import qouteall.imm_ptl.peripheral.alternate_dimension.FormulaGenerator;
@@ -58,10 +66,8 @@ public class PeripheralModMain {
         
         DimStackManagement.init();
 
-        // TODO @Nick1st - DynDim removal
-//        AlternateDimensions.init();
-//
-//        DimensionAPI.suppressExperimentalWarningForNamespace("immersive_portals");
+        // Immersive Aeronautics: back without DimLib (see AlternateDimensions)
+        AlternateDimensions.init();
 
         PortalWandItem.init();
         

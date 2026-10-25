@@ -102,6 +102,8 @@ public class ServerTeleportationManager {
     
     public static boolean shouldEntityTeleport(Portal portal, Entity entity) {
         if (entity.level() != portal.level()) {return false;}
+        // Immersive Aeronautics: entities another mod moves through portals itself (Create's carriage copies)
+        if (entity instanceof qouteall.imm_ptl.core.compat.IPPortalTeleportExempt) {return false;}
         if (!portal.canTeleportEntity(entity)) {return false;}
         Vec3 lastEyePos = entity.getEyePosition(0);
         Vec3 nextEyePos = entity.getEyePosition(1);

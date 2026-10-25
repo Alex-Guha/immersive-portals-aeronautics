@@ -7,6 +7,8 @@
  */
 package qouteall.imm_ptl.core.mixin.client.render;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.Lighting;
@@ -509,18 +511,20 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
     }
     
     // correct the eye position for sky rendering
-    @Redirect(
+    // Immersive Aeronautics: a wrapper, not a redirect, so another mod's redirect of the same call (GLASS
+    // Remastered's projection camera) still applies; a second redirect fails and crashed the game on start
+    @WrapOperation(
         method = "renderSky",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/client/player/LocalPlayer;getEyePosition(F)Lnet/minecraft/world/phys/Vec3;"
         )
     )
-    private Vec3 redirectGetEyePositionInSkyRendering(LocalPlayer player, float partialTicks) {
+    private Vec3 wrapGetEyePositionInSkyRendering(LocalPlayer player, float partialTicks, Operation<Vec3> original) {
         if (WorldRenderInfo.isRendering()) {
             return WorldRenderInfo.getCameraPos();
         }
-        return player.getEyePosition(partialTicks);
+        return original.call(player, partialTicks);
     }
     
     // vanilla clears translucentFramebuffer even when transparencyShader is null

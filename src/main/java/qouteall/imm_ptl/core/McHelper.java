@@ -972,6 +972,17 @@ public class McHelper {
         MutableComponent component = Component.translatable(translationkey);
         
         if (component.getString().equals(translationkey)) {
+            // Immersive Aeronautics: a numbered copy of a dimension (immersive_portals:void_2, AlternateDimensions)
+            // is named after the original: "Void 2"
+            String basePath = path.replaceFirst("_[0-9]+$", "");
+            if (!basePath.equals(path)) {
+                String baseKey = "dimension." + namespace + "." + basePath;
+                MutableComponent baseName = Component.translatable(baseKey);
+                if (!baseName.getString().equals(baseKey)) {
+                    return baseName.append(" " + path.substring(basePath.length() + 1));
+                }
+            }
+            
             // no translation
             // try to get the mod name
             String modName = O_O.getModName(namespace);

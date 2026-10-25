@@ -41,6 +41,7 @@
     "MixinServerLevel_CrossDimensionParticles"
   ],
   "client": [
+    "MixinAcsCameraController_PortalPass",
     "MixinRenderSection_GlobalBlockEntitiesPerLevel",
     "MixinSectionOcclusionGraph_NullGuard",
     "MixinSableStartTracking_DupGuard",

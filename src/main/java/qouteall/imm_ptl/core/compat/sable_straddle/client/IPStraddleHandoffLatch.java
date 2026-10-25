@@ -391,6 +391,9 @@ public final class IPStraddleHandoffLatch {
      * @return whether a copy of {@code ship} in another dimension has compiled meshes
      */
     private static boolean replacementReady(final ClientSubLevel ship) {
+        if (!ClientWorldLoader.getIsInitialized()) {
+            return false;
+        }
         for (final ClientLevel level : ClientWorldLoader.getClientWorlds()) {
             if (level == ship.getLevel()) {
                 continue;

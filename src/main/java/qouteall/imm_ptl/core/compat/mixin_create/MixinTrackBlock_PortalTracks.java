@@ -3,10 +3,13 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_create;
 
+import com.simibubi.create.content.trains.graph.TrackNodeLocation;
 import com.simibubi.create.content.trains.track.TrackBlock;
+import java.util.Collection;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,7 +22,8 @@ import qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTracks;
 /**
  * Tracks at IP portals become a bridge into the portal and link to a track the player laid at the other end, instead of
  * Create placing one there; an end of ours whose portal goes away becomes an ordinary track again instead of vanishing
- * ({@link IPCreatePortalTracks}).
+ * ({@link IPCreatePortalTracks}). A pair linked within one dimension enters Create's graph as a portal edge
+ * ({@link IPCreatePortalTracks#onGraphWalk}).
  */
 @Mixin(value = TrackBlock.class, remap = false)
 public class MixinTrackBlock_PortalTracks {
@@ -41,6 +45,21 @@ public class MixinTrackBlock_PortalTracks {
             if (ordinary != null) {
                 cir.setReturnValue(ordinary);
             }
+        }
+    }
+
+    @Inject(method = "getConnected", at = @At("RETURN"))
+    private void ip_sameDimensionPortalEdge(
+        final BlockGetter world, final BlockPos pos, final BlockState state, final boolean linear,
+        final TrackNodeLocation connectedTo, final CallbackInfoReturnable<Collection<TrackNodeLocation.DiscoveredLocation>> cir
+    ) {
+        if (linear || !(world instanceof final ServerLevel level)) {
+            return;
+        }
+        // as Create picks the level: the one the walk came from holds this track
+        final ServerLevel actual = connectedTo == null ? level : level.getServer().getLevel(connectedTo.dimension);
+        if (actual != null) {
+            IPCreatePortalTracks.onGraphWalk(actual, pos, state, cir.getReturnValue());
         }
     }
 }

@@ -68,6 +68,7 @@ public class MixinCarriageContraption_SeamlessCrossing implements IPCarriageCros
      * On the client Create's cut never applies (1.24.11): a copy is drawn whole, cut at the portal plane while it
      * crosses ({@code IPCreateCarriageCrossingClient}). A copy that showed Create's cut without a crossing of ours
      * kept it, purple glass and half hidden, for reasons not found yet; drawn whole it is at worst uncut for a moment.
+     * The same at portals within the copy's dimension (side copies, {@code IPCreateTrainSides}).
      */
     @Unique
     private boolean ip_ignoresCreateCut() {

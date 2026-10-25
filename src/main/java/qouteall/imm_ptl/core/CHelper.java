@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core;
 
 import com.mojang.logging.LogUtils;
@@ -7,6 +14,7 @@ import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -162,6 +170,15 @@ public class CHelper {
         
         if (resource.isEmpty()) {
             LOGGER.info("Cannot load texture {}", dimIconPath);
+            
+            // Immersive Aeronautics: a numbered copy of a dimension (immersive_portals:void_2, AlternateDimensions)
+            // shows the original's icon
+            String basePath = dimensionId.getPath().replaceFirst("_[0-9]+$", "");
+            if (!basePath.equals(dimensionId.getPath())) {
+                return getDimensionIconPath(ResourceKey.create(
+                    Registries.DIMENSION, McHelper.newResourceLocation(dimensionId.getNamespace(), basePath)
+                ));
+            }
             
             ResourceLocation modIconLocation = O_O.getModIconLocation(dimensionId.getNamespace());
             

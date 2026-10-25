@@ -17,7 +17,7 @@ import qouteall.imm_ptl.core.teleportation.ServerTeleportationManager;
 /**
  * Moves a train rider to the carriage's far-side position with IP's seamless player teleport
  * (dimension change without the loading screen, position packet carrying the dimension,
- * immediate chunk-tracking update). Used by
+ * immediate chunk-tracking update); through a portal within one dimension it is a plain move. Used by
  * {@code MixinCarriageDimensionalEntity_SeamlessRiderTeleport}.
  * <p>
  * Create has already dismounted the player server-side, but vanilla only tells the client on

@@ -19,8 +19,8 @@ import java.util.Set;
  * Sable physics provider for ship straddling (docs/lessons/physics-backend.md, D3). Sable picks the {@code ServiceLoader}
  * provider with the highest {@link PhysicsPipelineProvider.LoadPriority}; Sable's Rapier provider uses the default
  * 1000. Every level gets our own copy of Sable's Rapier backend ({@code ipaeronautics.rapier}, native library
- * {@code ipa_rapier}) when its natives loaded, the Sable version is one it was copied from, and the kill switch is
- * off. Otherwise every level gets Sable's stock Rapier pipeline. The choice is made once per JVM and is the same for
+ * {@code ipa_rapier}) when its natives loaded, the Sable version is one it was copied from, no mod that needs Sable's
+ * own backend is loaded, and the kill switch is off. Otherwise every level gets Sable's stock Rapier pipeline. The choice is made once per JVM and is the same for
  * every level, since the backend's scene lookup only works for levels using it.
  */
 @PhysicsPipelineProvider.LoadPriority(IPPhysicsPipelineProvider.PRIORITY)
@@ -37,6 +37,13 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
      * Sable versions whose Rapier backend {@code ipaeronautics.rapier} was copied from.
      */
     private static final Set<String> SUPPORTED_SABLE_VERSIONS = Set.of("2.0.6");
+
+    /**
+     * Mods that call and mix into Sable's own Rapier classes ({@code dev.ryanhcode.sable.physics.impl.rapier}) and do
+     * nothing on ours, so their physics changes would be lost. Pym, bundled with Create: Pocket Sized, scales ships'
+     * colliders that way (docs/lessons/mod-compat.md).
+     */
+    private static final Set<String> STOCK_BACKEND_MODS = Set.of("pym");
 
     private static volatile boolean ownBackendActive;
 
@@ -86,6 +93,14 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
             LOGGER.warn("[IPPhysics] Sable {} is not one of {}: using Sable's stock physics, ships cannot straddle portals",
                     sableVersion, SUPPORTED_SABLE_VERSIONS);
             return null;
+        }
+
+        for (final String modId : STOCK_BACKEND_MODS) {
+            if (ModList.get().isLoaded(modId)) {
+                LOGGER.warn("[IPPhysics] {} works only with Sable's own Rapier backend: using Sable's stock physics, ships cannot straddle portals",
+                        modId);
+                return null;
+            }
         }
 
         try {

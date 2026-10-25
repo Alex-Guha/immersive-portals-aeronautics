@@ -25,6 +25,7 @@ import java.util.Set;
 public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
     private static final Map<String, String> MOD_BY_PACKAGE = Map.ofEntries(
         Map.entry("com.seibel.distanthorizons.", "distanthorizons"),
+        Map.entry("me.cortex.voxy.", "voxy"),
         Map.entry("net.diebuddies.", "physicsmod"),
         Map.entry("com.anton.shieldgenerators.", "shield_generators"),
         Map.entry("net.irisshaders.", "iris"),
@@ -34,12 +35,14 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("dev.simulated_team.simulated.", "simulated"),
         Map.entry("dev.eriksonn.aeronautics.", "aeronautics"),
         Map.entry("toni.sodiumdynamiclights.", "sodiumdynamiclights"),
-        Map.entry("net.createteleporters.", "createteleporters")
+        Map.entry("net.createteleporters.", "createteleporters"),
+        Map.entry("com.playsi.aero_cam_sync.", "aero_cam_sync")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(
         "qouteall.imm_ptl.core.compat.mixin_sable.", "sable",
-        "qouteall.imm_ptl.core.compat.mixin_create.", "create"
+        "qouteall.imm_ptl.core.compat.mixin_create.", "create",
+        "qouteall.imm_ptl.core.compat.mixin_voxy.", "voxy"
     );
 
     @Override
@@ -52,8 +55,16 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         return null;
     }
 
+    // mixins of mixin_voxy that reference Iris's classes while targeting Voxy's (or vanilla) classes
+    private static final Set<String> VOXY_MIXINS_NEEDING_IRIS = Set.of(
+        "qouteall.imm_ptl.core.compat.mixin_voxy.MixinVoxyRenderPipelineFactory_OwnDimension"
+    );
+
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (VOXY_MIXINS_NEEDING_IRIS.contains(mixinClassName) && !isLoaded("iris")) {
+            return false;
+        }
         for (Map.Entry<String, String> entry : MOD_BY_MIXIN_PACKAGE.entrySet()) {
             if (mixinClassName.startsWith(entry.getKey()) && !isLoaded(entry.getValue())) {
                 return false;

@@ -54,9 +54,6 @@ src/main/resources/immersive_portals.timestamp
 /reference/upstream-jar/
 /reference/decompiled-upstream/
 
-# local working notes
-/CLAUDE.md
-
 # user-supplied test logs
 /LOG.txt
 /CRASHLOG.txt

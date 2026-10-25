@@ -7,6 +7,7 @@
  */
 package qouteall.imm_ptl.core;
 
+import com.google.common.collect.Sets;
 import de.nick1st.imm_ptl.events.ClientExitEvent;
 import de.nick1st.imm_ptl.events.DimensionEvents;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -492,7 +493,14 @@ public class ClientWorldLoader {
     
     public static Set<ResourceKey<Level>> getServerDimensions() {
         assert CLIENT.player != null;
-        return CLIENT.player.connection.levels();
+        Set<ResourceKey<Level>> levels = CLIENT.player.connection.levels();
+        // Immersive Aeronautics: vanilla's set is only sent at login; a level added later (Infinite Dimensions)
+        // arrives by our dim sync
+        Map<ResourceKey<Level>, ResourceKey<DimensionType>> synced = dimIdToDimTypeId;
+        if (synced == null) {
+            return levels;
+        }
+        return Sets.union(levels, synced.keySet());
     }
     
     public static Collection<ClientLevel> getClientWorlds() {

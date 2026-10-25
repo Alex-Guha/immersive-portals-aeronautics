@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.mixin.client.alternate_dimension;
 
 import net.minecraft.client.Camera;
@@ -8,6 +15,7 @@ import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import qouteall.imm_ptl.peripheral.alternate_dimension.AlternateDimensions;
 
 @Mixin(FogRenderer.class)
 public class MixinFogRenderer_A_CVB {
@@ -21,17 +29,16 @@ public class MixinFogRenderer_A_CVB {
     )
     private static Vec3 redirectCameraGetPos(Camera camera) {
         ClientLevel world = Minecraft.getInstance().level;
-        // TODO @Nick1st - DynDim removal
-//        if (world != null && AlternateDimensions.isAlternateDimension(world)) {
-//            return new Vec3(
-//                camera.getPosition().x,
-//                Math.max(32.0, camera.getPosition().y),
-//                camera.getPosition().z
-//            );
-//        }
-//        else {
-//            return camera.getPosition();
-//        }
-        return camera.getPosition();
+        // Immersive Aeronautics: back with the alternate dimensions
+        if (world != null && AlternateDimensions.isAlternateDimension(world)) {
+            return new Vec3(
+                camera.getPosition().x,
+                Math.max(32.0, camera.getPosition().y),
+                camera.getPosition().z
+            );
+        }
+        else {
+            return camera.getPosition();
+        }
     }
 }

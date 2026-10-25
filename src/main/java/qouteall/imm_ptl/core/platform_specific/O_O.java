@@ -79,7 +79,9 @@ public class O_O {
     }
     
     public static void postClientChunkLoadEvent(LevelChunk chunk) {
-        NeoForge.EVENT_BUS.post(new ChunkEvent.Load(chunk, true));
+        // Immersive Aeronautics: newChunk is false on the client, as NeoForge's own client chunk load posts it; mods
+        // take true to mean a server-side chunk (Cobbleloots casts the level to ServerLevel)
+        NeoForge.EVENT_BUS.post(new ChunkEvent.Load(chunk, false));
 //        ClientChunkEvents.CHUNK_LOAD.invoker().onChunkLoad(
 //            ((ClientLevel) chunk.getLevel()), chunk
 //        );

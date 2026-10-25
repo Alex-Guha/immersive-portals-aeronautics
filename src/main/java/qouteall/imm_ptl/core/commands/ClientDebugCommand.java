@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
@@ -51,7 +58,6 @@ import qouteall.imm_ptl.core.ducks.IEClientWorld;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
-import qouteall.imm_ptl.core.platform_specific.IPConfigGUI;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
@@ -63,7 +69,6 @@ import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.MiscHelper;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
 import qouteall.q_misc_util.api.McRemoteProcedureCallClient;
-import qouteall.q_misc_util.my_util.MyTaskList;
 
 import java.lang.ref.WeakReference;
 import java.net.URLClassLoader;
@@ -394,19 +399,6 @@ public class ClientDebugCommand {
                     ClientWorldLoader.disposeRenderHelpers();
                     Minecraft.getInstance().levelRenderer.allChanged();
                 });
-                return 0;
-            })
-        );
-        
-        builder.then(Commands
-            .literal("config")
-            .executes(context -> {
-                // works without modmenu
-                Minecraft client = Minecraft.getInstance();
-                
-                IPGlobal.CLIENT_TASK_LIST.addTask(MyTaskList.oneShotTask(() -> {
-                    client.setScreen(IPConfigGUI.createClothConfigScreen(null));
-                }));
                 return 0;
             })
         );

@@ -1,8 +1,14 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.dim_stack;
 
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
-import de.nick1st.imm_ptl.events.DimensionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -23,6 +29,7 @@ import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.portal.global_portals.VerticalConnectingPortal;
+import qouteall.imm_ptl.peripheral.alternate_dimension.AlternateDimensions;
 import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
 import qouteall.q_misc_util.api.McRemoteProcedureCallClient;
@@ -41,14 +48,8 @@ public class DimStackManagement {
     public static Map<ResourceKey<Level>, BlockState> bedrockReplacementMap = new HashMap<>();
     
     public static void init() {
-        if (!isDimStackEnabled()) {
-            return;
-        }
-        NeoForge.EVENT_BUS.addListener(DimensionEvents.ServerDimensionsLoadEvent.class, event -> {
-            if (dimStackToApply != null) {
-                NeoForge.EVENT_BUS.post(new DimensionStackAPI.DimensionStackPreUpdateEvent(event.server, dimStackToApply));
-            }
-        });
+        // Immersive Aeronautics: the pre-update event for a new world's stack is posted in onServerCreatedWorlds
+        // (it listened for DimensionEvents.ServerDimensionsLoadEvent, which nothing posts since DimLib was dropped)
     }
 
     private static boolean isDimStackEnabled() {
@@ -81,7 +82,11 @@ public class DimStackManagement {
             return;
         }
 
+        // Immersive Aeronautics: the alternate dimensions this world already has, and those the new stack uses
+        AlternateDimensions.onServerCreatedWorlds(server);
+        
         if (dimStackToApply != null) {
+            NeoForge.EVENT_BUS.post(new DimensionStackAPI.DimensionStackPreUpdateEvent(server, dimStackToApply));
             dimStackToApply.apply(server);
             dimStackToApply = null;
         }

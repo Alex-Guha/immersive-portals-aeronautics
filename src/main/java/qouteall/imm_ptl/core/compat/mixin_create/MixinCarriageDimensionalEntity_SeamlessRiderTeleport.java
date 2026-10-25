@@ -109,7 +109,7 @@ public class MixinCarriageDimensionalEntity_SeamlessRiderTeleport {
         }
         if (crossing != null && leftCarriage.getCarriage() != null) {
             final Carriage.DimensionalCarriageEntity far =
-                ((IPCarriageAccessor) leftCarriage.getCarriage()).ip_getEntities().get(level.dimension());
+                ((IPCarriageAccessor) leftCarriage.getCarriage()).ip_getEntities().get(crossing.otherKey());
             final CarriageContraptionEntity farEntity = far != null ? far.entity.get() : null;
             if (farEntity != null) {
                 far.updatePassengerLoadout();

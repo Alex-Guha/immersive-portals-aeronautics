@@ -271,7 +271,8 @@ public final class IPCreatePortalPipes {
     /**
      * After Create's {@code FluidPropagator.propagateChangedPipe} visited {@code visited}: for each portal end among
      * them, the same update from the far end, so the far side's pipes drop the pressure mirrored into them and its
-     * pumps (and, through them, ours) distribute pressure again.
+     * pumps (and, through them, ours) distribute pressure again. A pump against the portal, at either end, is
+     * rescheduled on that side instead, as Create reschedules pumps only from the pipes next to them.
      */
     public static void propagateAcross(
         final LevelAccessor world, final BlockPos changedPos, final BlockState changedState, final Set<BlockPos> visited
@@ -300,6 +301,15 @@ public final class IPCreatePortalPipes {
                         LOGGER.info(TAG + "pipe change at {} {} reaches {} {} {}", level.dimension().location(),
                             pos.toShortString(), link.farLevel().dimension().location(), link.farPos().toShortString(),
                             link.farSide());
+                    }
+                    // Create reschedules a pump only from a pipe next to it, and a pump against a portal has none on
+                    // that side: reschedule it here, at either end, as that pipe would
+                    if (level.getBlockEntity(pos) instanceof PumpBlockEntity pump) {
+                        pump.updatePipesOnSide(side);
+                    }
+                    if (link.farLevel().getBlockEntity(link.farPos()) instanceof PumpBlockEntity farPump) {
+                        farPump.updatePipesOnSide(link.farSide());
+                        continue;
                     }
                     FluidPropagator.propagateChangedPipe(link.farLevel(), link.farPos(),
                         link.farLevel().getBlockState(link.farPos()));

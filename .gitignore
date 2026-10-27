@@ -54,10 +54,6 @@ src/main/resources/immersive_portals.timestamp
 /reference/upstream-jar/
 /reference/decompiled-upstream/
 
-# user-supplied test logs
-/LOG.txt
-/CRASHLOG.txt
-
 # ipa_rapier natives: build tree, cargo cache, and the built libraries (scripts/build-natives.sh)
 /natives/target/
 /natives/.cargo-cache/

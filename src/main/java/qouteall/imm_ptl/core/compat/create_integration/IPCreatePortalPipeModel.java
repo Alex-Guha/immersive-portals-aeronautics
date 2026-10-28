@@ -35,7 +35,8 @@ import org.jetbrains.annotations.Nullable;
  * <p>
  * Meshing runs on Sodium's worker threads with a block snapshot, so this goes by block alone: a placeholder block
  * whose plane faces the pipe ({@link IPCreatePortalPipes#isPlaceholderFacing}). Frameless portals get the fluid but
- * not the filler. Mixin: {@code MixinPipeAttachmentModel_PortalPipes}.
+ * not the filler. A pipe whose space a belt or shaft across the portal owns keeps its own end
+ * ({@link IPCreatePortalPipeStubs#isOutranked}). Mixin: {@code MixinPipeAttachmentModel_PortalPipes}.
  */
 public final class IPCreatePortalPipeModel {
     /** Bit per {@link Direction#get3DDataValue()}: pipe faces that open onto a portal block. */
@@ -54,7 +55,8 @@ public final class IPCreatePortalPipeModel {
     private static boolean opensOntoPortal(
         final BlockAndTintGetter world, final BlockPos pos, final BlockState state, final FluidTransportBehaviour transport, final Direction side
     ) {
-        return transport.canHaveFlowToward(state, side) && IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(pos.relative(side)), side);
+        return transport.canHaveFlowToward(state, side) && IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(pos.relative(side)), side)
+            && !IPCreatePortalPipeStubs.isOutranked(pos, side);
     }
 
     /** The attachment Create picked for a pipe face, with a rim or drain at a portal turned into a connection. */

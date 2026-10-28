@@ -311,6 +311,25 @@ public final class IPStraddleCut {
     @org.jetbrains.annotations.Nullable
     public static net.minecraft.world.level.block.state.BlockState farHalfBlockUnder(
             final net.minecraft.world.entity.Entity entity, final double depth) {
+        final FarHalfUnder under = farHalfUnder(entity, depth);
+        return under == null ? null : under.state();
+    }
+
+    /**
+     * @return the ship whose far half is under an entity's feet (as {@link #farHalfBlockUnder}), or null: the entity
+     * stands on that ship, though it does not track it
+     */
+    @org.jetbrains.annotations.Nullable
+    public static SubLevel farHalfShipUnder(final net.minecraft.world.entity.Entity entity, final double depth) {
+        final FarHalfUnder under = farHalfUnder(entity, depth);
+        return under == null ? null : under.ship();
+    }
+
+    private record FarHalfUnder(SubLevel ship, net.minecraft.world.level.block.state.BlockState state) {
+    }
+
+    @org.jetbrains.annotations.Nullable
+    private static FarHalfUnder farHalfUnder(final net.minecraft.world.entity.Entity entity, final double depth) {
         final List<Projection> projections = projectionsInto(entity.level());
         if (projections.isEmpty()) {
             return null;
@@ -327,7 +346,7 @@ public final class IPStraddleCut {
             }
             final net.minecraft.world.level.block.state.BlockState state = projection.ship().getLevel().getBlockState(pos);
             if (!state.isAir()) {
-                return state;
+                return new FarHalfUnder(projection.ship(), state);
             }
         }
         return null;

@@ -34,6 +34,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlClientChunkMap;
+import qouteall.imm_ptl.core.compat.IPFoliageCompat;
 import qouteall.imm_ptl.core.mixin.common.miscellaneous.IEPortalShape;
 import qouteall.imm_ptl.core.network.ImmPtlNetworkConfig;
 import qouteall.imm_ptl.core.portal.Portal;
@@ -56,6 +57,8 @@ public class O_O {
         ResourceKey<Level> from, ResourceKey<Level> to
     ) {
         RequiemCompatClient.onPlayerTeleportedClient();
+        // Immersive Aeronautics: Interactive Foliage follows the player's world
+        IPFoliageCompat.onPlayerChangeDimensionClient(from);
     }
     
     public static void onPlayerTravelOnServer(

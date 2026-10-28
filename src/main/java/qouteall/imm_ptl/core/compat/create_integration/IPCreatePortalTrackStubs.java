@@ -178,6 +178,9 @@ public final class IPCreatePortalTrackStubs {
             if (there.getBlock() instanceof TrackBlock && there.getValue(TrackBlock.SHAPE) == farShape) {
                 continue; // the far end's own track draws its half
             }
+            if (IPCreatePortalEnds.outranked(farWorld, spot, out.getOpposite(), IPCreatePortalEnds.Kind.TRACK)) {
+                continue; // a belt, shaft or pipe there owns the space between ({@link IPCreatePortalEnds})
+            }
             found.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
                 .computeIfAbsent(SectionPos.asLong(farCell), s -> new ArrayList<>())
                 .add(new Stub(farCell.immutable(), spot.immutable(), track.setValue(TrackBlock.SHAPE, farShape)));

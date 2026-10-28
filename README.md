@@ -161,6 +161,7 @@ code. Rules: `docs/provenance.md`.
 
 - `docs/seamless-ships.md`: ships straddling portals, status and next steps.
 - `docs/lessons/`: how Sable, IP and the other mods behave where it matters to us, and the history of each feature.
+- `docs/glossary.md`: our internal terms (far half, portal pass, back-bleed, ...).
 - `docs/testing.md`: headless and in-game testing, static checks.
 - `docs/licensing.md`, `docs/provenance.md`, `NOTICE`: licences and the origin of every file.
 - `natives/README.md`: the native library's origin and build.

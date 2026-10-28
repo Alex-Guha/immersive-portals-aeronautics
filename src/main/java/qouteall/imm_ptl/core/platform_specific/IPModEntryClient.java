@@ -131,6 +131,24 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onRenderStage
             );
+            // Immersive Aeronautics: belt items at a portal, cut at the plane and drawn on both sides
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltsClient::onRenderStage
+            );
+            // Immersive Aeronautics: what belt ends at portals meet across them, and the end loops past the plane
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PostClientTickEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onClientTick
+            );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                IPGlobal.PreGameRenderEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onPreGameRender
+            );
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onRenderStage
+            );
         }
 
         boolean isSodiumPresent =

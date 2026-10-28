@@ -79,13 +79,13 @@ public final class IPPhysicsStaffPortalsClient {
      * @param frame maps the player's world into the ship's
      * @param chain the portals the ship is seen through, for the server
      */
-    private record Picked(ClientSubLevel ship, BlockHitResult hit, IPPortalIsometry frame, CompoundTag chain) {
+    public record Picked(ClientSubLevel ship, BlockHitResult hit, IPPortalIsometry frame, CompoundTag chain) {
     }
 
     /**
      * @param picked the ship picked across a portal, or null when {@code hit} is the staff's own pick (or a miss)
      */
-    private record PickResult(HitResult hit, @Nullable Picked picked) {
+    public record PickResult(HitResult hit, @Nullable Picked picked) {
     }
 
     /** The local player's drag. */
@@ -175,11 +175,19 @@ public final class IPPhysicsStaffPortalsClient {
     }
 
     private static PickResult pickFor(final LocalPlayer player, final HitResult own, final float partialTick) {
+        final Vec3 eye = player.getEyePosition(partialTick);
+        return pickAlong(player, eye, eye.add(player.getViewVector(partialTick).scale(PhysicsStaffItem.RANGE)), own, partialTick);
+    }
+
+    /**
+     * As the staff's pick, along {@code eye -> end} (also for handles, {@link IPHandlePortalsClient}): a ship behind a
+     * portal or a far half wins when nearer than {@code own}, a hit in the player's world; what is behind a portal in
+     * the player's own world cannot be picked (a miss).
+     */
+    public static PickResult pickAlong(final LocalPlayer player, final Vec3 eye, final Vec3 end, final HitResult own, final float partialTick) {
         if (!(player.level() instanceof final ClientLevel level)) {
             return new PickResult(own, null);
         }
-        final Vec3 eye = player.getEyePosition(partialTick);
-        final Vec3 end = eye.add(player.getViewVector(partialTick).scale(PhysicsStaffItem.RANGE));
         // IP's placeholder blocks fill nether portals with a thin outline at the plane: not a target
         final boolean ownMissed = own.getType() == HitResult.Type.MISS || (own instanceof final BlockHitResult block
             && level.getBlockState(block.getBlockPos()).getBlock() == PortalPlaceholderBlock.instance);

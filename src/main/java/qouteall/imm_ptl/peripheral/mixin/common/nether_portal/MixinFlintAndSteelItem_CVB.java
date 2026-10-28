@@ -12,7 +12,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.FlintAndSteelItem;
 import net.minecraft.world.item.context.UseOnContext;
@@ -61,7 +60,9 @@ public class MixinFlintAndSteelItem_CVB {
             else if (O_O.isObsidian(targetBlockState)) {
                 Player player = context.getPlayer();
                 if (player != null) {
-                    if (player.getPose() == Pose.CROUCHING) {
+                    // Immersive Aeronautics: the sneak key, as vanilla's sneak-use; the crouching pose is never
+                    // set while flying, so a flying player always got IP's portal
+                    if (player.isSecondaryUseActive()) {
                         boolean succeeded = IntrinsicPortalGeneration.onCrouchingPlayerIgnite(
                             ((ServerLevel) world),
                             ((ServerPlayer) player),

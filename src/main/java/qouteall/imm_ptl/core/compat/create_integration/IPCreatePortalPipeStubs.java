@@ -23,10 +23,12 @@ import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.WeakHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Vec3i;
@@ -111,6 +113,10 @@ public final class IPCreatePortalPipeStubs {
 
     /** Per dimension, per section ({@link SectionPos#asLong}), the stubs in it. Replaced whole by the scan. */
     private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> stubs = Map.of();
+    /** World pipe faces at a portal block whose space a belt or shaft across the portal owns, by section. */
+    private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> outrankedFaces = Map.of();
+    /** The same as keys ({@link #faceKey}), for the pipe model on Sodium's worker threads. */
+    private static volatile Set<Long> outrankedKeys = Set.of();
     private static int tick;
     /** A pipe or portal block changed since the last search; {@link #changedImportant}: one the player changed. */
     private static boolean changed;
@@ -154,10 +160,11 @@ public final class IPCreatePortalPipeStubs {
         }
         final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
         final Map<ClientLevel, List<ShipStub>> onShips = new IdentityHashMap<>();
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> outranked = new HashMap<>();
         for (final ClientLevel world : worlds.values()) {
             for (final Entity entity : world.entitiesForRendering()) {
                 if (entity instanceof Portal portal) {
-                    scan(world, portal, worlds, found, onShips);
+                    scan(world, portal, worlds, found, onShips, outranked);
                 }
             }
         }
@@ -165,6 +172,13 @@ public final class IPCreatePortalPipeStubs {
         stubs = found;
         markChanged(previous, found, important);
         markChanged(found, previous, important);
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previouslyOutranked = outrankedFaces;
+        outrankedFaces = outranked;
+        final Set<Long> keys = new HashSet<>();
+        outranked.values().forEach(sections -> sections.values().forEach(list -> list.forEach(face -> keys.add(faceKey(face.pos(), face.toward())))));
+        outrankedKeys = keys;
+        markChanged(previouslyOutranked, outranked, important);
+        markChanged(outranked, previouslyOutranked, important);
 
         for (final ClientLevel world : worlds.values()) {
             final List<ShipStub> here = onShips.getOrDefault(world, List.of());
@@ -192,7 +206,8 @@ public final class IPCreatePortalPipeStubs {
 
     private static void scan(
         final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips,
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> outranked
     ) {
         if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6) {
             return;
@@ -200,11 +215,12 @@ public final class IPCreatePortalPipeStubs {
         final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
         final AABB box = portal.getBoundingBox();
         // the portal's blocks: in the world, or (the ship side of a ship-mounted portal) in its ship's plot
-        scanFrame(world, portal, null, box.deflate(PLANE_EPSILON), mount, worlds, found, onShips);
+        scanFrame(world, portal, null, box.deflate(PLANE_EPSILON), mount, worlds, found, onShips, outranked);
         if (SABLE && mount != null) {
             for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(world, box.inflate(1))) {
                 if (ship.ship().equals(mount.carrier())) {
-                    scanFrame(world, portal, ship, IPCreatePortalShafts.toLocalBounds(ship, box.inflate(0.5)), mount, worlds, found, onShips);
+                    scanFrame(world, portal, ship, IPCreatePortalShafts.toLocalBounds(ship, box.inflate(0.5)), mount, worlds, found, onShips,
+                        outranked);
                 }
             }
         }
@@ -214,7 +230,8 @@ public final class IPCreatePortalPipeStubs {
     private static void scanFrame(
         final ClientLevel world, final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final AABB cells,
         final @Nullable IPShipMount mount, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips,
+        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> outranked
     ) {
         final Vec3 normal = frame == null ? portal.getNormal() : frame.toLocalDirection(portal.getNormal()).normalize();
         final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
@@ -250,11 +267,14 @@ public final class IPCreatePortalPipeStubs {
             }
             final Vec3 farCentre = portal.transformPoint(worldCentre);
             if (mount == null || frame != null) {
-                stub(farWorld, null, farCentre, toFarWorld, behind, found, onShips);
+                final Map<Long, List<Stub>> outrankedHere = outranked.computeIfAbsent(world.dimension(), d -> new HashMap<>());
+                stub(farWorld, null, farCentre, toFarWorld, behind, found, onShips,
+                    frame == null ? new Stub(cell.relative(front).immutable(), behind) : null, outrankedHere);
             } else if (SABLE) {
                 // a fixed side of a ship-mounted portal: the other side is on the ship
                 for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
-                    if (ship.ship().equals(mount.carrier()) && stub(farWorld, ship, farCentre, toFarWorld, behind, found, onShips)) {
+                    if (ship.ship().equals(mount.carrier())
+                        && stub(farWorld, ship, farCentre, toFarWorld, behind, found, onShips, null, new HashMap<>())) {
                         break;
                     }
                 }
@@ -264,11 +284,13 @@ public final class IPCreatePortalPipeStubs {
 
     /**
      * The far half for a pipe whose portal block maps to {@code farCentre} (in {@code frame}, null: the world), unless a
-     * pipe there is open towards it. False if no far portal block is there.
+     * pipe there is open towards it, or a belt or shaft there owns the space between ({@link IPCreatePortalEnds}): then
+     * {@code outrankedFace} (the near pipe's face, a world pipe's) is added to {@code outranked}. False if no far portal block is there.
      */
     private static boolean stub(
         final ClientLevel farWorld, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 farCentre, final Quaternionf toFarWorld,
-        final Direction behind, final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips
+        final Direction behind, final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips,
+        final @Nullable Stub outrankedFace, final Map<Long, List<Stub>> outranked
     ) {
         final Vec3 local = frame == null ? farCentre : frame.toLocal(farCentre);
         final BlockPos farCell = BlockPos.containing(local);
@@ -285,6 +307,12 @@ public final class IPCreatePortalPipeStubs {
         if (opensTowards(farWorld, farCell.relative(farOut), farOut.getOpposite())) {
             return true; // the far pipe draws the rest itself
         }
+        if (IPCreatePortalEnds.outranked(farWorld, farCell.relative(farOut), farOut.getOpposite(), IPCreatePortalEnds.Kind.PIPE)) {
+            if (outrankedFace != null) {
+                outranked.computeIfAbsent(SectionPos.asLong(outrankedFace.pos()), s -> new ArrayList<>()).add(outrankedFace);
+            }
+            return true; // a belt or shaft there owns the space between: no stub, and the near pipe draws no filler
+        }
         if (frame == null) {
             found.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
                 .computeIfAbsent(SectionPos.asLong(farCell), s -> new ArrayList<>())
@@ -293,6 +321,20 @@ public final class IPCreatePortalPipeStubs {
             onShips.computeIfAbsent(farWorld, w -> new ArrayList<>()).add(new ShipStub(farCell.immutable(), farOut, frame, null));
         }
         return true;
+    }
+
+    /**
+     * Whether a belt or shaft across the portal owns the space in front of this pipe face ({@link IPCreatePortalEnds}):
+     * the pipe then keeps its own end and draws no filler. Any thread. Goes by position only (not the dimension): a
+     * pipe at the same spot in another dimension facing a portal block the same way would share the answer.
+     */
+    public static boolean isOutranked(final BlockPos pos, final Direction side) {
+        final Set<Long> keys = outrankedKeys;
+        return !keys.isEmpty() && keys.contains(faceKey(pos, side));
+    }
+
+    private static long faceKey(final BlockPos pos, final Direction side) {
+        return pos.asLong() * 6 + side.ordinal();
     }
 
     /** A pipe at {@code pos} open towards {@code side}. */

@@ -31,6 +31,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import qouteall.imm_ptl.core.ClientWorldLoader;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IPIrisRenderTypes;
 import qouteall.imm_ptl.core.compat.mixin_create.IPLaserRendererInvoker;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPPlaneClippingBufferSource;
@@ -111,6 +112,7 @@ public final class IPLaserPortalsClient {
     /** {@code renderSafe} of a laser renderer starts with the block entity's pose. */
     public static void beforeRender(final PoseStack pose) {
         blockEntityPose = new Matrix4f(pose.last().pose());
+        IPLaserIrisPortals.setLaserType(SimRenderTypes.laser());
     }
 
     /**
@@ -203,7 +205,8 @@ public final class IPLaserPortalsClient {
         pose.last().normal().set(new Matrix3f(drawing).normal());
 
         // drawing space is this world's minus the camera
-        MultiBufferSource source = buffers;
+        // with a shader pack, in the same group of Iris's buffer as the beams drawn by their block entities (IPLaserIrisPortals)
+        MultiBufferSource source = IPLaserIrisPortals.shaderPackInUse() ? IPIrisRenderTypes.asBlockEntity(buffers) : buffers;
         final List<IPPlaneClippingBufferSource> clips = new ArrayList<>();
         final Portal entry = previous.exit();
         if (entry != null) {

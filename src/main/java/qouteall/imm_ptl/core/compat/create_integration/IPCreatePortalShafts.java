@@ -70,6 +70,14 @@ import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
  * itself ({@link Pair#upstream}), and within one level while both ends are in one network; either would keep the
  * shafts turning with nothing driving them.
  * <p>
+ * Belts (2.6.12.7): a belt whose run ends at a portal pairs with a belt ending at the same spot past it, the same way
+ * (its end cell is the end, the side its run ends on the face), turning so that items run into the portal on one side
+ * and out of it on the other ({@link #beltSign}). One belt turning drives the other, as one belt would; two belts
+ * turning on their own are two belts meeting at the portal and are left alone (no overpowering, nothing broken; they
+ * are drawn as two belt ends when their speeds differ, {@code IPCreatePortalBeltLook}). Belts on ships at their own
+ * mounted portal pair with the fixed side as shafts do (2.6.12.8; the factor is worked out in each belt's own
+ * coordinates). Shafts pair only with shafts, belts only with belts.
+ * <p>
  * Pairs are found every second from the portals' side (each portal's opening, one block deep), and sooner after a
  * kinetic block next to a portal block loads or is placed. While one end is unloaded the other keeps its state, as a
  * Create network keeps turning while its generator's chunk is unloaded. Mixins: {@code MixinKineticBlockEntity_PortalShafts},
@@ -135,6 +143,8 @@ public final class IPCreatePortalShafts {
         End portalEnd;
         /** A ship or a ship-mounted portal is involved: checked again every tick. */
         final boolean moving;
+        /** Two belt ends (else two shaft ends). */
+        final boolean belt;
         /** The end that drives the other, or null. */
         @Nullable End driver;
         /** Pairs whose driven ends the driving network takes power from, this one included. */
@@ -148,13 +158,14 @@ public final class IPCreatePortalShafts {
         int missed;
         long idleUntil;
 
-        Pair(final End a, final End b, final float sign, final Portal portal, final boolean moving) {
+        Pair(final End a, final End b, final float sign, final Portal portal, final boolean moving, final boolean belt) {
             this.a = a;
             this.b = b;
             this.sign = sign;
             this.portal = portal;
             this.portalEnd = a;
             this.moving = moving;
+            this.belt = belt;
         }
 
         End other(final End end) {
@@ -317,7 +328,8 @@ public final class IPCreatePortalShafts {
                 continue;
             }
             for (final Direction side : onlySide == null ? Direction.values() : new Direction[]{onlySide}) {
-                if (!hasShaft(level, cell, be.getBlockState(), side) || isJoinedInLevel(level, cell, side)) {
+                final boolean belt = isBeltEnd(be.getBlockState(), side);
+                if (!belt && (!hasShaft(level, cell, be.getBlockState(), side) || isJoinedInLevel(level, cell, side))) {
                     continue;
                 }
                 final FarEnd far = link(portal, level, cell, side, frame);
@@ -346,7 +358,7 @@ public final class IPCreatePortalShafts {
             return; // the far end is joined to another end already
         }
         final boolean moving = nearOnShip || far.onShip() || IPShipPortals.isShipMounted(portal);
-        final Pair pair = new Pair(near, far.end(), far.sign(), portal, moving);
+        final Pair pair = new Pair(near, far.end(), far.sign(), portal, moving, isBeltEnd(be.getBlockState(), near.side()));
         PAIRS.put(near, pair);
         PAIRS.put(far.end(), pair);
         ALL.add(pair);
@@ -377,6 +389,8 @@ public final class IPCreatePortalShafts {
             return null;
         }
         final boolean shipInvolved = mount != null;
+        final BlockState nearState = level.getBlockState(pos);
+        final boolean belt = isBeltEnd(nearState, side);
         final double cos = shipInvolved ? SHIP_COS : 1 - PLANE_EPSILON;
         final double slack = shipInvolved ? SHIP_GAP : PLANE_EPSILON;
 
@@ -404,7 +418,7 @@ public final class IPCreatePortalShafts {
 
         if (!shipInvolved || frame != null) {
             // a world far end: fixed
-            return farCandidate(farLevel, farOnPlane, farDir, axisThere, null, cos, slack);
+            return farCandidate(farLevel, farOnPlane, farDir, axisThere, null, cos, slack, belt ? nearState : null, side);
         }
         // a fixed shaft at a ship-mounted portal: the far end is on the portal's ship
         if (!SABLE) {
@@ -413,7 +427,7 @@ public final class IPCreatePortalShafts {
         final AABB around = new AABB(farOnPlane, farOnPlane.add(farDir.scale(1.5))).inflate(1);
         for (final Frame ship : IPCreateShaftShips.shipsTouching(farLevel, around)) {
             if (ship.ship().equals(mount.carrier())) {
-                final FarEnd found = farCandidate(farLevel, farOnPlane, farDir, axisThere, ship, cos, slack);
+                final FarEnd found = farCandidate(farLevel, farOnPlane, farDir, axisThere, ship, cos, slack, belt ? nearState : null, side);
                 if (found != null) {
                     return found;
                 }
@@ -422,10 +436,13 @@ public final class IPCreatePortalShafts {
         return null;
     }
 
-    /** A kinetic block past the far plane in {@code frame} (null: the world) whose face towards the plane lines up. */
+    /**
+     * A kinetic block past the far plane in {@code frame} (null: the world) whose face towards the plane lines up: a
+     * shaft for a shaft, a belt's end for a belt's end ({@code nearBelt}: the near belt's state, its end on {@code nearSide}).
+     */
     private static @Nullable FarEnd farCandidate(
         final ServerLevel farLevel, final Vec3 farOnPlane, final Vec3 farDir, final Vec3 axisThere, final @Nullable Frame frame,
-        final double cos, final double slack
+        final double cos, final double slack, final @Nullable BlockState nearBelt, final Direction nearSide
     ) {
         final Vec3 dir = frame == null ? farDir : frame.toLocalDirection(farDir).normalize();
         final Vec3 plane = frame == null ? farOnPlane : frame.toLocal(farOnPlane);
@@ -446,7 +463,15 @@ public final class IPCreatePortalShafts {
                 continue;
             }
             final Direction farSide = out.getOpposite();
-            if (!hasShaft(farLevel, candidate, be.getBlockState(), farSide) || isJoinedInLevel(farLevel, candidate, farSide)) {
+            if (nearBelt != null) {
+                if (!isBeltEnd(be.getBlockState(), farSide)) {
+                    continue;
+                }
+                return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be,
+                    beltSign(nearBelt, nearSide, be.getBlockState(), farSide), frame != null);
+            }
+            if (!hasShaft(farLevel, candidate, be.getBlockState(), farSide) || isJoinedInLevel(farLevel, candidate, farSide)
+                || isBeltEnd(be.getBlockState(), farSide)) {
                 continue;
             }
             final Vec3 localAxis = Vec3.atLowerCornerOf(Direction.get(Direction.AxisDirection.POSITIVE, out.getAxis()).getNormal());
@@ -471,6 +496,28 @@ public final class IPCreatePortalShafts {
             maxZ = Math.max(maxZ, corner.z);
         }
         return new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    /** A belt whose run ends at this block's face {@code side} (horizontal belts). */
+    static boolean isBeltEnd(final BlockState state, final Direction side) {
+        return IPCreatePortalEnds.isBeltEndFacing(state, side)
+            && state.getValue(com.simibubi.create.content.kinetics.belt.BeltBlock.SLOPE) == com.simibubi.create.content.kinetics.belt.BeltSlope.HORIZONTAL;
+    }
+
+    /**
+     * The factor between two belt ends' speeds through a portal: items running into the portal at one end run out of it
+     * at the other. Create moves a belt's items towards the positive end of its axis for a positive speed, the negative
+     * end for an X belt ({@code BeltBlockEntity.getMovementFacing}).
+     */
+    private static float beltSign(final BlockState a, final Direction aSide, final BlockState b, final Direction bSide) {
+        final boolean aInForPositive = positiveMovement(a) == aSide;
+        final boolean bOutForPositive = positiveMovement(b) == bSide.getOpposite();
+        return aInForPositive == bOutForPositive ? 1 : -1;
+    }
+
+    private static Direction positiveMovement(final BlockState belt) {
+        final Direction.Axis axis = belt.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING).getAxis();
+        return Direction.fromAxisAndDirection(axis, axis == Direction.Axis.X ? Direction.AxisDirection.NEGATIVE : Direction.AxisDirection.POSITIVE);
     }
 
     /** Whether the block at {@code pos} has a shaft on {@code side}. */
@@ -611,6 +658,9 @@ public final class IPCreatePortalShafts {
             return;
         }
         final boolean both = sa != 0 && sb != 0;
+        if (both && pair.belt) {
+            return; // two belts turning on their own meet at the portal as two belts
+        }
         // one side turning drives the other; both turning: as when Create joins two turning networks, the faster
         // overpowers the slower (the first when equal)
         final End driver = sb == 0 ? pair.a : sa == 0 ? pair.b : Math.abs(sa) >= Math.abs(sb) ? pair.a : pair.b;
@@ -927,7 +977,8 @@ public final class IPCreatePortalShafts {
             return null;
         }
         final BlockEntity be = level.getBlockEntity(end.pos());
-        if (!(be instanceof KineticBlockEntity kinetic) || kinetic.isRemoved() || !hasShaft(level, end.pos(), kinetic.getBlockState(), end.side())) {
+        if (!(be instanceof KineticBlockEntity kinetic) || kinetic.isRemoved()
+            || !(hasShaft(level, end.pos(), kinetic.getBlockState(), end.side()) || isBeltEnd(kinetic.getBlockState(), end.side()))) {
             return null;
         }
         return kinetic;

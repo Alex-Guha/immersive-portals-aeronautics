@@ -10,13 +10,15 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackStubs;
 
 /**
  * A block change in any client world may add or remove the far half of a pipe at a portal ({@link IPCreatePortalPipeStubs})
- * or a track's bridge ({@link IPCreatePortalTrackStubs}), or a half shaft in a portal block ({@link IPCreatePortalShaftHalves}).
+ * or a track's bridge ({@link IPCreatePortalTrackStubs}), or a half shaft in a portal block ({@link IPCreatePortalShaftHalves}),
+ * or a belt's look at a portal ({@link IPCreatePortalBeltLook}).
  */
 @Mixin(ClientLevel.class)
 public abstract class MixinClientLevel_PortalPipeStubs {
@@ -25,5 +27,6 @@ public abstract class MixinClientLevel_PortalPipeStubs {
         IPCreatePortalPipeStubs.onBlockChanged(oldState, newState, flags);
         IPCreatePortalShaftHalves.onBlockChanged(oldState, newState);
         IPCreatePortalTrackStubs.onBlockChanged(oldState, newState, flags);
+        IPCreatePortalBeltLook.onBlockChanged((ClientLevel) (Object) this, pos, oldState, newState);
     }
 }

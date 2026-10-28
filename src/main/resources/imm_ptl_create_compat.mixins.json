@@ -34,6 +34,9 @@
     "MixinPhysicsStaffDragSession_Portals",
     "MixinPhysicsStaffDragPacket_Portals",
     "MixinPhysicsStaffActionPacket_Portals",
+    "MixinHandleBlockEntity_Portals",
+    "MixinHandleConstraint_Portals",
+    "MixinUpdatePlayerUsingHandlePacket_Portals",
     "MixinLaserBehaviour_Portals",
     "MixinLaserSensorInteractor_Portals",
     "MixinOpticalSensor_Portals",
@@ -50,7 +53,11 @@
     "MixinPumpBlockEntity_PortalPipes",
     "MixinKineticBlockEntity_PortalShafts",
     "MixinKineticNetwork_PortalShafts",
-    "IPRotationPropagatorInvoker"
+    "IPRotationPropagatorInvoker",
+    "IPBeltInventoryAccessor",
+    "MixinBeltInventory_PortalBelts",
+    "MixinBeltMovementHandler_PortalRiders",
+    "MixinBeltBlockEntity_PortalRiders"
   ],
   "injectors": {
     "defaultRequire": 0
@@ -88,6 +95,8 @@
     "MixinFlywheelVisualizationManager_StraddleClip",
     "IPPhysicsStaffClientHandlerAccessor",
     "MixinPhysicsStaffClient_Portals",
+    "IPBlockHoldInteractionAccessor",
+    "MixinClientHandleHandler_Portals",
     "MixinPhysicsStaffRenderHandler_Portals",
     "IPPhysicsStaffBeamAccessor",
     "MixinPhysicsStaffItemRenderer_Portals",
@@ -100,6 +109,11 @@
     "MixinPipeAttachmentModel_PortalPipes",
     "IPLevelRendererSectionInvoker",
     "MixinClientLevel_PortalPipeStubs",
-    "MixinKineticBlockEntity_PortalShaftPhase"
+    "MixinRenderType_LaserIrisPortals",
+    "MixinKineticBlockEntity_PortalShaftPhase",
+    "IPBeltRendererInvoker",
+    "MixinBeltRenderer_PortalBelts",
+    "MixinSafeBlockEntityRenderer_PortalBelts",
+    "MixinBeltVisual_PortalBelts"
   ]
 }

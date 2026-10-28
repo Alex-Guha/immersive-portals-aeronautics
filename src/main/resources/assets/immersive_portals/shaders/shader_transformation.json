@@ -29,6 +29,8 @@
         "rendertype_entity_translucent_cull",
         "rendertype_entity_translucent",
         "rendertype_entity_smooth_cutout",
+        "rendertype_entity_no_outline",
+        "rendertype_entity_shadow",
         "rendertype_beacon_beam\",",
         "rendertype_entity_translucent_emissive",
         "rendertype_entity_translucent_cull",

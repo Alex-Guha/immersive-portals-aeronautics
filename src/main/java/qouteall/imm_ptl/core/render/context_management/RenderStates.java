@@ -91,6 +91,9 @@ public class RenderStates {
     
     public static boolean isRenderingPortalWeather = false;
     
+    // Immersive Aeronautics: inside NeoForge's ClientHooks.dispatchRenderStage (MixinClientHooks_StageClipping)
+    public static int renderStageDepth = 0;
+    
     public static void updatePreRenderInfo(
         float newPartialTick
     ) {

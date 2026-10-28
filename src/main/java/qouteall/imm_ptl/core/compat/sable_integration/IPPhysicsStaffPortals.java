@@ -63,7 +63,7 @@ public final class IPPhysicsStaffPortals {
     static final String LINK_PORTAL = "portal";
     static final String LINK_DIM = "dim";
     static final String LINK_INVERSE = "inverse";
-    private static final int MAX_LINKS = 2;
+    static final int MAX_LINKS = 2;
 
     /**
      * @param frame maps the player's world ({@code playerDim}) into the ship's world
@@ -277,14 +277,14 @@ public final class IPPhysicsStaffPortals {
         return ((IPPhysicsStaffServerHandlerAccessor) handler).ip_getDraggingSessions();
     }
 
-    private static boolean hasShip(final ServerLevel level, final UUID ship) {
+    static boolean hasShip(final ServerLevel level, final UUID ship) {
         final SubLevelContainer container = SubLevelContainer.getContainer(level);
         final SubLevel sub = container == null ? null : container.getSubLevel(ship);
         return sub != null && !sub.isRemoved();
     }
 
     @Nullable
-    private static ServerLevel levelOf(final MinecraftServer server, final UUID ship) {
+    static ServerLevel levelOf(final MinecraftServer server, final UUID ship) {
         for (final ServerLevel level : server.getAllLevels()) {
             if (hasShip(level, ship)) {
                 return level;
@@ -312,7 +312,7 @@ public final class IPPhysicsStaffPortals {
      * null when they do not lead there (or one is not rigid)
      */
     @Nullable
-    private static IPPortalIsometry resolve(final ServerPlayer player, final ServerLevel shipLevel, final ListTag links) {
+    static IPPortalIsometry resolve(final ServerPlayer player, final ServerLevel shipLevel, final ListTag links) {
         ResourceKey<Level> at = player.level().dimension();
         IPPortalIsometry frame = IPPortalIsometry.IDENTITY;
         for (int i = 0; i < links.size(); i++) {

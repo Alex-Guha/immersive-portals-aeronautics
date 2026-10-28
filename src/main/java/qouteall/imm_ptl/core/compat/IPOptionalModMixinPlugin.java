@@ -36,7 +36,10 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("dev.eriksonn.aeronautics.", "aeronautics"),
         Map.entry("toni.sodiumdynamiclights.", "sodiumdynamiclights"),
         Map.entry("net.createteleporters.", "createteleporters"),
-        Map.entry("com.playsi.aero_cam_sync.", "aero_cam_sync")
+        Map.entry("com.playsi.aero_cam_sync.", "aero_cam_sync"),
+        Map.entry("com.euphoriapatches.euphoria_patcher.", "euphoria_patcher"),
+        Map.entry("net.karto.mc2.mc2_interactivefoliage.", "mc2_interactivefoliage"),
+        Map.entry("com.github.razorplay01.sway.", "sway")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(

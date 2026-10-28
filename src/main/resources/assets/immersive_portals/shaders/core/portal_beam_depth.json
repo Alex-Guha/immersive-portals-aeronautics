@@ -1,0 +1,63 @@
+{
+  "vertex": "portal_beam_depth",
+  "fragment": "portal_beam_depth",
+  "attributes": [
+    "Position"
+  ],
+  "samplers": [
+    {
+      "name": "IPMainDepth"
+    },
+    {
+      "name": "IPBeforeBeamsDepth"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "ModelViewMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0
+      ]
+    },
+    {
+      "name": "ProjMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0,
+        0,
+        0,
+        0,
+        0,
+        1.0
+      ]
+    }
+  ]
+}

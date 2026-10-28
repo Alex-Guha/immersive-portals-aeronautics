@@ -141,7 +141,9 @@ public final class IPCreatePortalPipes {
         for (final Portal portal : IPPortalLookup.touching(level, search, p -> p.isTeleportable() && !p.isRemoved())) {
             final Link found = linkVia(portal, pos, side, frame);
             if (found != null) {
-                return found;
+                // a belt or shaft across the portal owns the space between: nothing passes ({@link IPCreatePortalEnds})
+                return IPCreatePortalEnds.outranked(found.farLevel(), found.farPos(), found.farSide(), IPCreatePortalEnds.Kind.PIPE)
+                    ? null : found;
             }
         }
         return null;

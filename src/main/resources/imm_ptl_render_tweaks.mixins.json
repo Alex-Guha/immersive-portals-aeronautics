@@ -13,7 +13,15 @@
     "MixinLodestonePostProcess_PortalPassSkip",
     "MixinDatabankPostShaders_PortalPassSkip",
     "MixinSodiumDynamicLights_PerDimensionUpdate",
-    "MixinSodiumDynamicLights_StraddleLights"
+    "MixinSodiumDynamicLights_StraddleLights",
+    "MixinEuphoriaDimensionRefresh_NoRebuild",
+    "MixinIrisPipelineManager_EuphoriaPack",
+    "IEIris_CurrentPack",
+    "IEInteractiveFoliageRenderer",
+    "MixinInteractiveFoliageRenderer_PlayerWorldOnly",
+    "MixinInteractiveFoliageSplit_PlayerWorldOnly",
+    "MixinInteractiveFoliageIris_PlayerWorldOnly",
+    "MixinSwayEngine_OncePerFrame"
   ],
   "injectors": {
     "defaultRequire": 0

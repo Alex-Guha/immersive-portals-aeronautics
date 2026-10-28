@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.render.CrossPortalEntityRenderer;
 import qouteall.imm_ptl.core.render.FrontClipping;
+import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 
 import java.util.function.Supplier;
@@ -39,6 +40,11 @@ public class MixinRenderSystem_Clipping {
             }
             else if (RenderStates.isRenderingPortalWeather) {
                 FrontClipping.updateClippingEquationUniformForCurrentShader(false);
+            }
+            // Immersive Aeronautics: other mods' draws from a render stage in a portal pass, or what lies behind
+            // the far portal shows in the view (back-bleed, docs/glossary.md)
+            else if (RenderStates.renderStageDepth > 0 && PortalRendering.isRendering()) {
+                FrontClipping.updateClippingEquationUniformForStageDraw();
             }
             else {
                 FrontClipping.unsetClippingUniform();

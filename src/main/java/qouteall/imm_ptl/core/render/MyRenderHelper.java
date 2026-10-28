@@ -113,6 +113,22 @@ public class MyRenderHelper {
             }
         });
 
+        // Immersive Aeronautics: laser beams left out of the depth portal areas are decided against (IPLaserIrisPortals)
+        loadShaderSignal.connect((resourceManager, resultConsumer) -> {
+            try {
+                ShaderInstance shader = new ShaderInstance(
+                    getResourceFactory(resourceManager),
+                    "portal_beam_depth",
+                    DefaultVertexFormat.POSITION
+                );
+                resultConsumer.accept(shader);
+                portalBeamDepthShader = shader;
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         // Immersive Aeronautics: a fading global portal's backdrop blended back (IPGlobalPortalFade)
         loadShaderSignal.connect((resourceManager, resultConsumer) -> {
             try {
@@ -184,6 +200,7 @@ public class MyRenderHelper {
     public static ShaderInstance portalAreaLodShader;
     // Immersive Aeronautics: see IPGlobalPortalFade
     public static ShaderInstance portalFadeShader;
+    public static ShaderInstance portalBeamDepthShader;
     public static ShaderInstance blitScreenNoBlendShader;
     
     public static void drawPortalAreaWithFramebuffer(

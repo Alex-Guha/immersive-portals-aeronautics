@@ -24,6 +24,7 @@ import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.IPMcHelper;
 import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
+import qouteall.imm_ptl.core.compat.sable_integration.IPLaserIrisPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
@@ -130,6 +131,9 @@ public class IrisPortalRenderer extends PortalRenderer {
     
         IPPortingLibCompat.setIsStencilEnabled(client.getMainRenderTarget(), false);
         
+        // Immersive Aeronautics: laser beams recorded for drawing over portal views
+        IPLaserIrisPortals.clearAll();
+        
         // Iris now use vanilla framebuffer's depth
         client.getMainRenderTarget().bindWrite(false);
     }
@@ -196,6 +200,9 @@ public class IrisPortalRenderer extends PortalRenderer {
                     " Portal-in-portal wont' be rendered");
             }
             
+            // Immersive Aeronautics: laser beams do not hide the portals behind them
+            IPLaserIrisPortals.correctPortalDepth(portalLayer, mcFrameBuffer, deferredFbs[portalLayer].fb);
+            
             initStencilForLayer(portalLayer);
             
             deferredFbs[portalLayer].fb.bindWrite(true);
@@ -215,6 +222,9 @@ public class IrisPortalRenderer extends PortalRenderer {
         }
         
         renderPortals(modelView);
+        
+        // Immersive Aeronautics: this pass's laser beams are drawn in its portal views by now
+        IPLaserIrisPortals.clear(portalLayer);
         
         if (portalLayer == 0) {
             finish();

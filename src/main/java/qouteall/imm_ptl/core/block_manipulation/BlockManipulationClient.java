@@ -251,6 +251,18 @@ public class BlockManipulationClient {
     }
     
     /**
+     * Immersive Aeronautics: the world the local player is interacting in while IP has switched to the remote target's
+     * world ({@link #withSwitchedContext}), for NeoForge's interaction events; null otherwise
+     */
+    @Nullable
+    public static Level switchedLevelFor(net.minecraft.world.entity.player.Player player) {
+        if (!ClientWorldLoader.getIsWorldSwitched() || player != client.player || client.level == null) {
+            return null;
+        }
+        return client.level;
+    }
+
+    /**
      * It will not switch the dimension of client player
      */
     public static <T> T withSwitchedContext(

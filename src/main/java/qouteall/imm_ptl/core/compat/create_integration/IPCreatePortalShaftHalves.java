@@ -78,7 +78,8 @@ import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
  * block before the plane, and the far shaft starts half a block after the far plane: without more, the shaft looks cut
  * a block short. Each portal block next to a shaft end gets Create's half shaft from the plane to that end, turning
  * with it; with no shaft at the far end the far portal block gets the other half, from the far plane outwards, so the
- * shaft visibly goes through. Both are Flywheel instances of one effect per client world (they turn, so they cannot be
+ * shaft visibly goes through. A belt's end across the portal owns the space instead: no halves on either side
+ * ({@link IPCreatePortalEnds}). Both are Flywheel instances of one effect per client world (they turn, so they cannot be
  * chunk geometry like the pipe stubs in {@link IPCreatePortalPipeStubs}). With Flywheel's backend off (always under a
  * shader pack) Create draws its shafts as block entities, and so do the halves ({@link #onRenderStage}).
  * <p>
@@ -325,6 +326,10 @@ public final class IPCreatePortalShaftHalves {
             if (source == null) {
                 continue;
             }
+            if (farWorld != null && (mount == null || frame != null) && IPCreatePortalEnds.farKind(
+                farWorld, portal.transformPoint(worldCentre), toFarWorld, behind).outranks(IPCreatePortalEnds.Kind.SHAFT)) {
+                continue; // a belt across the portal owns the space between ({@link IPCreatePortalEnds})
+            }
             final float offset = KineticBlockEntityVisual.rotationOffset(source.getBlockState(), axis, endPos)
                 + source.getRotationAngleOffset(axis);
             add(found, world, new Half(cell.immutable(), pointing(front), axisVector, offset, source, behind, frame, null));
@@ -373,6 +378,9 @@ public final class IPCreatePortalShaftHalves {
             // the far shaft draws its own half; the side driven through the portal is turned to line up
             phase(source, behind, axisVector, offset, toLocal, farShaft, farOut, shifts);
             return true;
+        }
+        if (IPCreatePortalEnds.outranked(farWorld, farCell.relative(farOut), farOut.getOpposite(), IPCreatePortalEnds.Kind.SHAFT)) {
+            return true; // a belt there owns the space between
         }
         final Quaternionf base = new Quaternionf(toLocal).mul(pointing(behind));
         final Vector3f farAxis = toLocal.transform(new Vector3f(axisVector));

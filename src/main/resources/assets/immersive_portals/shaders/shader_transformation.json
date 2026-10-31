@@ -31,9 +31,8 @@
         "rendertype_entity_smooth_cutout",
         "rendertype_entity_no_outline",
         "rendertype_entity_shadow",
-        "rendertype_beacon_beam\",",
+        "rendertype_beacon_beam",
         "rendertype_entity_translucent_emissive",
-        "rendertype_entity_translucent_cull",
         "portal_area",
         "portal_area_lod",
         "particle"
@@ -51,6 +50,8 @@
       "type": "vs",
       "affectedShaders": [
         "iris_gbuffers_terrain",
+        "iris_gbuffers_terrain_solid",
+        "iris_gbuffers_terrain_cutout",
         "iris_gbuffers_water"
       ],
       "transformations": [
@@ -59,6 +60,8 @@
           "replacement": "uniform vec4 iportal_ClippingEquation;\nvoid main() {"
         },
         {
+          "comment": "Iris's core-profile path (SodiumCoreTransformer) has no getVertexPosition: no clip there, a program that does not compile would lose the whole pack",
+          "requires": "getVertexPosition",
           "pattern": "\\}(?![\\S\\s]*\\})",
           "replacement": "gl_ClipDistance[0] = dot(\n    (iris_ModelViewMatrix * getVertexPosition()).xyz, iportal_ClippingEquation.xyz\n) + iportal_ClippingEquation.w;\n}"
         }

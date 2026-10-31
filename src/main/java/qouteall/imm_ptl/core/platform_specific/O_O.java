@@ -44,6 +44,8 @@ import qouteall.q_misc_util.Helper;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class O_O {
     public static boolean isDimensionalThreadingPresent = false;
@@ -154,61 +156,27 @@ public class O_O {
         }
     }
     
+    // Immersive Aeronautics: our own version, the first three numbers of it for a test jar ("2.7.8.1-branch"); a dev run
+    // has no number
     public static @NotNull ImmPtlNetworkConfig.ModVersion getImmPtlVersion() {
-        // TODO @Nick1st
-//        Version version = FabricLoader.getInstance()
-//            .getModContainer("iportal").orElseThrow()
-//            .getMetadata().getVersion();
-//
-//        if (!(version instanceof SemanticVersionImpl semanticVersion)) {
-//            // in dev env, its ${version}
-//            return ImmPtlNetworkConfig.ModVersion.OTHER;
-//        }
-//
-//        if (semanticVersion.getVersionComponentCount() != 3) {
-//            Helper.LOGGER.error(
-//                "immersive portals version {} is not in regular form", semanticVersion
-//            );
-//            return ImmPtlNetworkConfig.ModVersion.OTHER;
-//        }
-//
-//        return new ImmPtlNetworkConfig.ModVersion(
-//            semanticVersion.getVersionComponent(0),
-//            semanticVersion.getVersionComponent(1),
-//            semanticVersion.getVersionComponent(2)
-//        );
+        Matcher version = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)").matcher(getImmPtlVersionStr());
+        if (!version.find()) {
+            return ImmPtlNetworkConfig.ModVersion.OTHER;
+        }
         return new ImmPtlNetworkConfig.ModVersion(
-                1, 0, 0
+            Integer.parseInt(version.group(1)),
+            Integer.parseInt(version.group(2)),
+            Integer.parseInt(version.group(3))
         );
     }
     
     public static String getImmPtlVersionStr() {
-        // TODO @Nick1st
-//        return FabricLoader.getInstance()
-//            .getModContainer("iportal").orElseThrow()
-//            .getMetadata().getVersion().toString();
-        return "";
+        return ModList.get().getModContainerById("ip_aeronautics")
+            .map(container -> container.getModInfo().getVersion().toString())
+            .orElse("");
     }
     
     public static boolean shouldUpdateImmPtl(String latestReleaseVersion) {
-        // TODO @Nick1st
-//        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
-//            return false;
-//        }
-//
-//        Version currentVersion = FabricLoader.getInstance()
-//            .getModContainer("iportal").get().getMetadata().getVersion();
-//        try {
-//            Version latestVersion = Version.parse(latestReleaseVersion);
-//
-//            if (latestVersion.compareTo(currentVersion) > 0) {
-//                return true;
-//            }
-//        }
-//        catch (VersionParsingException e) {
-//            e.printStackTrace();
-//        }
-        
         return false;
     }
     
@@ -222,32 +190,7 @@ public class O_O {
     
     @Nullable
     public static ResourceLocation getModIconLocation(String modid) {
-        // TODO @Nick1st - Fix this
         return null;
-//        String path = FabricLoader.getInstance().getModContainer(modid)
-//            .flatMap(c -> c.getMetadata().getIconPath(512))
-//            .orElse(null);
-//        if (path == null) {
-//            return null;
-//        }
-//
-//        // for example, if the icon path is "assets/modid/icon.png"
-//        // then the result should be modid:icon.png
-//
-//        if (path.startsWith("/")) {
-//            path = path.substring(1);
-//        }
-//        if (path.startsWith("assets")) {
-//            path = path.substring("assets".length());
-//        }
-//        if (path.startsWith("/")) {
-//            path = path.substring(1);
-//        }
-//        String[] parts = path.split("/");
-//        if (parts.length != 2) {
-//            return null;
-//        }
-//        return McHelper.newResourceLocation(parts[0], parts[1]);
     }
     
     @Nullable
@@ -258,7 +201,6 @@ public class O_O {
     // most quilt installations use quilted fabric api
     public static boolean isQuilt() {
         return false;
-        //return FabricLoader.getInstance().isModLoaded("quilted_fabric_api");
     }
     
     public static List<String> getLoadedModIds() {

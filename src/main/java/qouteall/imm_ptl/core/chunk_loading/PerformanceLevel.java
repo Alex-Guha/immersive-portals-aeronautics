@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.chunk_loading;
 
 import net.minecraft.server.MinecraftServer;
@@ -13,7 +20,9 @@ public enum PerformanceLevel {
         if (averageFPS > 50 && averageFreeMemoryMB > 800) {
             return good;
         }
-        else if (averageFPS > 30 && averageFreeMemoryMB > 300) {
+        // Immersive Aeronautics: bad shrinks what portals load to almost nothing, which raises the fps, which restores
+        // it: at the 30 fps it took before, normal for a heavy shader pack, chunks kept vanishing from portal views
+        else if (averageFPS > 15 && averageFreeMemoryMB > 300) {
             return medium;
         }
         else {

@@ -90,7 +90,7 @@ public final class IPStraddleSeats {
     private IPStraddleSeats() {
     }
 
-    static void onServerStarted() {
+    static void clearState() {
         BY_PLAYER.clear();
         BY_ENTITY.clear();
         IPSeatProxies.clear(false);

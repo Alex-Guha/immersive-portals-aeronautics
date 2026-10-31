@@ -10,6 +10,7 @@ package qouteall.imm_ptl.core.compat.sable_integration;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.network.protocol.Packet;
+import net.neoforged.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 
 /**
@@ -49,11 +50,16 @@ public final class IPSablePortalSync {
     private static boolean noteFailure(Throwable error, String feature) {
         if (isAbsent(error)) {
             clientHalfAbsent = true;
-            LOGGER.debug(
-                "[IPShipThroughPortal] client half absent on this side (normal on a dedicated server); {} disabled for this session: {}",
-                feature,
-                error.toString()
-            );
+            if (FMLEnvironment.dist.isDedicatedServer()) {
+                LOGGER.debug(
+                    "[IPShipThroughPortal] client half absent on this side (normal on a dedicated server); {} disabled for this session: {}",
+                    feature,
+                    error.toString()
+                );
+            } else {
+                // a client has the client half: this is another mod's class that changed
+                LOGGER.warn("[IPShipThroughPortal] {} disabled for this session: {}", feature, error.toString());
+            }
             return true;
         } else {
             return false;

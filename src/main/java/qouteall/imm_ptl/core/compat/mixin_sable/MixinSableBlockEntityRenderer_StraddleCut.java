@@ -19,15 +19,18 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPPlaneClippingBufferSource;
+import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleClientSessions;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRender;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRopes;
+import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleSprings;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 /**
  * Block entities of a straddling ship are cut at the portal plane: they are batched and drawn after the ship's terrain,
  * so they cannot share its per-ship clip plane. One well past the cut is skipped, one near it is drawn through a buffer
  * source that clips its quads and lines at the cut ({@link IPStraddleRender#blockEntityCut}). Rope connectors are cut
- * per rope segment ({@link IPStraddleRopes}). In IP portal passes, any ship's block entity whose centre is on the
+ * per rope segment ({@link IPStraddleRopes}), a spring through a portal along its whole length ({@link IPStraddleSprings}).
+ * In IP portal passes, any ship's block entity whose centre is on the
  * clipped side of IP's portal plane is skipped too (some draw at once with their own shader); one drawing far beyond its
  * block (Shield Generators' field) is placed by its render box and clipped at IP's plane on the CPU when it crosses it
  * ({@link IPStraddleRender#portalPassCut}).
@@ -38,6 +41,13 @@ public class MixinSableBlockEntityRenderer_StraddleCut {
     private void ip_cutAtPortal(final BlockEntity blockEntity, final PoseStack poseStack, final float partialTick,
                                 final double cameraX, final double cameraY, final double cameraZ, final CallbackInfo ci) {
         if (blockEntity.getLevel() == null || IPStraddleRopes.isRopeHolder(blockEntity)) {
+            return;
+        }
+        final IPStraddleClientSessions.Session spring = IPStraddleSprings.crossingSession(blockEntity);
+        if (spring != null) {
+            if (IPStraddleSprings.hides(blockEntity, spring)) {
+                ci.cancel();
+            }
             return;
         }
         if (IPStraddleRender.blockEntityCut(blockEntity) == IPStraddleRender.BlockEntityCut.SKIP) {
@@ -61,17 +71,19 @@ public class MixinSableBlockEntityRenderer_StraddleCut {
             original.call(dispatcher, blockEntity, partialTick, poseStack, source);
             return;
         }
-        final boolean atCut = IPStraddleRender.blockEntityCut(blockEntity) == IPStraddleRender.BlockEntityCut.CLIP;
+        final IPStraddleClientSessions.Session spring = IPStraddleSprings.crossingSession(blockEntity);
+        final boolean atCut = spring == null && IPStraddleRender.blockEntityCut(blockEntity) == IPStraddleRender.BlockEntityCut.CLIP;
         boolean atPortal = false;
         if (PortalRendering.isRendering()) {
             final SubLevel containing = Sable.HELPER.getContaining(blockEntity);
             atPortal = containing != null && IPStraddleRender.portalPassCut(containing, blockEntity) == IPStraddleRender.BlockEntityCut.CLIP;
         }
-        if (!atCut && !atPortal) {
+        if (spring == null && !atCut && !atPortal) {
             original.call(dispatcher, blockEntity, partialTick, poseStack, source);
             return;
         }
-        final MultiBufferSource clipping = IPStraddleRender.clippingSource(blockEntity, poseStack, source, atCut, atPortal);
+        final MultiBufferSource clipping = spring != null ? IPStraddleSprings.clippingSource(blockEntity, spring, poseStack, source)
+                : IPStraddleRender.clippingSource(blockEntity, poseStack, source, atCut, atPortal);
         try {
             original.call(dispatcher, blockEntity, partialTick, poseStack, clipping);
         } finally {

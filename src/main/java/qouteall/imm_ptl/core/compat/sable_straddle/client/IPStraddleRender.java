@@ -245,7 +245,7 @@ public final class IPStraddleRender {
      * @return whether, in the current portal pass, IP's clip plane is the cut plane itself facing the other way (the
      * kept halves meet only on the plane)
      */
-    private static boolean facesPortalClipAway(final KeepPlane plane) {
+    static boolean facesPortalClipAway(final KeepPlane plane) {
         if (!PortalRendering.isRendering()) {
             return false;
         }
@@ -442,14 +442,30 @@ public final class IPStraddleRender {
                 result = new IPPlaneClippingBufferSource(result, drawing[0], drawing[1]);
             }
         }
-        if (atPortal && PortalRendering.isRendering()) {
-            final Plane clip = PortalRendering.getActiveClippingPlane();
-            if (clip != null && dev.ryanhcode.sable.Sable.HELPER.getContaining(blockEntity) instanceof final ClientSubLevel containing) {
-                final org.joml.Vector3f[] drawing = drawingPlane(containing, pos, poseStack, clip.pos(), clip.normal());
-                result = new IPPlaneClippingBufferSource(result, drawing[0], drawing[1]);
-            }
+        if (atPortal && dev.ryanhcode.sable.Sable.HELPER.getContaining(blockEntity) instanceof final ClientSubLevel containing) {
+            result = clippingAtPortal(containing, pos, poseStack, result);
         }
         return result;
+    }
+
+    /** A buffer source clipping what a block at {@code pos} on {@code ship} draws at {@code plane} and at IP's portal plane. */
+    static net.minecraft.client.renderer.MultiBufferSource clippingSourceAt(
+            final ClientSubLevel ship, final BlockPos pos, final com.mojang.blaze3d.vertex.PoseStack poseStack,
+            final net.minecraft.client.renderer.MultiBufferSource source, final KeepPlane plane) {
+        final org.joml.Vector3f[] drawing = drawingPlane(ship, pos, poseStack,
+                plane.point().subtract(plane.normal().scale(seamReach())), plane.normal());
+        return clippingAtPortal(ship, pos, poseStack, new IPPlaneClippingBufferSource(source, drawing[0], drawing[1]));
+    }
+
+    private static net.minecraft.client.renderer.MultiBufferSource clippingAtPortal(
+            final ClientSubLevel ship, final BlockPos pos, final com.mojang.blaze3d.vertex.PoseStack poseStack,
+            final net.minecraft.client.renderer.MultiBufferSource source) {
+        final Plane clip = PortalRendering.isRendering() ? PortalRendering.getActiveClippingPlane() : null;
+        if (clip == null) {
+            return source;
+        }
+        final org.joml.Vector3f[] drawing = drawingPlane(ship, pos, poseStack, clip.pos(), clip.normal());
+        return new IPPlaneClippingBufferSource(source, drawing[0], drawing[1]);
     }
 
     /**
@@ -596,6 +612,17 @@ public final class IPStraddleRender {
             } finally {
                 projection = null;
             }
+        }
+    }
+
+    /** Runs {@code draw} with {@code ship} drawn mapped through the portal of {@code session}, its far side as the cut. */
+    static void withProjection(final ClientSubLevel ship, final IPStraddleClientSessions.Session session, final Runnable draw) {
+        projection = new Projection(ship, session.isometry().mapPose(ship.renderPose()),
+                new KeepPlane(session.destOrigin(), session.destNormal()), session.isometry(), session);
+        try {
+            draw.run();
+        } finally {
+            projection = null;
         }
     }
 

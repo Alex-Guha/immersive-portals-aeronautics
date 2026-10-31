@@ -86,60 +86,81 @@ public class IPConfigScreen extends OptionsSubScreen {
     @Override
     protected void addOptions() {
         IPConfig c = IPConfig.getConfig();
-        Rows rows = (Rows) list;
 
-        rows.addText(heading(Component.translatable(KEY + "onWorldLoad").withStyle(ChatFormatting.GOLD)));
-
-        rows.addText(heading(Component.translatable(KEY + "category.client")));
+        heading("performance");
         range("maxPortalLayer", 0, 10, c.maxPortalLayer, (o, v) -> o.maxPortalLayer = v);
+        range("portalViewDistance", 0, 32, c.portalViewDistance, (o, v) -> o.portalViewDistance = v);
+        range("dimensionStackViewDistance", 0, 256, c.dimensionStackViewDistance,
+            (o, v) -> o.dimensionStackViewDistance = v);
+        bool("reducedPortalRendering", c.reducedPortalRendering, (o, v) -> o.reducedPortalRendering = v);
         bool("lagAttackProof", c.lagAttackProof, (o, v) -> o.lagAttackProof = v);
-        bool("enableCrossPortalSound", c.enableCrossPortalSound, (o, v) -> o.enableCrossPortalSound = v);
-        bool("pureMirror", c.pureMirror, (o, v) -> o.pureMirror = v);
+        bool("enableClientPerformanceAdjustment", c.enableClientPerformanceAdjustment,
+            (o, v) -> o.enableClientPerformanceAdjustment = v);
+        worldNote();
+        bool("enableServerPerformanceAdjustment", c.enableServerPerformanceAdjustment,
+            (o, v) -> o.enableServerPerformanceAdjustment = v);
+        range("indirectLoadingRadiusCap", 1, 32, c.indirectLoadingRadiusCap, (o, v) -> o.indirectLoadingRadiusCap = v);
+
+        heading("visuals");
         bool("renderYourselfInPortal", c.renderYourselfInPortal, (o, v) -> o.renderYourselfInPortal = v);
         bool("correctCrossPortalEntityRendering", c.correctCrossPortalEntityRendering,
             (o, v) -> o.correctCrossPortalEntityRendering = v);
-        bool("reducedPortalRendering", c.reducedPortalRendering, (o, v) -> o.reducedPortalRendering = v);
-        range("dimensionStackViewDistance", 0, 256, c.dimensionStackViewDistance,
-            (o, v) -> o.dimensionStackViewDistance = v);
+        bool("pureMirror", c.pureMirror, (o, v) -> o.pureMirror = v);
         bool("netherPortalOverlay", c.netherPortalOverlay, (o, v) -> o.netherPortalOverlay = v);
         bool("enableNetherPortalEffect", c.enableNetherPortalEffect, (o, v) -> o.enableNetherPortalEffect = v);
-        bool("enableClientPerformanceAdjustment", c.enableClientPerformanceAdjustment,
-            (o, v) -> o.enableClientPerformanceAdjustment = v);
-        bool("clientTolerantVersionMismatchWithServer", c.clientTolerantVersionMismatchWithServer,
-            (o, v) -> o.clientTolerantVersionMismatchWithServer = v);
-        bool("compatibilityRenderMode", c.compatibilityRenderMode, (o, v) -> o.compatibilityRenderMode = v);
+        bool("enableCrossPortalSound", c.enableCrossPortalSound, (o, v) -> o.enableCrossPortalSound = v);
 
-        // the integrated server's options; a dedicated server reads its own file
-        rows.addText(heading(Component.translatable(KEY + "category.default")));
-        MultiLineTextWidget note = new MultiLineTextWidget(Component.translatable(KEY + "category.default.note"), font)
-            .setMaxWidth(310).setCentered(true);
-        note.setColor(ChatFormatting.GRAY.getColor());
-        rows.addText(note);
+        heading("portals");
+        worldNote();
         choice("netherPortalMode", IPGlobal.NetherPortalMode.class, c.netherPortalMode,
             (o, v) -> o.netherPortalMode = v);
         choice("endPortalMode", IPGlobal.EndPortalMode.class, c.endPortalMode, (o, v) -> o.endPortalMode = v);
-        bool("enableMirrorCreation", c.enableMirrorCreation, (o, v) -> o.enableMirrorCreation = v);
-        bool("enableWarning", c.enableWarning, (o, v) -> o.enableWarning = v);
         bool("lightVanillaNetherPortalWhenCrouching", c.lightVanillaNetherPortalWhenCrouching,
             (o, v) -> o.lightVanillaNetherPortalWhenCrouching = v);
-        bool("enableServerPerformanceAdjustment", c.enableServerPerformanceAdjustment,
-            (o, v) -> o.enableServerPerformanceAdjustment = v);
-        bool("enableDatapackPortalGen", c.enableDatapackPortalGen, (o, v) -> o.enableDatapackPortalGen = v);
-        range("indirectLoadingRadiusCap", 1, 32, c.indirectLoadingRadiusCap, (o, v) -> o.indirectLoadingRadiusCap = v);
         range("regularPortalLengthLimit", 3, 64, c.regularPortalLengthLimit, (o, v) -> o.regularPortalLengthLimit = v);
         // the range onConfigChanged clamps to (Cloth's slider started at 4)
         range("scaleLimit", 8, 128, c.scaleLimit, (o, v) -> o.scaleLimit = v);
-        bool("easeCreativePermission", c.easeCreativePermission, (o, v) -> o.easeCreativePermission = v);
-        bool("easeCommandStickPermission", c.easeCommandStickPermission, (o, v) -> o.easeCommandStickPermission = v);
+        bool("enableMirrorCreation", c.enableMirrorCreation, (o, v) -> o.enableMirrorCreation = v);
         bool("portalsChangeGravityByDefault", c.portalsChangeGravityByDefault,
             (o, v) -> o.portalsChangeGravityByDefault = v);
+        choice("shipPortalMode", IPGlobal.ShipPortalMode.class, c.shipPortalMode, (o, v) -> o.shipPortalMode = v);
+        range("shipPortalRangeChunks", IPConfig.SHIP_PORTAL_RANGE_MIN, IPConfig.SHIP_PORTAL_RANGE_MAX, c.shipPortalRangeChunks,
+            (o, v) -> o.shipPortalRangeChunks = v);
+        bool("enableDatapackPortalGen", c.enableDatapackPortalGen, (o, v) -> o.enableDatapackPortalGen = v);
+
+        heading("permissions");
+        worldNote();
+        bool("easeCreativePermission", c.easeCreativePermission, (o, v) -> o.easeCreativePermission = v);
+        bool("easeCommandStickPermission", c.easeCommandStickPermission, (o, v) -> o.easeCommandStickPermission = v);
         bool("portalWandUsableOnSurvivalMode", c.portalWandUsableOnSurvivalMode,
             (o, v) -> o.portalWandUsableOnSurvivalMode = v);
-        bool("shipMountedPortals", c.shipMountedPortals, (o, v) -> o.shipMountedPortals = v);
+
+        heading("compatibility");
+        bool("compatibilityRenderMode", c.compatibilityRenderMode, (o, v) -> o.compatibilityRenderMode = v);
+        bool("clientTolerantVersionMismatchWithServer", c.clientTolerantVersionMismatchWithServer,
+            (o, v) -> o.clientTolerantVersionMismatchWithServer = v);
+        // read on both sides: the client's warnings and the message a server sends
+        bool("enableWarning", c.enableWarning, (o, v) -> o.enableWarning = v);
+
+        ((Rows) list).addText(new StringWidget(
+            310, 20, Component.translatable(KEY + "onWorldLoad").withStyle(ChatFormatting.GOLD), font
+        ));
     }
 
-    private StringWidget heading(Component text) {
-        return new StringWidget(310, 20, text, font);
+    private void heading(String category) {
+        ((Rows) list).addText(new StringWidget(
+            310, 20,
+            Component.translatable(KEY + "category." + category).withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD),
+            font
+        ));
+    }
+
+    /** Goes above rows that are the integrated server's options; a dedicated server reads its own file. */
+    private void worldNote() {
+        MultiLineTextWidget note = new MultiLineTextWidget(Component.translatable(KEY + "worldNote"), font)
+            .setMaxWidth(310).setCentered(true);
+        note.setColor(ChatFormatting.GRAY.getColor());
+        ((Rows) list).addText(note);
     }
 
     @Override
@@ -198,17 +219,19 @@ public class IPConfigScreen extends OptionsSubScreen {
         return value -> result;
     }
 
-    /** The option's name, with a gold * if it only applies when a world loads. */
-    private static Component caption(String field, Component caption) {
+    /** The row's label, with a gold * at its end if the option only applies when a world loads. */
+    private static Component marked(String field, Component label) {
         return ON_WORLD_LOAD.contains(field)
-            ? caption.copy().append(Component.literal("*").withStyle(ChatFormatting.GOLD))
-            : caption;
+            ? label.copy().append(Component.literal("*").withStyle(ChatFormatting.GOLD))
+            : label;
     }
 
+    // bool and choice make cycle buttons, which put the option's name before this label themselves; a slider shows
+    // its label as it is
     private void bool(String field, boolean value, BiConsumer<IPConfig, Boolean> setter) {
         add(field, new OptionInstance<>(
             optionKey(field), tooltip(field),
-            (caption, v) -> Options.genericValueLabel(caption(field, caption), CommonComponents.optionStatus(v)),
+            (caption, v) -> marked(field, CommonComponents.optionStatus(v)),
             OptionInstance.BOOLEAN_VALUES, value, v -> {}
         ), setter);
     }
@@ -216,7 +239,7 @@ public class IPConfigScreen extends OptionsSubScreen {
     private void range(String field, int min, int max, int value, BiConsumer<IPConfig, Integer> setter) {
         add(field, new OptionInstance<>(
             optionKey(field), tooltip(field),
-            (caption, v) -> Options.genericValueLabel(caption(field, caption), v),
+            (caption, v) -> marked(field, Options.genericValueLabel(caption, v)),
             new OptionInstance.IntRange(min, max), Mth.clamp(value, min, max), v -> {}
         ), setter);
     }
@@ -226,9 +249,8 @@ public class IPConfigScreen extends OptionsSubScreen {
         Codec<E> codec = Codec.STRING.xmap(name -> Enum.valueOf(type, name), Enum::name);
         add(field, new OptionInstance<>(
             optionKey(field), tooltip(field),
-            (caption, v) -> Options.genericValueLabel(
-                caption(field, caption),
-                Component.translatableWithFallback(optionKey(field) + "." + v.name(), v.name())
+            (caption, v) -> marked(
+                field, Component.translatableWithFallback(optionKey(field) + "." + v.name(), v.name())
             ),
             new OptionInstance.Enum<>(values, codec), value != null ? value : values.get(0), v -> {}
         ), setter);

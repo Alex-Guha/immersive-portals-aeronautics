@@ -20,7 +20,6 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.IPMcHelper;
 import qouteall.imm_ptl.core.IPModMainClient;
 import qouteall.imm_ptl.core.compat.IPModInfoChecking;
-import qouteall.imm_ptl.core.compat.iris_compatibility.ExperimentalIrisPortalRenderer;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
 import qouteall.imm_ptl.core.portal.BreakableMirror;
@@ -39,7 +38,6 @@ import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.MyTaskList;
 
 import java.util.Arrays;
-import qouteall.imm_ptl.core.compat.physicsmod_integration.IPPhysicsOceanIntegration;
 
 public class IPModEntryClient {
     
@@ -92,41 +90,26 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
             );
-            // Immersive Aeronautics: the far half of a pipe going into a portal with no pipe on the other side
+            // Immersive Aeronautics: the one walk over the portal blocks for what Create parts draw at portals
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PostClientTickEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onClientTick
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEndScan::onClientTick
             );
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PreGameRenderEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onPreGameRender
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEndScan::onPreGameRender
             );
+            // Immersive Aeronautics: the far half of a pipe going into a portal with no pipe on the other side
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onAddSectionGeometry
             );
             // Immersive Aeronautics: the far half of a track's bridge into a portal with no track at the other end
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PostClientTickEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackStubs::onClientTick
-            );
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PreGameRenderEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackStubs::onPreGameRender
-            );
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackStubs::onAddSectionGeometry
             );
             // Immersive Aeronautics: the turning half shafts inside portal blocks, between a shaft and the portal plane
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PostClientTickEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onClientTick
-            );
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PreGameRenderEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onPreGameRender
-            );
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onRenderStage
@@ -137,14 +120,6 @@ public class IPModEntryClient {
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltsClient::onRenderStage
             );
             // Immersive Aeronautics: what belt ends at portals meet across them, and the end loops past the plane
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PostClientTickEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onClientTick
-            );
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                IPGlobal.PreGameRenderEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onPreGameRender
-            );
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalBeltLook::onRenderStage
@@ -175,7 +150,6 @@ public class IPModEntryClient {
         if (ModList.get().isLoaded("iris")) {
             Helper.log("Iris is present");
             IrisInterface.invoker = new IrisInterface.OnIrisPresent();
-            ExperimentalIrisPortalRenderer.init();
 
             // Immersive Aeronautics: Iris is a first-class target here, no chat warning
         }
@@ -185,7 +159,6 @@ public class IPModEntryClient {
         
         IPModInfoChecking.initClient();
         
-        IPPhysicsOceanIntegration.init();
     }
     
 }

@@ -156,6 +156,13 @@ public class IPGlobal {
         disabled
     }
     
+    // Immersive Aeronautics: portals on Sable ships (docs/plans/link-strain.md)
+    public static enum ShipPortalMode {
+        off,
+        limited,
+        unlimited
+    }
+    
     public static enum EndPortalMode {
         normal,
         toObsidianPlatform,

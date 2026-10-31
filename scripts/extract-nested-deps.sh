@@ -21,7 +21,7 @@ extract_nested() {  # $1 = jar to inspect
   rm -rf "$tmp"
 }
 
-for outer in $(find "$CACHE/sodium" "$CACHE/iris" "$CACHE/sable" "$CACHE/create" "$CACHE/create-aeronautics" "$CACHE/physicsmod" "$CACHE/distanthorizons" "$CACHE/sable-ragdolls" -name '*.jar' 2>/dev/null); do
+for outer in $(find "$CACHE/sodium" "$CACHE/iris" "$CACHE/sable" "$CACHE/create" "$CACHE/create-aeronautics" "$CACHE/distanthorizons" "$CACHE/sable-ragdolls" -name '*.jar' 2>/dev/null); do
   extract_nested "$outer"
 done
 

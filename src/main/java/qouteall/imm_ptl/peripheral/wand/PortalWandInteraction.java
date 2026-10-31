@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.wand;
 
 import com.mojang.logging.LogUtils;
@@ -14,6 +21,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.apache.commons.lang3.Validate;
@@ -22,6 +30,7 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.IPPerServerInfo;
 import qouteall.imm_ptl.core.McHelper;
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalWand;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalExtension;
@@ -37,12 +46,15 @@ import qouteall.q_misc_util.my_util.Range;
 import java.util.List;
 import java.util.UUID;
 import java.util.WeakHashMap;
+import java.util.function.Consumer;
 
 public class PortalWandInteraction {
     
     private static final double SIZE_LIMIT = 64;
     
     private static final Logger LOGGER = LogUtils.getLogger();
+    
+    private static final boolean SABLE = ModList.get().isLoaded("sable");
     
     private final WeakHashMap<ServerPlayer, DraggingSession> draggingSessionMap = new WeakHashMap<>();
 
@@ -120,9 +132,35 @@ public class PortalWandInteraction {
     }
     
     private static void handleFinishPortalCreation(ServerPlayer player, ProtoPortal protoPortal) {
+        if (createFromProtoPortal(protoPortal, player::sendSystemMessage)) {
+            giveCommandStick(player, "/portal eradicate_portal_cluster");
+        }
+    }
+    
+    /**
+     * Immersive Aeronautics: the portal creation of {@link #handleFinishPortalCreation}, with its messages
+     * going to {@code messages} (also used by a headless test hook), and the sides drawn on ships mounted on them
+     * ({@link IPShipPortalWand}).
+     *
+     * @return whether the portal was made
+     */
+    public static boolean createFromProtoPortal(ProtoPortal protoPortal, Consumer<Component> messages) {
         Validate.isTrue(protoPortal.firstSide != null);
         Validate.isTrue(protoPortal.secondSide != null);
-        
+
+        // Immersive Aeronautics: a side drawn on a ship has its corners in the ship's plot; it is mapped into
+        // the world here and mounted on the ship once the portals exist (either side or both)
+        List<IPShipPortalWand.DrawnSide> drawnOnShips = List.of();
+        if (SABLE) {
+            try {
+                drawnOnShips = IPShipPortalWand.mapToWorld(protoPortal);
+            }
+            catch (IPShipPortalWand.Refusal e) {
+                messages.accept(Component.literal(e.getMessage()));
+                return false;
+            }
+        }
+
         Vec3 firstSideLeftBottom = protoPortal.firstSide.leftBottom;
         Vec3 firstSideRightBottom = protoPortal.firstSide.rightBottom;
         Vec3 firstSideLeftUp = protoPortal.firstSide.leftTop;
@@ -148,21 +186,21 @@ public class PortalWandInteraction {
         Vec3 firstSideVerticalUnitAxis = firstSideVerticalAxis.normalize();
         
         if (Math.abs(firstSideWidth) < 0.001 || Math.abs(firstSideHeight) < 0.001) {
-            player.sendSystemMessage(Component.literal("The first side is too small"));
+            messages.accept(Component.literal("The first side is too small"));
             LOGGER.error("The first side is too small");
-            return;
+            return false;
         }
         
         if (firstSideHorizontalUnitAxis.dot(firstSideVerticalUnitAxis) > 0.001) {
-            player.sendSystemMessage(Component.literal("The horizontal and vertical axis are not perpendicular in first side"));
+            messages.accept(Component.literal("The horizontal and vertical axis are not perpendicular in first side"));
             LOGGER.error("The horizontal and vertical axis are not perpendicular in first side");
-            return;
+            return false;
         }
         
         if (firstSideWidth > SIZE_LIMIT || firstSideHeight > SIZE_LIMIT) {
-            player.sendSystemMessage(Component.literal("The first side is too large"));
+            messages.accept(Component.literal("The first side is too large"));
             LOGGER.error("The first side is too large");
-            return;
+            return false;
         }
         
         Vec3 secondSideHorizontalAxis = secondSideRightBottom.subtract(secondSideLeftBottom);
@@ -173,27 +211,27 @@ public class PortalWandInteraction {
         Vec3 secondSideVerticalUnitAxis = secondSideVerticalAxis.normalize();
         
         if (Math.abs(secondSideWidth) < 0.001 || Math.abs(secondSideHeight) < 0.001) {
-            player.sendSystemMessage(Component.literal("The second side is too small"));
+            messages.accept(Component.literal("The second side is too small"));
             LOGGER.error("The second side is too small");
-            return;
+            return false;
         }
         
         if (secondSideHorizontalUnitAxis.dot(secondSideVerticalUnitAxis) > 0.001) {
-            player.sendSystemMessage(Component.literal("The horizontal and vertical axis are not perpendicular in second side"));
+            messages.accept(Component.literal("The horizontal and vertical axis are not perpendicular in second side"));
             LOGGER.error("The horizontal and vertical axis are not perpendicular in second side");
-            return;
+            return false;
         }
         
         if (secondSideWidth > SIZE_LIMIT || secondSideHeight > SIZE_LIMIT) {
-            player.sendSystemMessage(Component.literal("The second side is too large"));
+            messages.accept(Component.literal("The second side is too large"));
             LOGGER.error("The second side is too large");
-            return;
+            return false;
         }
         
         if (Math.abs((firstSideHeight / firstSideWidth) - (secondSideHeight / secondSideWidth)) > 0.001) {
-            player.sendSystemMessage(Component.literal("The two sides have different aspect ratio"));
+            messages.accept(Component.literal("The two sides have different aspect ratio"));
             LOGGER.error("The two sides have different aspect ratio");
-            return;
+            return false;
         }
         
         boolean overlaps = false;
@@ -270,20 +308,29 @@ public class PortalWandInteraction {
         Portal reversePortal = PortalManipulation.createReversePortal(portal, Portal.ENTITY_TYPE);
         Portal parallelPortal = PortalManipulation.createFlippedPortal(reversePortal, Portal.ENTITY_TYPE);
         
+        if (overlaps && !drawnOnShips.isEmpty()) {
+            messages.accept(Component.literal("The two sides overlap; a portal on a ship needs both of its sides"));
+            return false;
+        }
+
         McHelper.spawnServerEntity(portal);
-        
+
         if (overlaps) {
-            player.sendSystemMessage(Component.translatable("imm_ptl.wand.overlap"));
+            messages.accept(Component.translatable("imm_ptl.wand.overlap"));
         }
         else {
             McHelper.spawnServerEntity(flippedPortal);
             McHelper.spawnServerEntity(reversePortal);
             McHelper.spawnServerEntity(parallelPortal);
         }
-        
-        player.sendSystemMessage(Component.translatable("imm_ptl.wand.finished"));
-        
-        giveCommandStick(player, "/portal eradicate_portal_cluster");
+
+        if (!drawnOnShips.isEmpty()) {
+            IPShipPortalWand.mount(drawnOnShips, portal, flippedPortal, reversePortal, parallelPortal);
+        }
+
+        messages.accept(Component.translatable("imm_ptl.wand.finished"));
+
+        return true;
     }
     
     private static class DraggingSession {

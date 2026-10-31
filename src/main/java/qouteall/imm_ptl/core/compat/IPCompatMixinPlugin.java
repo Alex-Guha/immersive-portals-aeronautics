@@ -49,11 +49,6 @@ public class IPCompatMixinPlugin implements IMixinConfigPlugin {
             return sodiumLoaded;
         }
         
-        if (mixinClassName.contains("Flywheel")) {
-            boolean flywheelLoaded =  modList.getModFileById("flywheel") != null;
-            return flywheelLoaded;
-        }
-        
         if (mixinClassName.contains("CardinalComp")) {
             boolean cardinalCompLoaded = modList.getModFileById("cardinal-components-base") != null;
             return cardinalCompLoaded;

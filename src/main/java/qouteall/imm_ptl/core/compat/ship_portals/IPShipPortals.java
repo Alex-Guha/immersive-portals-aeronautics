@@ -6,23 +6,31 @@ package qouteall.imm_ptl.core.compat.ship_portals;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import org.slf4j.Logger;
+import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.portal.PortalExtension;
 import qouteall.imm_ptl.core.portal.animation.PortalAnimationDriver;
 import qouteall.imm_ptl.core.portal.custom_portal_gen.CustomPortalGeneration;
 import qouteall.imm_ptl.core.portal.nether_portal.BlockPortalShape;
 import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
+import qouteall.imm_ptl.core.portal.nether_portal.NetherPortalEntity;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Portals mounted on ships (docs/plans/ship-mounted-portals.md). Entry points for the rest of the mod; only called with
  * Sable present.
  * <p>
- * The switch is the config option {@code shipMountedPortals} (on by default since 2.2.4). {@code -Dip_aeronautics.shipPortals=true|false}
- * overrides it for the JVM; {@code /ip_aeronautics shipportals on|off} changes the option and saves the config file.
+ * The switch is the config option {@code shipPortalMode}: off, limited (nether portals break past {@code shipPortalRangeChunks}
+ * of link strain, {@link #linkStrain}) or unlimited. {@code -Dip_aeronautics.shipPortals=true|false|limited} overrides it
+ * for the JVM; {@code /ip_aeronautics shipportals on|off|limited} changes the option and saves the config file.
  * Off is the behaviour before the feature: no portal can exist on a ship, and a lit portal assembled into a ship breaks
  * ({@code IPShipPortalAssemblyGuard}).
  */
@@ -111,7 +119,21 @@ public final class IPShipPortals {
     /** The ship mount of this portal's own animation (the cluster's holder on the ship side), or null. */
     @Nullable
     public static IPShipMount mountOf(final Portal portal) {
-        for (final PortalAnimationDriver driver : portal.animation.thisSideAnimations) {
+        return mountIn(portal.animation.thisSideAnimations);
+    }
+
+    /**
+     * The ship mount of the other side of this portal's animation, or null. A holder has one when the far end of its
+     * cluster is on a ship too (docs/reports/both-ends-on-ships.md): that ship moves the holder's destination.
+     */
+    @Nullable
+    public static IPShipMount otherSideMountOf(final Portal portal) {
+        return mountIn(portal.animation.otherSideAnimations);
+    }
+
+    @Nullable
+    private static IPShipMount mountIn(final List<PortalAnimationDriver> drivers) {
+        for (final PortalAnimationDriver driver : drivers) {
             if (driver instanceof final IPShipMount mount) {
                 return mount;
             }
@@ -119,11 +141,18 @@ public final class IPShipPortals {
         return null;
     }
 
-    /** The ship mount of the portal's cluster (any of its four portals, either side), or null. */
+    /**
+     * The ship mount of the portal's cluster (any of its four portals, either side), or null. With a ship at each end it
+     * is the holder's own end's; {@link #ownSideCarrier} and {@link #farSideCarrier} tell the sides apart.
+     */
     @Nullable
     public static IPShipMount clusterMountOf(final Portal portal) {
         final Portal holder = portal.getAnimationHolder();
-        return holder == null ? null : mountOf(holder);
+        if (holder == null) {
+            return null;
+        }
+        final IPShipMount mount = mountOf(holder);
+        return mount != null ? mount : otherSideMountOf(holder);
     }
 
     /**
@@ -134,19 +163,58 @@ public final class IPShipPortals {
         return clusterMountOf(portal) != null;
     }
 
-    public static boolean isEnabled() {
-        final Boolean forced = propertyOverride();
-        return forced != null ? forced : IPConfig.getConfig().shipMountedPortals;
+    /** The ship carrying {@code portal}'s own side, or null when that side is fixed in the world. Server and client. */
+    @Nullable
+    public static UUID ownSideCarrier(final Portal portal) {
+        return sideCarrier(portal, true);
     }
 
-    /** @return the JVM property's value when it is set to true or false, null otherwise */
-    public static Boolean propertyOverride() {
+    /** The ship carrying the side {@code portal} leads to, or null when that side is fixed in the world. Server and client. */
+    @Nullable
+    public static UUID farSideCarrier(final Portal portal) {
+        return sideCarrier(portal, false);
+    }
+
+    @Nullable
+    private static UUID sideCarrier(final Portal portal, final boolean own) {
+        final Portal holder = portal.getAnimationHolder();
+        if (holder == null) {
+            return null;
+        }
+        final IPShipMount mount = isOnHolderSide(portal, holder) == own ? mountOf(holder) : otherSideMountOf(holder);
+        return mount == null ? null : mount.carrier();
+    }
+
+    /**
+     * Whether {@code portal} is on the holder's own side of the cluster whose animation {@code holder} holds: the holder
+     * and its flipped portal (the reverse and parallel portals are the other side). Not by level: with both sides in
+     * one dimension all four are in one level.
+     */
+    static boolean isOnHolderSide(final Portal portal, final Portal holder) {
+        return portal == holder || PortalExtension.get(holder).flippedPortal == portal
+                || PortalExtension.get(portal).flippedPortal == holder;
+    }
+
+    public static boolean isEnabled() {
+        return mode() != IPGlobal.ShipPortalMode.off;
+    }
+
+    public static IPGlobal.ShipPortalMode mode() {
+        final IPGlobal.ShipPortalMode forced = propertyOverride();
+        return forced != null ? forced : IPConfig.getConfig().shipPortalMode;
+    }
+
+    /** @return the mode the JVM property asks for (true: unlimited, false: off, limited), null when it does not */
+    public static IPGlobal.ShipPortalMode propertyOverride() {
         final String value = System.getProperty(ENABLE_PROPERTY);
         if ("true".equalsIgnoreCase(value)) {
-            return Boolean.TRUE;
+            return IPGlobal.ShipPortalMode.unlimited;
         }
         if ("false".equalsIgnoreCase(value)) {
-            return Boolean.FALSE;
+            return IPGlobal.ShipPortalMode.off;
+        }
+        if ("limited".equalsIgnoreCase(value)) {
+            return IPGlobal.ShipPortalMode.limited;
         }
         return null;
     }
@@ -154,14 +222,41 @@ public final class IPShipPortals {
     /**
      * Changes the config option and saves the config file. With the JVM property set, the property still decides.
      */
-    public static void setEnabled(final boolean on) {
+    public static void setMode(final IPGlobal.ShipPortalMode mode) {
         final IPConfig config = IPConfig.getConfig();
-        if (config.shipMountedPortals == on) {
+        if (config.shipPortalMode == mode) {
             return;
         }
-        config.shipMountedPortals = on;
+        config.shipPortalMode = mode;
         config.saveConfigFile();
-        LOGGER.info("[IPShipPortal] ship-mounted portals switched {} in the config{}", on ? "on" : "off",
+        LOGGER.info("[IPShipPortal] ship-mounted portals switched to {} in the config{}", mode,
                 propertyOverride() != null ? " (overridden by -D" + ENABLE_PROPERTY + ")" : "");
+    }
+
+    /** Changes the range of the limited mode, in chunks, and saves the config file. */
+    public static void setRange(final int range) {
+        final IPConfig config = IPConfig.getConfig();
+        if (config.shipPortalRangeChunks != range) {
+            config.shipPortalRangeChunks = range;
+            config.saveConfigFile();
+        }
+    }
+
+    /**
+     * How far {@code portal}'s link has moved from a local one, in overworld chunks: the horizontal distance between its
+     * two ends, each at its dimension's coordinate scale. Worked out from the ends each time, for one end or two on ships:
+     * a saved starting point could be reset by disassembling and reassembling (docs/plans/link-strain.md).
+     */
+    public static double linkStrain(final Portal portal) {
+        final Vec3 origin = portal.getOriginPos();
+        final Vec3 dest = portal.getDestPos();
+        final double originScale = portal.level().dimensionType().coordinateScale();
+        final double destScale = portal.getDestWorld().dimensionType().coordinateScale();
+        return Math.hypot(origin.x * originScale - dest.x * destScale, origin.z * originScale - dest.z * destScale) / 16;
+    }
+
+    /** Whether the limited mode applies to {@code portal}: nether portals only, custom and datapack ones keep no ratio. */
+    public static boolean hasRangeLimit(final Portal portal) {
+        return portal instanceof NetherPortalEntity && mode() == IPGlobal.ShipPortalMode.limited;
     }
 }

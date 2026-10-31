@@ -100,6 +100,10 @@ final class IPStraddleSessions {
     private IPStraddleSessions() {
     }
 
+    static boolean anyOfShip(final UUID shipId) {
+        return SESSIONS.keySet().stream().anyMatch(key -> key.ship().equals(shipId));
+    }
+
     /**
      * @return whether a ship of {@code level} straddles a portal out of it
      */
@@ -207,15 +211,6 @@ final class IPStraddleSessions {
     }
 
     /**
-     * Forgets every session of a ship without native calls, for a ship whose body is being removed (its images go with
-     * it).
-     */
-    static void dropShip(final UUID shipId) {
-        SESSIONS.keySet().removeIf(key -> key.ship().equals(shipId));
-        GHOSTS.remove(shipId);
-    }
-
-    /**
      * Closes every session (straddling switched off).
      */
     static void closeAll(final String reason) {
@@ -288,10 +283,11 @@ final class IPStraddleSessions {
         final long destScene = RapierExt.sceneHandle(session.dest);
         if (destScene != 0L) {
             final double[] regions = concat(imageClip, ghostRegions(session.ship.getUniqueId(), iso));
-            if (session.mount != null && !session.mount.carrierIsSource()) {
-                // the destination plane is on the carrier: the image's regions follow it
+            if (session.mount != null && session.mount.destination() != null) {
+                // the destination plane is on a carrier: the image's regions follow it
+                final ServerSubLevel carrier = session.mount.destination();
                 RapierExt.setAnchoredClipRegions(destScene, session.bodyId, session.imageHandle,
-                        session.mount.carrier().getRuntimeId(), IPMountedStraddle.toCarrierFrame(session.mount.carrier(), regions));
+                        carrier.getRuntimeId(), IPMountedStraddle.toCarrierFrame(carrier, regions));
             } else {
                 RapierExt.setImageClipRegions(destScene, session.bodyId, session.imageHandle, regions);
             }
@@ -401,8 +397,8 @@ final class IPStraddleSessions {
         for (final Session session : SESSIONS.values()) {
             if (session.ship == ship && session.realClip != null) {
                 regions.add(session.realClip);
-                if (session.mount != null && session.mount.carrierIsSource()) {
-                    carrier = session.mount.carrier();
+                if (session.mount != null && session.mount.source() != null) {
+                    carrier = session.mount.source();
                 }
             }
         }

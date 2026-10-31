@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.network;
 
 import com.mojang.authlib.GameProfile;
@@ -42,6 +49,17 @@ public class ImmPtlNetworkConfig {
         // for dev env
         public static final ModVersion OTHER = new ModVersion(0, 0, 0);
         
+        /**
+         * Immersive Aeronautics: the oldest version this build can play with. Raise it to the next version whenever a
+         * payload, an RPC or what one side expects of the other changes, patch releases included. Only the newer side
+         * knows, so both sides check: the server in {@link C2SConfigCompletePacket#handle}, the client in
+         * {@link S2CConfigStartPacket#handle}.
+         */
+        public static final ModVersion OLDEST_COMPATIBLE = new ModVersion(2, 7, 12);
+        
+        /** What every build before 2.7.9 sent, whatever its real version. */
+        private static final ModVersion BEFORE_THE_CHECK = new ModVersion(1, 0, 0);
+        
         public static ModVersion read(FriendlyByteBuf buf) {
             int major = buf.readVarInt();
             int minor = buf.readVarInt();
@@ -65,7 +83,18 @@ public class ImmPtlNetworkConfig {
         }
         
         public boolean isCompatibleWith(ModVersion another) {
-            return major == another.major && minor == another.minor;
+            return equals(another) || !another.isOlderThan(OLDEST_COMPATIBLE);
+        }
+        
+        private boolean isOlderThan(ModVersion another) {
+            return major != another.major ? major < another.major
+                : minor != another.minor ? minor < another.minor
+                : patch < another.patch;
+        }
+        
+        /** For players: the version, as far as it is known. */
+        public String display() {
+            return equals(BEFORE_THE_CHECK) ? "older than " + OLDEST_COMPATIBLE : toString();
         }
     }
     
@@ -120,6 +149,16 @@ public class ImmPtlNetworkConfig {
             );
             
             serverVersion = versionFromServer;
+            
+            // Immersive Aeronautics: a server older than this build's oldest compatible version cannot know that
+            if (versionFromServer.isNormalVersion() && immPtlVersion.isNormalVersion() &&
+                !immPtlVersion.isCompatibleWith(versionFromServer) &&
+                !IPConfig.getConfig().clientTolerantVersionMismatchWithServer
+            ) {
+                configurationPayloadContext.disconnect(mismatchMessage(versionFromServer, immPtlVersion));
+                return;
+            }
+            
             configurationPayloadContext.reply(new C2SConfigCompletePacket(
                     immPtlVersion, IPConfig.getConfig().clientTolerantVersionMismatchWithServer
             ));
@@ -154,22 +193,15 @@ public class ImmPtlNetworkConfig {
         // handled on server side
         public void handle(IPayloadContext configurationPayloadContext
         ) {
-           // TODO @Nick1st - This method body must be synced with the fabric system
             if (versionFromClient.isNormalVersion() && immPtlVersion.isNormalVersion()) {
-                if ((versionFromClient.major != immPtlVersion.major ||
-                    versionFromClient.minor != immPtlVersion.minor) &&
+                if (!immPtlVersion.isCompatibleWith(versionFromClient) &&
                     !IPConfig.getConfig().serverTolerantVersionMismatchWithClient &&
                     !clientTolerantVersionMismatch
                 ) {
-                    configurationPayloadContext.disconnect(Component.translatable(
-                        "imm_ptl.mod_major_minor_version_mismatch",
-                        immPtlVersion.toString(),
-                        versionFromClient.toString()
-                    ));
+                    configurationPayloadContext.disconnect(mismatchMessage(immPtlVersion, versionFromClient));
                     LOGGER.info(
                         """
-                            Disconnecting client because of ImmPtl version difference (only patch version difference is tolerated).
-                            Game Profile:
+                            Disconnecting client because of ImmPtl version difference.
                             Client ImmPtl version: {}
                             Server ImmPtl version: {}""",
                         versionFromClient, immPtlVersion
@@ -180,6 +212,12 @@ public class ImmPtlNetworkConfig {
 
             configurationPayloadContext.finishCurrentTask(ImmPtlConfigurationTask.TYPE);
         }
+    }
+    
+    private static Component mismatchMessage(ModVersion server, ModVersion client) {
+        return Component.translatable(
+            "imm_ptl.mod_major_minor_version_mismatch", server.display(), client.display()
+        );
     }
     
     public static void init(IEventBus eventBus) {
@@ -226,26 +264,9 @@ public class ImmPtlNetworkConfig {
     
     //@OnlyIn(Dist.CLIENT)
     public static void initClient() {
-        // ClientConfigurationNetworking.ConfigurationPacketHandler does not provide
-        // ClientConfigurationPacketListenerImpl argument
-
-        // TODO @Nick1st - Important networking
-//        ClientConfigurationNetworking.registerGlobalReceiver(
-//            S2CConfigStartPacket.TYPE,
-//            S2CConfigStartPacket::handle
-//        );
-//
-//        ClientLoginConnectionEvents.INIT.register(
-//            (handler, client) -> {
-//                LOGGER.info("Client login init");
-//                // if the config packet is not received,
-//                // serverProtocolInfo will always be nul
-//                // it will become not null when receiving ImmPtl config packet
-//                serverVersion = null;
-//            }
-//        );
-
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class, (event) -> onClientJoin());
+        // Immersive Aeronautics: the next server may not have the mod
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class, (event) -> serverVersion = null);
     }
     
     private static void onClientJoin() {
@@ -261,9 +282,9 @@ public class ImmPtlNetworkConfig {
                     MutableComponent text =
                         Component.translatable(
                             "imm_ptl.mod_patch_version_mismatch",
-                            Component.literal(serverVersion.toString())
+                            Component.literal(serverVersion.display())
                                 .withStyle(ChatFormatting.GOLD),
-                            Component.literal(immPtlVersion.toString())
+                            Component.literal(immPtlVersion.display())
                                 .withStyle(ChatFormatting.GOLD)
                         ).append(
                             IPMcHelper.getDisableWarningText("mod_version_mismatch")

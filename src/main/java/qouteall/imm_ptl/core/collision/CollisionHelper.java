@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.collision;
 
 import com.google.common.collect.ImmutableList;
@@ -414,21 +421,29 @@ public class CollisionHelper {
                 CollisionHelper.notifyCollidingPortals(portal, partialTick);
             }
             else {
-                AABB entityBoundingBoxStretched = getStretchedBoundingBox(entity);
-                for (Portal globalPortal : globalPortals) {
-                    AABB globalPortalBoundingBox = globalPortal.getBoundingBox();
-                    if (entityBoundingBoxStretched.intersects(globalPortalBoundingBox)) {
-                        if (canCollideWithPortal(entity, globalPortal, partialTick)) {
-                            ((IEEntity) entity).ip_notifyCollidingWithPortal(globalPortal);
-                        }
-                    }
+                notifyCollidingGlobalPortals(entity, globalPortals, partialTick);
+            }
+        }
+
+        world.getProfiler().pop();
+    }
+
+    /**
+     * Immersive Aeronautics: global portals (a dimension stack's floor and ceiling) are not in the entity lists, so
+     * {@link #notifyCollidingPortals} never finds an entity for them through a box search.
+     */
+    public static void notifyCollidingGlobalPortals(Entity entity, List<Portal> globalPortals, float partialTick) {
+        AABB entityBoundingBoxStretched = getStretchedBoundingBox(entity);
+        for (Portal globalPortal : globalPortals) {
+            AABB globalPortalBoundingBox = globalPortal.getBoundingBox();
+            if (entityBoundingBoxStretched.intersects(globalPortalBoundingBox)) {
+                if (canCollideWithPortal(entity, globalPortal, partialTick)) {
+                    ((IEEntity) entity).ip_notifyCollidingWithPortal(globalPortal);
                 }
             }
         }
-        
-        world.getProfiler().pop();
     }
-    
+
     public static void init() {
         NeoForge.EVENT_BUS.addListener(ServerTickEvent.Post.class, event -> {
             for (ServerLevel world : event.getServer().getAllLevels()) {

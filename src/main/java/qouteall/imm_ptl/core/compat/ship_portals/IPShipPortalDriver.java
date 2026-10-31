@@ -30,9 +30,11 @@ import java.util.UUID;
 
 /**
  * The animation driver of a ship-mounted portal (docs/plans/ship-mounted-portals.md, phase 1): on the ship-side
- * portal that holds the cluster's animation, it places the portal where its frame is on the carrier ship.
+ * portal that holds the cluster's animation, it places the portal where its frame is on the carrier ship. On the other
+ * side of the holder's animation it does the same for the far end when that end is on a ship too
+ * (docs/reports/both-ends-on-ships.md); {@link #dimension} is then the far end's.
  * <p>
- * The holder's this-side reference state is the portal's state in the carrier's plot ({@link #plotOrigin} is its
+ * The reference state of the holder's side it drives is that side in the carrier's plot ({@link #plotOrigin} is its
  * position), and the delta is the carrier's pose: offset {@code pose(p) - p}, rotation the pose's orientation. So the
  * portal follows the plot like the ship's blocks do, independent of the centre of mass (the pose's position moves when
  * blocks change). IP's animation runs this on the server every tick and on the client every tick and before rendering,
@@ -53,7 +55,7 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
 
     public final ResourceKey<Level> dimension;
     public final UUID carrier;
-    /** The holder portal's origin in the carrier's plot (its this-side reference position). */
+    /** The origin of the end it drives in the carrier's plot (the holder's reference position on that side). */
     public final Vec3 plotOrigin;
     private Vec3 lastOffset;
     private DQuaternion lastRotation;

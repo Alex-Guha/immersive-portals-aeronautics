@@ -17,6 +17,7 @@ import qouteall.q_misc_util.Helper;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ShaderCodeTransformation {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -44,6 +45,8 @@ public class ShaderCodeTransformation {
         public String comment;
         public String pattern;
         public String replacement;
+        // Immersive Aeronautics: a name the replacement uses; a shader without it skips this entry
+        public String requires;
     }
     
     public static class Config {
@@ -55,6 +58,7 @@ public class ShaderCodeTransformation {
     }
     
     private static List<Config> configs;
+    private static final Set<String> WARNED = ConcurrentHashMap.newKeySet();
     
     public static void init() {
         if (IPGlobal.enableClippingMechanism) {
@@ -88,8 +92,17 @@ public class ShaderCodeTransformation {
         String result = inputCode;
         
         for (TransformationEntry entry : selected.transformations) {
+            // Immersive Aeronautics: nothing in the game shows a shader that lost its clip plane, so the log does
+            if (entry.requires != null && !result.contains(entry.requires)) {
+                warnOnce(shaderId, "it has no " + entry.requires);
+                continue;
+            }
             String replacement = String.join("\n", entry.replacement);
-            result = result.replaceAll(entry.pattern, replacement);
+            String replaced = result.replaceAll(entry.pattern, replacement);
+            if (replaced.equals(result)) {
+                warnOnce(shaderId, "the pattern " + entry.pattern + " found nothing");
+            }
+            result = replaced;
         }
         
         if (selected.debugOutput) {
@@ -97,6 +110,12 @@ public class ShaderCodeTransformation {
         }
         
         return result;
+    }
+    
+    private static void warnOnce(String shaderId, String why) {
+        if (WARNED.add(shaderId + why)) {
+            LOGGER.warn("Shader {} is not fully clipped in portal views: {}", shaderId, why);
+        }
     }
     
     @Nullable

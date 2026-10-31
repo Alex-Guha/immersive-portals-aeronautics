@@ -11,6 +11,7 @@ package qouteall.imm_ptl.core.compat.mixin_dh;
 import com.seibel.distanthorizons.core.render.DhApiRenderProxy;
 import com.seibel.distanthorizons.core.util.RenderUtil;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -24,9 +25,16 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
  * loaded chunks end. This is the DH API path used when an Iris shader pack renders the LODs; the
  * stock terrain pass is handled by {@link MixinDhTerrainShader_NearClipGap}, which also says why the
  * player's own view keeps DH's value.
+ * <p>
+ * Never 0, even with no terrain drawn yet: Iris builds {@code dhProjection} from this value. With a near plane of 0
+ * every point projects to depth 1, so a pack that projects LODs with it (Sundial Lite) draws none, and
+ * {@code dhProjectionInverse} is not finite, so its sky rays are NaN and the sky is black.
  */
 @Mixin(value = DhApiRenderProxy.class, remap = false)
 public class MixinDhApiRenderProxy_NearClipGap {
+    @Unique
+    private static final float ip_MIN_NEAR_CLIP = 2;
+
     @Inject(
         method = "getNearClipPlaneDistanceInBlocks",
         at = @At("HEAD"),
@@ -39,6 +47,6 @@ public class MixinDhApiRenderProxy_NearClipGap {
         }
 
         double covered = IPDhPortalNearClip.coveredDistance() / 1.5;
-        cir.setReturnValue((float) Math.max(0, Math.min(RenderUtil.getNearClipPlaneInBlocks(), covered)));
+        cir.setReturnValue((float) Math.max(ip_MIN_NEAR_CLIP, Math.min(RenderUtil.getNearClipPlaneInBlocks(), covered)));
     }
 }

@@ -94,6 +94,14 @@ public final class RapierExt {
                                              double tx, double ty, double tz, double qx, double qy, double qz, double qw);
 
     /**
+     * Moving portals with both sides on carriers (docs/reports/both-ends-on-ships.md): the image follows the source
+     * carrier {@code sourceId} and the destination carrier {@code destId} (possibly one body); {@code k} maps the source
+     * carrier's body frame into the destination carrier's. A negative id drops the anchoring.
+     */
+    public static native void setImageAnchorBetween(long sceneHandle, long imageHandle, int sourceId, int destId,
+                                                    double tx, double ty, double tz, double qx, double qy, double qz, double qw);
+
+    /**
      * Moving portals: sets the clip regions of body {@code bodyId} ({@code imageHandle} &lt; 0) or of one of its image
      * colliders, given in the body frame of the carrier {@code carrierId}; they follow the carrier from then on.
      */
@@ -114,6 +122,14 @@ public final class RapierExt {
      */
     public static native void setPortalRimTransform(long sceneHandle, int rimId,
                                                     double x, double y, double z, double qx, double qy, double qz, double qw);
+
+    /**
+     * Anchors a rim to the carrier body {@code carrierId} and puts it there now: before every step it is sent where the
+     * carrier will be after the step, so it moves with the carrier's velocity. {@code k} (translation, rotation
+     * quaternion) is the rim's pose in the carrier's body frame. A negative {@code carrierId} drops the anchoring.
+     */
+    public static native void setPortalRimAnchor(long sceneHandle, int rimId, int carrierId,
+                                                 double tx, double ty, double tz, double qx, double qy, double qz, double qw);
 
     /**
      * Removes a rim. The scene must be the live one it was created in.

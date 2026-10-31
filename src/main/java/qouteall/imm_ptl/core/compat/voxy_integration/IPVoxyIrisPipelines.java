@@ -83,6 +83,11 @@ public final class IPVoxyIrisPipelines {
         return pipeline instanceof IGetIrisVoxyPipelineData holder ? holder.voxy$getPipelineData() : null;
     }
 
+    /** Whether a level's Iris pipeline carries Voxy data, so Voxy's LODs for it draw through that pipeline only. */
+    public static boolean bindsVoxy(ClientLevel level) {
+        return voxyData(pipelineFor(level)) != null;
+    }
+
     /** In Voxy's {@code createIrisPipeline}: the Iris pipeline the new render system may bind to, or null. */
     public static @Nullable WorldRenderingPipeline pipelineForNewRenderSystem() {
         ClientLevel level = IPVoxyPortalView.creationLevel();

@@ -36,6 +36,7 @@ import qouteall.imm_ptl.core.mixin.client.particle.IEParticle;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
 import qouteall.imm_ptl.core.render.ForceMainThreadRebuild;
+import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.QueryManager;
 import qouteall.q_misc_util.Helper;
@@ -251,6 +252,10 @@ public class RenderStates {
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
             Vec3 particlePos = particle.getBoundingBox().getCenter();
+            // Immersive Aeronautics: wholly past the portal view distance, in fog
+            if (IPPortalViewDistance.isParticlePastCut(particle.getBoundingBox())) {
+                return false;
+            }
             return renderingPortal.isOnDestinationSide(particlePos, 0.5);
         }
         return true;

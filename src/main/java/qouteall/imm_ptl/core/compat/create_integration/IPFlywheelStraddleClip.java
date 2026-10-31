@@ -97,6 +97,7 @@ public final class IPFlywheelStraddleClip {
         }
     }
     private static boolean logged;
+    private static boolean failureLogged;
 
     private IPFlywheelStraddleClip() {
     }
@@ -133,6 +134,11 @@ public final class IPFlywheelStraddleClip {
         if (instancing >= 0) {
             final int end = instancing + INSTANCING_MATRIX.length();
             return source.substring(0, end) + "\n    ipa_shipClip = " + UNIFORM + ";" + source.substring(end);
+        }
+        if (!failureLogged) {
+            failureLogged = true;
+            LOGGER.warn("[IPStraddle] a Flywheel vertex shader has neither \"{}\" nor \"{}\": Flywheel changed, straddling ships' parts are not cut",
+                    INDIRECT_UNPACK, INSTANCING_MATRIX);
         }
         return source;
     }
@@ -243,8 +249,8 @@ public final class IPFlywheelStraddleClip {
             }
         } catch (final Throwable t) {
             PASS_PLANES.clear();
-            if (!logged) {
-                logged = true;
+            if (!failureLogged) {
+                failureLogged = true;
                 LOGGER.warn("[IPStraddle] could not cut Flywheel parts of straddling ships: {}", t.toString());
             }
         }

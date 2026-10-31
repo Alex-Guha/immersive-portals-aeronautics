@@ -142,6 +142,8 @@ pub struct SableSceneData {
     pub ipl_image_anchors: HashMap<rapier3d::prelude::ColliderHandle, crate::moving_portals::ImageAnchor>,
     /// Bodies with clip regions anchored to a carrier body.
     pub ipl_anchored_clip_bodies: HashSet<LevelColliderID>,
+    /// Portal rims (their kinematic bodies) anchored to a carrier body: rims of portals mounted on ships.
+    pub ipl_rim_anchors: HashMap<rapier3d::prelude::RigidBodyHandle, crate::moving_portals::RimAnchor>,
 
 }
 

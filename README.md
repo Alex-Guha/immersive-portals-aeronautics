@@ -62,7 +62,7 @@ and their seated riders; and Shield Generators' fields. Each gets the same treat
 or "current level" is routed to the ship's own dimension, and anything drawn with its own shader is clipped at the
 portal plane.
 
-**Smaller pieces from the fork:** Distant Horizons near clipping, Physics Mod ocean handling, Iris depth fixes and a
+**Smaller pieces from the fork:** Distant Horizons near clipping, Iris depth fixes and a
 shader-distance portal cull (`compat.mixin_dh`, `mixin_physicsmod`, `mixin_render_tweaks`, `iris_integration`).
 Mixins on optional mods are skipped when the mod is absent (`compat.IPOptionalModMixinPlugin`).
 
@@ -103,8 +103,7 @@ scripts/build-natives.sh            # ipa_rapier for all six targets, ~4 min (Do
 ### Dependencies
 
 Pinned in `build.gradle` and `gradle.properties`: NeoForge 21.1.152, Sodium 0.8.13, Iris 1.8.14-beta.1,
-Pehkui, Create 6.0.10, and compile-only Sable 2.0.6, Create Aeronautics 1.3.2, Distant Horizons 3.3.3, Physics Mod
-3.0.34. Modrinth maven coordinates are version ids (e.g. `maven.modrinth:sable:fg9dTRz9`); look them up with
+Pehkui, Create 6.0.10, and compile-only Sable 2.0.6, Create Aeronautics 1.3.2, Distant Horizons 3.3.3. Modrinth maven coordinates are version ids (e.g. `maven.modrinth:sable:fg9dTRz9`); look them up with
 `curl https://api.modrinth.com/v2/project/<slug>/version`. After bumping Sodium, Iris, NeoForge or Sable, run
 `scripts/mixincheck.py` (`docs/testing.md`). Our physics backend is a copy of Sable 2.0.6's and refuses any other
 Sable version.

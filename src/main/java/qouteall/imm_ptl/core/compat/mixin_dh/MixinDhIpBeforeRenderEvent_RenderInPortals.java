@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalView;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
+import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 /**
@@ -31,7 +33,11 @@ public class MixinDhIpBeforeRenderEvent_RenderInPortals {
         require = 0
     )
     private void ip_renderLodsInPortalViews(DhApiCancelableEventParam<DhApiRenderParam> event, CallbackInfo ci) {
-        if (IPDhPortalView.ENABLED && PortalRendering.isRendering()) {
+        // a view with a portal view distance ends in fog short of the vanilla render distance: no LODs to see, so
+        // DH skips it; with a shader pack its pass runs with every LOD culled instead
+        // (MixinDhRenderBufferHandler_PortalViewDistance)
+        boolean skip = IPPortalViewDistance.hasCut() && !IrisInterface.invoker.isShaders();
+        if (IPDhPortalView.ENABLED && PortalRendering.isRendering() && !skip) {
             ci.cancel();
         }
     }

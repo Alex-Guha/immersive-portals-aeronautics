@@ -417,10 +417,10 @@ final class IPShipCrossingDetector {
     private static Trail trail(final ServerSubLevel ship, final Portal portal) {
         final Trail own = trail(ship);
         final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
-        if (mount == null || !mount.carrierIsSource() || mount.carrier() == ship) {
+        if (mount == null || mount.source() == null || mount.source() == ship) {
             return own;
         }
-        final Trail carrier = trail(mount.carrier());
+        final Trail carrier = trail(mount.source());
         final Trail relative = new Trail();
         relative.owner = ship;
         relative.hasOlder = own.hasOlder;

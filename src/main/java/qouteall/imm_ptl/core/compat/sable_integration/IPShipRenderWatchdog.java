@@ -9,6 +9,7 @@
 package qouteall.imm_ptl.core.compat.sable_integration;
 
 import com.mojang.logging.LogUtils;
+import de.nick1st.imm_ptl.events.ClientCleanupEvent;
 import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
 import dev.ryanhcode.sable.api.sublevel.ClientSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -19,17 +20,21 @@ import dev.ryanhcode.sable.sublevel.render.SubLevelRenderData;
 import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
+import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 import net.minecraft.world.level.chunk.LevelChunk;
 
@@ -57,6 +62,17 @@ public class IPShipRenderWatchdog {
     private static final int MAX_HEALS = 8;
     private static final int MAX_SECTIONS_SCANNED = 8192;
     private static final Map<Object, IPShipRenderWatchdog.ContainerState> SWEEP_STATE = new IdentityHashMap<>();
+    /** Levels whose Flywheel manager was created since their container last ticked (weak: levels unload). */
+    private static final Set<Object> FLYWHEEL_RESETS = Collections.newSetFromMap(new WeakHashMap<>());
+
+    /** The client left its worlds: their containers must not stay reachable from here. */
+    public static void init() {
+        NeoForge.EVENT_BUS.addListener(ClientCleanupEvent.class, event -> {
+            synchronized (LOCK) {
+                SWEEP_STATE.clear();
+            }
+        });
+    }
 
     public static void onFinalized(Object level, long plotCoordinate) {
         try {
@@ -64,6 +80,19 @@ public class IPShipRenderWatchdog {
                 PENDING.add(new PendingRefresh(level, plotCoordinate, FINALIZE_REBUILD_DELAY_TICKS, FINALIZE_RETRIES));
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Flywheel made a new manager for {@code level} (any thread): rebuilds every ship of it at its container's next
+     * tick. Ship sections compiled while the old manager held their parts' visuals do not draw those parts themselves,
+     * so after Flywheel reset the level (its backend switched on or off with a shader pack, F3+A, IP reloading a
+     * world's renderer) they were drawn by neither until the ship was synced again (BUGS #8). Recompiling hands them
+     * to the new manager, or to their renderer when Flywheel cannot take them in that compile.
+     */
+    public static void onFlywheelManagerCreated(Object level) {
+        synchronized (LOCK) {
+            FLYWHEEL_RESETS.add(level);
         }
     }
 
@@ -76,7 +105,9 @@ public class IPShipRenderWatchdog {
             IPSablePortalSync.tickPortalSideWorlds();
             SubLevelContainer container = (SubLevelContainer) containerObj;
             ArrayList<PendingRefresh> due = null;
+            boolean flywheelReset;
             synchronized (LOCK) {
+                flywheelReset = FLYWHEEL_RESETS.remove(container.getLevel());
                 if (!PENDING.isEmpty()) {
                     Iterator<PendingRefresh> iterator = PENDING.iterator();
 
@@ -102,6 +133,21 @@ public class IPShipRenderWatchdog {
                             iterator.remove();
                         }
                     }
+                }
+            }
+
+            if (flywheelReset) {
+                int ships = 0;
+                for (SubLevel subLevel : container.getAllSubLevels()) {
+                    if (subLevel instanceof ClientSubLevel clientSubLevel && !subLevel.isRemoved() && clientSubLevel.isFinalized()) {
+                        ChunkPos plotPos = clientSubLevel.getPlot().plotPos;
+                        refresh(container, clientSubLevel, plotPos.x, plotPos.z, "new Flywheel manager");
+                        ships++;
+                    }
+                }
+                if (ships > 0) {
+                    LOGGER.info("[IPShipRenderWatchdog] Flywheel reset {}: rebuilt {} ship(s) so their parts get visuals again",
+                        container.getLevel().dimension().location(), ships);
                 }
             }
 

@@ -97,7 +97,8 @@ public abstract class MixinBeltInventory_PortalBelts {
     private void ip$waitForFarSide(final CallbackInfoReturnable<Object> cir) {
         ip$toPlane = false;
         final IPCreatePortalBelts.Exit exit = ip$exit();
-        if (exit != null && !belt.getLevel().isClientSide && !exit.farLevel().isLoaded(exit.farPos())) {
+        if (exit != null && !belt.getLevel().isClientSide && !exit.farLevel().isLoaded(exit.farPos())
+            && IPCreatePortalBelts.ENDING_BLOCKED != null) {
             cir.setReturnValue(IPCreatePortalBelts.ENDING_BLOCKED);
         }
     }

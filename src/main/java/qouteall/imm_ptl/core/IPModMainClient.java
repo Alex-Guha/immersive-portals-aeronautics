@@ -11,11 +11,11 @@ import de.nick1st.imm_ptl.events.ClientCleanupEvent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import qouteall.imm_ptl.core.collision.CollisionHelper;
 import qouteall.imm_ptl.core.commands.ClientDebugCommand;
-import qouteall.imm_ptl.core.compat.IPFlywheelCompat;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
 import qouteall.imm_ptl.core.miscellaneous.DubiousThings;
 import qouteall.imm_ptl.core.miscellaneous.GcMonitor;
@@ -66,7 +66,11 @@ public class IPModMainClient {
         // Immersive Aeronautics: client copy of the server's ship straddle sessions (Sable classes only with Sable present)
         if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
             qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleClientSessions.init();
+            qouteall.imm_ptl.core.compat.sable_integration.IPShipRenderWatchdog.init();
         }
+        // Immersive Aeronautics: is every compat hook of the client's classes alive?
+        NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingIn.class,
+            e -> qouteall.imm_ptl.core.compat.IPMixinReport.report());
         // Immersive Aeronautics: a straddling ship's lamps light both sides (Create Dynamic Lights)
         if (net.neoforged.fml.ModList.get().isLoaded("sable") && net.neoforged.fml.ModList.get().isLoaded("sodiumdynamiclights")
             && net.neoforged.fml.ModList.get().isLoaded("createdynlight")) {
@@ -130,7 +134,6 @@ public class IPModMainClient {
         
         ImmPtlViewArea.init();
         
-        IPFlywheelCompat.init();
     
         GuiPortalRendering._init();
 

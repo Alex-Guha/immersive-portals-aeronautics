@@ -59,9 +59,10 @@ public final class IPStraddleClientSessions {
 
     /**
      * A session at a portal mounted on a ship (docs/plans/ship-mounted-portals.md, phase 4): its geometry follows the
-     * carrier as drawn ({@code IPStraddleSync.sendMount} for the invariants).
+     * carriers as drawn ({@code IPStraddleSync.sendMount} for the invariants). A side without a carrier is fixed.
      */
-    private record Mount(UUID carrier, ResourceKey<Level> carrierDim, boolean carrierIsSource, Vec3 plotOrigin,
+    private record Mount(boolean hasSource, UUID source, ResourceKey<Level> sourceDim,
+                         boolean hasDest, UUID dest, ResourceKey<Level> destDim, Vec3 plotOrigin,
                          Vec3 plotNormal, Vec3 plotAxisW, Vec3 plotAxisH, Vec3 kDest, Quaterniond kRotation) {
     }
 
@@ -69,35 +70,42 @@ public final class IPStraddleClientSessions {
 
     /**
      * The session as it is to be drawn now: unchanged for a still portal; for a mounted one, recomputed from the
-     * carrier's render pose (the one Sable draws it with this frame), so the cut and the far half stay on the moving
-     * portal. Without the carrier on this client, the server's last geometry.
+     * carriers' render poses (the ones Sable draws them with this frame), so the cut and the far half stay on the moving
+     * portal: {@code P = D ∘ K ∘ S⁻¹}. Without a carrier on this client, the server's last geometry.
      */
     private static Session current(final Key key, final Session session) {
         final Mount mount = MOUNTS.get(key);
         if (mount == null) {
             return session;
         }
-        final net.minecraft.client.multiplayer.ClientLevel level = qouteall.imm_ptl.core.ClientWorldLoader.getOptionalWorld(mount.carrierDim());
-        final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container =
-                level == null ? null : dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
-        if (container == null || !(container.getSubLevel(mount.carrier()) instanceof final dev.ryanhcode.sable.sublevel.ClientSubLevel carrier)
-                || carrier.isRemoved()) {
+        final dev.ryanhcode.sable.companion.math.Pose3dc source = mount.hasSource() ? renderPose(mount.sourceDim(), mount.source()) : null;
+        final dev.ryanhcode.sable.companion.math.Pose3dc dest = mount.hasDest() ? renderPose(mount.destDim(), mount.dest()) : null;
+        if ((mount.hasSource() && source == null) || (mount.hasDest() && dest == null)) {
             return session;
         }
-        final dev.ryanhcode.sable.companion.math.Pose3dc pose = carrier.renderPose();
-        if (mount.carrierIsSource()) {
-            // P = K ∘ M⁻¹: the plane is where the carrier draws it, the fixed side stays
-            final Vec3 origin = pose.transformPosition(mount.plotOrigin());
-            final Quaterniond rotation = new Quaterniond(mount.kRotation()).mul(new Quaterniond(pose.orientation()).conjugate()).normalize();
-            return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), origin,
-                    pose.transformNormal(mount.plotNormal()), pose.transformNormal(mount.plotAxisW()), pose.transformNormal(mount.plotAxisH()),
-                    session.halfW(), session.halfH(), new IPPortalIsometry(origin, mount.kDest(), rotation));
+        final Quaterniond rotation = dest == null ? new Quaterniond() : new Quaterniond(dest.orientation());
+        rotation.mul(mount.kRotation());
+        if (source != null) {
+            rotation.mul(new Quaterniond(source.orientation()).conjugate());
         }
-        // P = M ∘ K: the plane stays, the far side is where the carrier draws it
-        final Quaterniond rotation = new Quaterniond(pose.orientation()).mul(mount.kRotation()).normalize();
-        return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), session.origin(),
-                session.normal(), session.axisW(), session.axisH(), session.halfW(), session.halfH(),
-                new IPPortalIsometry(session.origin(), pose.transformPosition(mount.kDest()), rotation));
+        rotation.normalize();
+        final Vec3 origin = source == null ? mount.plotOrigin() : source.transformPosition(mount.plotOrigin());
+        final Vec3 far = dest == null ? mount.kDest() : dest.transformPosition(mount.kDest());
+        return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), origin,
+                source == null ? mount.plotNormal() : source.transformNormal(mount.plotNormal()),
+                source == null ? mount.plotAxisW() : source.transformNormal(mount.plotAxisW()),
+                source == null ? mount.plotAxisH() : source.transformNormal(mount.plotAxisH()),
+                session.halfW(), session.halfH(), new IPPortalIsometry(origin, far, rotation));
+    }
+
+    /** A carrier's render pose on this client, or null when it is not here. */
+    @org.jetbrains.annotations.Nullable
+    private static dev.ryanhcode.sable.companion.math.Pose3dc renderPose(final ResourceKey<Level> dimension, final UUID carrier) {
+        final net.minecraft.client.multiplayer.ClientLevel level = qouteall.imm_ptl.core.ClientWorldLoader.getOptionalWorld(dimension);
+        final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container =
+                level == null ? null : dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        return container != null && container.getSubLevel(carrier) instanceof final dev.ryanhcode.sable.sublevel.ClientSubLevel ship
+                && !ship.isRemoved() ? ship.renderPose() : null;
     }
 
     private static void addCurrent(final List<Session> out, final Map<Key, Session> sessions) {
@@ -320,11 +328,14 @@ public final class IPStraddleClientSessions {
             LOGGER.debug("[IPStraddle] client: ship {} straddles portal {} ({} -> {})", ship, portal, shipDim.location(), destDim.location());
         }
 
-        public static void mount(final UUID ship, final UUID portal, final UUID carrier, final ResourceKey<Level> carrierDim,
-                                 final boolean carrierIsSource, final Vec3 plotOrigin, final Vec3 plotNormal,
+        public static void mount(final UUID ship, final UUID portal,
+                                 final boolean hasSource, final UUID source, final ResourceKey<Level> sourceDim,
+                                 final boolean hasDest, final UUID dest, final ResourceKey<Level> destDim,
+                                 final Vec3 plotOrigin, final Vec3 plotNormal,
                                  final Vec3 plotAxisW, final Vec3 plotAxisH, final Vec3 kDest, final DQuaternion kRotation) {
-            MOUNTS.put(new Key(ship, portal), new Mount(carrier, carrierDim, carrierIsSource, plotOrigin, plotNormal,
-                    plotAxisW, plotAxisH, kDest, new Quaterniond(kRotation.x, kRotation.y, kRotation.z, kRotation.w).normalize()));
+            MOUNTS.put(new Key(ship, portal), new Mount(hasSource, source, sourceDim, hasDest, dest, destDim, plotOrigin,
+                    plotNormal, plotAxisW, plotAxisH, kDest,
+                    new Quaterniond(kRotation.x, kRotation.y, kRotation.z, kRotation.w).normalize()));
         }
 
         public static void end(final UUID ship, final UUID portal, final boolean handedOff) {

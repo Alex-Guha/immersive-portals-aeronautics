@@ -62,6 +62,13 @@ public final class IPDhPortalNearClip {
             return 0;
         }
 
+        // a global portal (a dimension stack's floor or ceiling) has no centre to measure from and its radius is
+        // the world's: the terrain is drawn around the camera, and anything closer than that radius lies inside it
+        if (portal.isGlobalPortal) {
+            int chunks = loadedChunksAlongAxes(destWorld.getChunkSource(), PortalRendering.getRenderingCameraPos());
+            return Math.max(0, (chunks - 1) * 16.0 - CHUNK_CENTRE_OFFSETS);
+        }
+
         Vec3 dest = portal.getDestPos();
         double drawnRadius = (loadedChunksAlongAxes(destWorld.getChunkSource(), dest) - 1) * 16.0 - CHUNK_CENTRE_OFFSETS;
         double portalRadius = portal.getDestAreaRadiusEstimation();

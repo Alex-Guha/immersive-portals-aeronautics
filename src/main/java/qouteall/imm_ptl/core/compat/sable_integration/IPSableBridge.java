@@ -25,6 +25,7 @@ import dev.ryanhcode.sable.sublevel.storage.serialization.SubLevelSerializer;
 import dev.ryanhcode.sable.util.SableNBTUtils;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
@@ -79,7 +80,11 @@ public final class IPSableBridge {
     public static IPSableBridge.Moved moveThroughPortal(
         ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation, @Nullable Velocity carried
     ) {
-        return moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, Set.of(sub.getUniqueId()));
+        IPSableBridge.Moved moved = moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, Set.of(sub.getUniqueId()));
+        if (moved != null) {
+            IPShipJoints.shiftLoadedJoints(dstLevel, Map.of(moved.sub().getUniqueId(), moved.shift()));
+        }
+        return moved;
     }
 
     /**
@@ -103,6 +108,7 @@ public final class IPSableBridge {
             // the ship's data is snapshotted so the anchor blocks travel detached (a strand left behind would crash
             // the source level's physics on its next tick). Ropes among the travelling ships travel along.
             IPShipRopeCompat.breakAttachedRopes(srcLevel, sub, travelling);
+            IPShipJoints.prepareSpringsForMove(srcLevel, sub, travelling);
             List<BlockPos> disassembled = IPShipCreateCompat.disassembleAssemblies(srcLevel, sub);
             List<AABB> glueBoxes = IPShipCreateCompat.captureGlue(srcLevel, sub);
             IPShipCreateCompat.KineticSnapshot kinetics = IPShipCreateCompat.collectKinetics(srcLevel, sub);

@@ -8,6 +8,7 @@ import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaterniond;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.joml.Quaterniondc;
@@ -90,42 +91,34 @@ final class IPStraddleSync {
     }
 
     /**
-     * A session at a portal mounted on a ship: the client derives its geometry every frame from the carrier as it is
-     * drawn (docs/plans/ship-mounted-portals.md, phase 4), from invariants in the carrier's plot. Carrier the source:
-     * the plane in plot space, and the map from plot to the fixed side ({@code kDest} the image of the plane's origin,
-     * {@code kRotation}). Carrier the destination: the plane stays, and the map from the fixed side into the plot
-     * ({@code kDest} the plot position the plane's origin maps to).
+     * A session at a portal mounted on a ship: the client derives its geometry every frame from the carriers as they
+     * are drawn (docs/plans/ship-mounted-portals.md, phase 4), from invariants in their plots. The portal maps
+     * {@code D ∘ K ∘ S⁻¹}, with {@code S} the source carrier's pose and {@code D} the destination carrier's (either the
+     * identity for a side fixed in the world): the plane in the source frame ({@code plot*}), and {@code K} as the
+     * plane origin's image in the destination frame ({@code kDest}) and a rotation.
      */
     private static void sendMount(final ServerPlayer player, final IPStraddleSessions.Session session) {
         final IPShipPortalAnchors.Mount mount = session.mount;
-        final Pose3dc pose = mount.carrier().logicalPose();
-        final Quaterniondc body = pose.orientation();
-        final Quaterniondc portal = session.isometry.rotation();
-        final Vec3 plotOrigin;
-        final Vec3 plotNormal;
-        final Vec3 plotAxisW;
-        final Vec3 plotAxisH;
-        final Vec3 kDest;
-        final Quaterniond kRotation;
-        if (mount.carrierIsSource()) {
-            plotOrigin = pose.transformPositionInverse(session.origin);
-            plotNormal = pose.transformNormalInverse(session.normal);
-            plotAxisW = pose.transformNormalInverse(session.portal.getAxisW());
-            plotAxisH = pose.transformNormalInverse(session.portal.getAxisH());
-            kDest = session.isometry.mapPoint(session.origin);
-            kRotation = new Quaterniond(portal).mul(body);
-        } else {
-            plotOrigin = Vec3.ZERO;
-            plotNormal = Vec3.ZERO;
-            plotAxisW = Vec3.ZERO;
-            plotAxisH = Vec3.ZERO;
-            kDest = pose.transformPositionInverse(session.isometry.mapPoint(session.origin));
-            kRotation = new Quaterniond(body).conjugate().mul(portal);
+        final Pose3dc source = mount.source() == null ? null : mount.source().logicalPose();
+        final Pose3dc dest = mount.destination() == null ? null : mount.destination().logicalPose();
+        final Vec3 plotOrigin = source == null ? session.origin : source.transformPositionInverse(session.origin);
+        final Vec3 plotNormal = source == null ? session.normal : source.transformNormalInverse(session.normal);
+        final Vec3 plotAxisW = source == null ? session.portal.getAxisW() : source.transformNormalInverse(session.portal.getAxisW());
+        final Vec3 plotAxisH = source == null ? session.portal.getAxisH() : source.transformNormalInverse(session.portal.getAxisH());
+        final Vec3 far = session.isometry.mapPoint(session.origin);
+        final Vec3 kDest = dest == null ? far : dest.transformPositionInverse(far);
+        final Quaterniond kRotation = dest == null ? new Quaterniond() : new Quaterniond(dest.orientation()).conjugate();
+        kRotation.mul(session.isometry.rotation());
+        if (source != null) {
+            kRotation.mul(source.orientation());
         }
         kRotation.normalize();
+        final ServerSubLevel sourceShip = mount.source() != null ? mount.source() : session.ship;
+        final ServerSubLevel destShip = mount.destination() != null ? mount.destination() : session.ship;
         McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "mount",
-                session.key.ship(), session.key.portal(), mount.carrier().getUniqueId(),
-                mount.carrier().getLevel().dimension(), mount.carrierIsSource(),
+                session.key.ship(), session.key.portal(),
+                mount.source() != null, sourceShip.getUniqueId(), sourceShip.getLevel().dimension(),
+                mount.destination() != null, destShip.getUniqueId(), destShip.getLevel().dimension(),
                 plotOrigin, plotNormal, plotAxisW, plotAxisH,
                 kDest, new DQuaternion(kRotation.x, kRotation.y, kRotation.z, kRotation.w));
     }

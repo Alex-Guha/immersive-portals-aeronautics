@@ -22,7 +22,8 @@ import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
  * frame. Without this the portal entity survived a few seconds in the world, the new sub-level's hull overlapped it and
  * the sub-level was teleported through its own portal (riders included) before both ends broke. With them on,
  * {@link IPShipPortalAnchors#onBlocksMoving} mounts a whole portal on the new ship instead, and moves portals already
- * mounted on a ship along with their blocks.
+ * mounted on a ship along with their blocks. Custom portals (wand, {@code /portal} commands) are never broken here: with
+ * ship-mounted portals on they are mounted with the blocks they touch, otherwise they stay in the world.
  */
 public final class IPShipPortalAssemblyGuard {
     private IPShipPortalAssemblyGuard() {
@@ -47,12 +48,11 @@ public final class IPShipPortalAssemblyGuard {
             return;
         }
 
-        List<BreakablePortalEntity> worldPortals = new ArrayList<>();
+        List<Portal> worldPortals = new ArrayList<>();
         if (!IPSableCompatHelper.isPlotSpacePosition(minX, minZ)) {
             AABB bounds = new AABB(minX, minY, minZ, maxX + 1, maxY + 1, maxZ + 1).inflate(1.0);
-            for (Portal portal : IPPortalLookup.touching(level, bounds, p -> p instanceof BreakablePortalEntity)) {
-                worldPortals.add((BreakablePortalEntity) portal);
-            }
+            worldPortals.addAll(IPPortalLookup.touching(level, bounds,
+                p -> p instanceof BreakablePortalEntity || IPShipPortalAnchors.isCustom(p)));
         }
         IPShipPortalAnchors.onBlocksMoving(level, transform, blocks, worldPortals);
     }

@@ -579,7 +579,11 @@ public class ServerTeleportationManager {
         
         McHelper.setEyePos(entity, newEyePos, newEyePos);
         McHelper.updateBoundingBox(entity);
-        
+
+        // Immersive Aeronautics: without its portals for the next move, a mob stepping up through a dimension stack's
+        // floor dropped through the blocks on the other side, and with no portal to take it back fell out of the world
+        PortalCollisionHandler.updateCollidingPortalAfterTeleportation(entity, newEyePos, newEyePos, 1);
+
         // living entities do position interpolation
         // it may interpolate into unloaded chunks and stuck
         // avoid position interpolation

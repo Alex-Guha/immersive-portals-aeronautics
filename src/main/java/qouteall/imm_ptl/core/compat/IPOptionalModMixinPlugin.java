@@ -29,6 +29,7 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("net.diebuddies.", "physicsmod"),
         Map.entry("com.anton.shieldgenerators.", "shield_generators"),
         Map.entry("net.irisshaders.", "iris"),
+        Map.entry("net.caffeinemc.mods.sodium.", "sodium"),
         Map.entry("team.lodestar.lodestone.", "lodestone"),
         Map.entry("com.cmdpro.databank.", "databank"),
         Map.entry("dev.ryanhcode.sable.", "sable"),
@@ -39,7 +40,8 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("com.playsi.aero_cam_sync.", "aero_cam_sync"),
         Map.entry("com.euphoriapatches.euphoria_patcher.", "euphoria_patcher"),
         Map.entry("net.karto.mc2.mc2_interactivefoliage.", "mc2_interactivefoliage"),
-        Map.entry("com.github.razorplay01.sway.", "sway")
+        Map.entry("com.github.razorplay01.sway.", "sway"),
+        Map.entry("com.terraformersmc.mod_menu.", "mod_menu")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(
@@ -102,6 +104,6 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-
+        IPMixinReport.applied(targetClassName, targetClass, mixinClassName, mixinInfo);
     }
 }

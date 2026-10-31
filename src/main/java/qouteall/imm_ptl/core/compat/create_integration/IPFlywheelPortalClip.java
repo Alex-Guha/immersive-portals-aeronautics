@@ -31,6 +31,7 @@ public final class IPFlywheelPortalClip {
     private static final String MAIN_SIGNATURE = "void _flw_main(";
     private static final float[] NO_CLIPPING = {0f, 0f, 0f, 1f};
     private static boolean logged;
+    private static boolean failureLogged;
     private static boolean planeLogged;
 
     private IPFlywheelPortalClip() {
@@ -45,6 +46,10 @@ public final class IPFlywheelPortalClip {
         int main = text.indexOf(MAIN_SIGNATURE);
         int position = text.indexOf(POSITION_LINE);
         if (main < 0 || position < main) {
+            if (main >= 0 && !failureLogged) {
+                failureLogged = true;
+                LOGGER.warn("[IPFlywheelClip] a vertex shader has no \"{}\": Flywheel changed, its parts are not clipped in portal views", POSITION_LINE);
+            }
             return source;
         }
         String clipLine = POSITION_LINE

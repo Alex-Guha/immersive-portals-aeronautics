@@ -26,12 +26,13 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import dev.engine_room.flywheel.lib.util.RendererReloadCache;
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
 import java.lang.ref.WeakReference;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.render.SuperBufferFactory;
@@ -46,9 +47,7 @@ import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -64,14 +63,11 @@ import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.compat.mixin_create.IPRotationPropagatorInvoker;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
-import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
+
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * The shaft inside a portal block. A shaft going into a nether-style portal ends at the portal block's face, half a
@@ -91,14 +87,6 @@ import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
  * such a portal gets its half shafts in the world, and the half past the plane goes to the other side's frame.
  */
 public final class IPCreatePortalShaftHalves {
-    private static final int SCAN_TICKS = 10;
-    /** Portal blocks walked per portal at most (a 64x64 portal). */
-    private static final int MAX_CELLS = 64 * 64;
-    private static final double PLANE_EPSILON = 1.0e-3;
-    /** Slack for portal blocks on a ship, whose pose is worked out in doubles each tick (about 2.5 degrees, 1/20 block). */
-    private static final double SHIP_COS = 1 - 1.0e-3;
-    private static final double SHIP_PLANE = 0.05;
-    private static final boolean SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
     /** Game ticks between relights of the instances. */
     private static final int LIGHT_TICKS = 10;
 
@@ -130,80 +118,94 @@ public final class IPCreatePortalShaftHalves {
 
     /** Per client world, its effect (weak: client worlds come and go). */
     private static final Map<ClientLevel, Halves> EFFECTS = new WeakHashMap<>();
-    private static int tick;
-    private static boolean changed;
 
     private IPCreatePortalShaftHalves() {
     }
 
-    /** Client block change in any world (main thread). Only block entities and portal blocks matter. */
-    public static void onBlockChanged(final BlockState oldState, final BlockState newState) {
-        if (oldState.hasBlockEntity() || newState.hasBlockEntity()
-            || oldState.getBlock() == PortalPlaceholderBlock.instance || newState.getBlock() == PortalPlaceholderBlock.instance) {
-            changed = true;
-        }
-    }
+    /** The half shafts found in a walk. */
+    static final class ShaftScan implements IPCreatePortalEndScan.Scan {
+        private final Map<ClientLevel, List<Half>> found = new IdentityHashMap<>();
+        private final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts = IPCreatePortalShaftPhase.newFound();
 
-    public static void onClientTick(final IPGlobal.PostClientTickEvent event) {
-        if (++tick % SCAN_TICKS == 0) {
-            search();
+        @Override
+        public boolean wants(final IPCreatePortalEndScan.Side side) {
+            return true;
         }
-    }
 
-    public static void onPreGameRender(final IPGlobal.PreGameRenderEvent event) {
-        if (changed) {
-            search();
-        }
-    }
+        @Override
+        public void cell(final IPCreatePortalEndScan.Side side, final BlockPos cell, final Vec3 worldCentre) {
+            final ClientLevel world = side.world();
+            final Portal portal = side.portal();
+            final IPCreatePortalShafts.Frame frame = side.frame();
+            final ClientLevel farWorld = side.farWorld();
+            final UUID farShip = side.farShip();
+            final Quaternionf toFarWorld = side.toFarWorld();
+            final Direction front = side.front();
+            final Direction behind = front.getOpposite();
+            final Direction.Axis axis = front.getAxis();
+            final Vector3f axisVector = Direction.get(Direction.AxisDirection.POSITIVE, axis).step();
+            final BlockPos endPos = cell.relative(front);
+            final KineticBlockEntity source = shaftEnd(world, endPos, behind);
+            if (source == null) {
+                return;
+            }
+            if (farWorld != null && farShip == null && IPCreatePortalEnds.farKind(
+                farWorld, portal.transformPoint(worldCentre), toFarWorld, behind).outranks(IPCreatePortalEnds.Kind.SHAFT)) {
+                return; // a belt across the portal owns the space between ({@link IPCreatePortalEnds})
+            }
+            final float offset = KineticBlockEntityVisual.rotationOffset(source.getBlockState(), axis, endPos)
+                + source.getRotationAngleOffset(axis);
+            add(found, world, new Half(cell.immutable(), pointing(front), axisVector, offset, source, behind, frame, null));
 
-    private static void search() {
-        // IP's world list is empty from a vanilla dimension change (respawn packet) until IP sets it up again
-        if (!ClientWorldLoader.getIsInitialized()) {
-            return;
-        }
-        changed = false;
-        final Map<ResourceKey<Level>, ClientLevel> worlds = new HashMap<>();
-        for (final ClientLevel world : ClientWorldLoader.getClientWorlds()) {
-            worlds.put(world.dimension(), world);
-        }
-        final Map<ClientLevel, List<Half>> found = new IdentityHashMap<>();
-        final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts = IPCreatePortalShaftPhase.newFound();
-        for (final ClientLevel world : worlds.values()) {
-            for (final Entity entity : world.entitiesForRendering()) {
-                if (entity instanceof Portal portal) {
-                    scan(world, portal, worlds, found, shifts);
+            if (farWorld == null) {
+                return;
+            }
+            final Vec3 farCentre = portal.transformPoint(worldCentre);
+            if (farShip == null) {
+                stub(farWorld, null, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts);
+            } else if (SABLE) {
+                // the other side of a ship-mounted portal is on a ship
+                for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
+                    if (ship.ship().equals(farShip)
+                        && stub(farWorld, ship, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts)) {
+                        break;
+                    }
                 }
             }
         }
-        IPCreatePortalShaftPhase.update(shifts);
-        for (final ClientLevel world : worlds.values()) {
-            final List<Half> halves = found.getOrDefault(world, List.of());
-            Halves effect = EFFECTS.get(world);
-            if (effect == null) {
-                if (halves.isEmpty()) {
-                    continue;
+
+        @Override
+        public void finish(final Collection<ClientLevel> worlds, final boolean important) {
+            IPCreatePortalShaftPhase.update(shifts);
+            for (final ClientLevel world : worlds) {
+                final List<Half> halves = found.getOrDefault(world, List.of());
+                Halves effect = EFFECTS.get(world);
+                if (effect == null) {
+                    if (halves.isEmpty()) {
+                        continue;
+                    }
+                    effect = new Halves(world);
+                    EFFECTS.put(world, effect);
                 }
-                effect = new Halves(world);
-                EFFECTS.put(world, effect);
-            }
-            if (!effect.all.equals(halves)) {
-                effect.all = List.copyOf(halves);
-            }
-            final VisualizationManagerImpl manager = effect.attach();
-            final List<Half> drawn = new ArrayList<>(halves.size());
-            for (final Half half : halves) {
-                if (half.ship() == null) {
-                    drawn.add(half);
-                    continue;
+                if (!effect.all.equals(halves)) {
+                    effect.all = List.copyOf(halves);
                 }
-                // drawn with the ship's own embedding, once Sable has made one
-                final VisualEmbedding embedding = manager == null || !SABLE ? null : IPCreateShaftShipsClient.embeddingOf(manager, half.ship());
-                if (embedding != null) {
-                    drawn.add(half.withEmbedding(embedding));
+                final VisualizationManagerImpl manager = effect.attach();
+                final List<Half> drawn = new ArrayList<>(halves.size());
+                for (final Half half : halves) {
+                    if (half.ship() == null) {
+                        drawn.add(half);
+                        continue;
+                    }
+                    // drawn with the ship's own embedding, once Sable has made one
+                    final VisualEmbedding embedding = manager == null || !SABLE ? null : IPCreateShaftShipsClient.embeddingOf(manager, half.ship());
+                    if (embedding != null) {
+                        drawn.add(half.withEmbedding(embedding));
+                    }
                 }
-            }
-            if (!effect.halves.equals(drawn)) {
-                effect.halves = List.copyOf(drawn);
+                if (!effect.halves.equals(drawn)) {
+                    effect.halves = List.copyOf(drawn);
+                }
             }
         }
     }
@@ -265,93 +267,6 @@ public final class IPCreatePortalShaftHalves {
         buffers.endBatch(RenderType.solid());
     }
 
-    private static void scan(
-        final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ClientLevel, List<Half>> found, final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts
-    ) {
-        if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6) {
-            return;
-        }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        final AABB box = portal.getBoundingBox();
-        // the portal's blocks: in the world, or (the ship side of a ship-mounted portal) in its ship's plot
-        scanFrame(world, portal, null, box.deflate(PLANE_EPSILON), mount, worlds, found, shifts);
-        if (SABLE && mount != null) {
-            for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(world, box.inflate(1))) {
-                if (ship.ship().equals(mount.carrier())) {
-                    scanFrame(world, portal, ship, IPCreatePortalShafts.toLocalBounds(ship, box.inflate(0.5)), mount, worlds, found, shifts);
-                }
-            }
-        }
-    }
-
-    /** The portal blocks of {@code portal} in {@code cells}, in {@code frame}'s coordinates (null: the world). */
-    private static void scanFrame(
-        final ClientLevel world, final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final AABB cells,
-        final @Nullable IPShipMount mount, final Map<ResourceKey<Level>, ClientLevel> worlds, final Map<ClientLevel, List<Half>> found,
-        final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts
-    ) {
-        final Vec3 normal = frame == null ? portal.getNormal() : frame.toLocalDirection(portal.getNormal()).normalize();
-        final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
-        if (Vec3.atLowerCornerOf(front.getNormal()).dot(normal) < (frame == null && mount == null ? 1 - PLANE_EPSILON : SHIP_COS)) {
-            return;
-        }
-        final double planeSlack = frame == null ? PLANE_EPSILON : SHIP_PLANE;
-        final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
-        final BlockPos max = BlockPos.containing(cells.maxX, cells.maxY, cells.maxZ);
-        if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
-            return;
-        }
-        final Direction behind = front.getOpposite();
-        final Direction.Axis axis = front.getAxis();
-        final Vector3f axisVector = Direction.get(Direction.AxisDirection.POSITIVE, axis).step();
-        // a direction of this frame -> the far world's
-        final Quaternionf toFarWorld = portal.getRotationD().toMcQuaternion();
-        if (frame != null) {
-            toFarWorld.mul(frame.rotation());
-        }
-        final ClientLevel farWorld = worlds.get(portal.getDestDim());
-        for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
-            if (frame != null && !frame.holds(world, cell)) {
-                continue;
-            }
-            final Vec3 centre = Vec3.atCenterOf(cell);
-            final Vec3 worldCentre = frame == null ? centre : frame.toWorld(centre);
-            if (Math.abs(portal.getDistanceToPlane(worldCentre)) > planeSlack
-                || !IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(cell), front)) {
-                continue;
-            }
-            final BlockPos endPos = cell.relative(front);
-            final KineticBlockEntity source = shaftEnd(world, endPos, behind);
-            if (source == null) {
-                continue;
-            }
-            if (farWorld != null && (mount == null || frame != null) && IPCreatePortalEnds.farKind(
-                farWorld, portal.transformPoint(worldCentre), toFarWorld, behind).outranks(IPCreatePortalEnds.Kind.SHAFT)) {
-                continue; // a belt across the portal owns the space between ({@link IPCreatePortalEnds})
-            }
-            final float offset = KineticBlockEntityVisual.rotationOffset(source.getBlockState(), axis, endPos)
-                + source.getRotationAngleOffset(axis);
-            add(found, world, new Half(cell.immutable(), pointing(front), axisVector, offset, source, behind, frame, null));
-
-            if (farWorld == null) {
-                continue;
-            }
-            final Vec3 farCentre = portal.transformPoint(worldCentre);
-            if (mount == null || frame != null) {
-                stub(farWorld, null, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts);
-            } else if (SABLE) {
-                // a fixed side of a ship-mounted portal: the other side is on the ship
-                for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
-                    if (ship.ship().equals(mount.carrier())
-                        && stub(farWorld, ship, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts)) {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
     /**
      * The half past the near plane, as the portal shows it, in the far portal block at {@code farCentre} (in
      * {@code frame}, null: the world) unless a shaft there draws its own. False if no far portal block is there.
@@ -367,7 +282,7 @@ public final class IPCreatePortalShaftHalves {
             return false;
         }
         // near directions -> far frame's, snapped to the block grid (the two frames meet square, up to rounding)
-        final Quaternionf toLocal = snap(frame == null ? new Quaternionf(toFarWorld) : new Quaternionf(frame.rotation()).conjugate().mul(toFarWorld));
+        final Quaternionf toLocal = IPCreatePortalEnds.snap(frame == null ? new Quaternionf(toFarWorld) : new Quaternionf(frame.rotation()).conjugate().mul(toFarWorld));
         final Vector3f outVector = toLocal.transform(new Vector3f(behind.getStepX(), behind.getStepY(), behind.getStepZ()));
         final Direction farOut = Direction.getNearest(outVector.x, outVector.y, outVector.z);
         if (!IPCreatePortalPipes.isPlaceholderFacing(farWorld.getBlockState(farCell), farOut)) {
@@ -431,17 +346,6 @@ public final class IPCreatePortalShaftHalves {
     /** Whether {@code be}'s Create source is the portal block on {@code side}: it is turned through the portal. */
     private static boolean drivenThroughPortal(final KineticBlockEntity be, final Direction side) {
         return be.source != null && be.source.equals(be.getBlockPos().relative(side));
-    }
-
-    /** The nearest rotation by quarter turns. */
-    static Quaternionf snap(final Quaternionf rotation) {
-        final Matrix3f matrix = new Matrix3f().rotation(rotation);
-        for (int column = 0; column < 3; column++) {
-            for (int row = 0; row < 3; row++) {
-                matrix.set(column, row, Math.round(matrix.get(column, row)));
-            }
-        }
-        return new Quaternionf().setFromNormalized(matrix);
     }
 
     private static void add(final Map<ClientLevel, List<Half>> found, final ClientLevel world, final Half half) {

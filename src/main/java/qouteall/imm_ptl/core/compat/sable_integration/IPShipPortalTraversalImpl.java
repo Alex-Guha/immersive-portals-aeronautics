@@ -24,15 +24,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos.MutableBlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
 import org.joml.Quaterniond;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
@@ -54,7 +58,7 @@ import qouteall.q_misc_util.my_util.DQuaternion;
  * refused and the ship pushed back out of the portal. Also ticks rider remounts, the ragdoll guard and {@link IPShipThroughPortalSync}.
  * While {@link IPStraddle#isAvailable()}, ships straddle portals instead and the scan does not run.
  */
-final class IPShipPortalTraversalImpl {
+public final class IPShipPortalTraversalImpl {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int SCAN_INTERVAL_TICKS = 4;
     private static final int COOLDOWN_TICKS = 100;
@@ -74,40 +78,74 @@ final class IPShipPortalTraversalImpl {
     private static final double KEEP_OUT_MARGIN = 32.0;
     /** Speed [m/s] a ship whose crossing was refused is given away from the portal. */
     private static final double REFUSED_PUSH_BACK_SPEED = 1.0;
+    private static final long TICK_FAILURE_LOG_INTERVAL = 6000;
+    /** Per part of the ship tick that failed: the tick last logged, the failures since. */
+    private static final Map<String, long[]> TICK_FAILURES = new HashMap<>();
 
     private IPShipPortalTraversalImpl() {
     }
 
     /**
-     * Starts a server afresh. The per-ship state holds server tick counts, which restart at 0 with every server: in
-     * singleplayer the state of the previous world load would otherwise block a ship's crossings (cooldown) until the
-     * new server's tick count caught up. Then replays the teleport journal.
+     * Forgets everything about ships, before a server's levels load and when it stops. The per-ship state holds server
+     * tick counts, which restart at 0 with every server: in singleplayer the state of the previous world load would
+     * otherwise block a ship's crossings (cooldown) until the new server's tick count caught up. It also holds levels
+     * and ships, which a stopped server must not keep alive. Not at the first tick: what the levels fill in while they
+     * load (a ship's joints) would be lost.
      */
-    static void onServerStarted(MinecraftServer server) {
+    static void clearState() {
         LAST_MOVE_TICK.clear();
         SUPPRESSED_UNTIL_CLEAR.clear();
         STUCK_SINCE.clear();
         LAST_HULL_CENTER.clear();
+        TICK_FAILURES.clear();
         IPShipThroughPortalSync.reset();
         IPShipRiderCarry.reset();
         IPShipRagdollGuard.reset();
-        IPStraddle.onServerStarted(server);
-        IPShipPortalAnchors.onServerStarted();
-        IPPhysicsStaffHooks.onServerStarted();
+        IPStraddle.clearState();
+        IPShipPortalAnchors.clearState();
+        IPPhysicsStaffHooks.clearState();
+    }
+
+    /** A server's first tick: its levels are up. */
+    static void onServerStarted(MinecraftServer server) {
+        IPStraddle.onServerStarted();
         IPShipTeleportJournal.replayPending(server);
+    }
+
+    /** An operator should know when ships fall back to one-step crossings: nothing else shows it in game. */
+    static void onPlayerJoined(ServerPlayer player) {
+        String reason = IPPhysicsPipelineProvider.getFallbackReason();
+        if (reason != null && player.hasPermissions(2)) {
+            player.sendSystemMessage(Component.literal(
+                "Immersive Portals: Aeronautics: ships cannot straddle portals here, they cross in one step: " + reason
+            ).withStyle(ChatFormatting.GOLD));
+        }
+    }
+
+    /**
+     * Runs one part of the ship tick, so that a part that keeps failing costs the others nothing. Logged the first time
+     * and then every {@value #TICK_FAILURE_LOG_INTERVAL} ticks, with how many failed since.
+     */
+    private static void guarded(String part, long tick, Runnable action) {
+        try {
+            action.run();
+        } catch (Throwable e) {
+            long[] failure = TICK_FAILURES.computeIfAbsent(part, key -> new long[]{Long.MIN_VALUE, 0});
+            failure[1]++;
+            if (tick - failure[0] >= TICK_FAILURE_LOG_INTERVAL) {
+                LOGGER.error("[IPShipPortal] {} failed in the ship tick ({} time(s) since the last report)", part, failure[1], e);
+                failure[0] = tick;
+                failure[1] = 0;
+            }
+        }
     }
 
     static void tick(MinecraftServer server) {
         long tick = server.getTickCount();
-        IPShipRiderCarry.tickPendingRemounts(server);
-        IPShipRagdollGuard.tryRegister();
-        IPShipPortalAnchors.tick(server);
-
-        try {
-            IPShipThroughPortalSync.tick(server, tick);
-        } catch (Throwable e) {
-            LOGGER.warn("[IPShipThroughPortal] sync tick failed: {}", e.toString());
-        }
+        guarded("riders' remounts", tick, () -> IPShipRiderCarry.tickPendingRemounts(server));
+        guarded("the ragdoll guard", tick, IPShipRagdollGuard::tryRegister);
+        guarded("ship-mounted portals", tick, () -> IPShipPortalAnchors.tick(server));
+        guarded("through-portal sync", tick, () -> IPShipThroughPortalSync.tick(server, tick));
 
         if (SubLevelPhysicsSystem.IN_PHYSICS_STEP) {
             return;
@@ -115,11 +153,7 @@ final class IPShipPortalTraversalImpl {
 
         if (IPStraddle.isAvailable()) {
             // ships straddle portals and are handed off once through (docs/seamless-ships.md); replaces the scan below
-            try {
-                IPStraddle.tick(server, tick);
-            } catch (Throwable e) {
-                LOGGER.warn("[IPStraddle] tick failed", e);
-            }
+            guarded("straddling", tick, () -> IPStraddle.tick(server, tick));
             return;
         }
 
@@ -167,6 +201,7 @@ final class IPShipPortalTraversalImpl {
         LAST_HULL_CENTER.keySet().removeAll(stale);
     }
 
+    /** @return whether Sable holds a ship whose chunks are not loaded, in any level */
     private static boolean isHeldAnywhere(MinecraftServer server, UUID shipId) {
         for (ServerLevel level : server.getAllLevels()) {
             ServerSubLevelContainer container = SubLevelContainer.getContainer(level);

@@ -8,9 +8,9 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.gui.ModListScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import qouteall.imm_ptl.core.platform_specific.IPAeronauticsClientEntry;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * NeoForge's Mods list shows one entry per mod id, and our jar declares five. The four Immersive Portals ids stay
@@ -19,14 +19,11 @@ import java.util.Set;
  */
 @Mixin(value = ModListScreen.class, remap = false)
 public class MixinModListScreen {
-    private static final Set<String> IP_ALIAS_IDS =
-        Set.of("immersive_portals_core", "immersive_portals", "imm_ptl", "q_misc_util");
-
     @ModifyExpressionValue(
         method = "<init>",
         at = @At(value = "INVOKE", target = "Lnet/neoforged/fml/ModList;getSortedMods()Ljava/util/List;")
     )
     private List<ModContainer> ip_hideAliasIds(List<ModContainer> mods) {
-        return mods.stream().filter(mod -> !IP_ALIAS_IDS.contains(mod.getModId())).toList();
+        return mods.stream().filter(mod -> !IPAeronauticsClientEntry.IP_ALIAS_IDS.contains(mod.getModId())).toList();
     }
 }

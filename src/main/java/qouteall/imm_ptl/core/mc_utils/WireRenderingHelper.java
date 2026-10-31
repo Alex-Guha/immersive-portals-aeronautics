@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mc_utils;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -17,7 +24,6 @@ import qouteall.imm_ptl.core.portal.animation.StableClientTimer;
 import qouteall.imm_ptl.core.portal.animation.UnilateralPortalState;
 import qouteall.imm_ptl.core.portal.shape.PortalShape;
 import qouteall.imm_ptl.core.portal.shape.SpecialFlatPortalShape;
-import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.q_misc_util.my_util.Circle;
 import qouteall.q_misc_util.my_util.DQuaternion;
 import qouteall.q_misc_util.my_util.Plane;
@@ -144,8 +150,9 @@ public class WireRenderingHelper {
         
         Matrix4f matrix = matrixStack.last().pose();
         
-        double cameraDistanceToCenter = player.getEyePosition(RenderStates.getPartialTick())
-            .distanceTo(planeCenter);
+        // Immersive Aeronautics: from the camera given, in the plane's frame (a ship's plot for the portal wand
+        // on a ship); was the player's eye
+        double cameraDistanceToCenter = cameraPos.distanceTo(planeCenter);
         
         int lineNumPerSide = 10;
         double lineInterval = cameraDistanceToCenter * 0.2 * renderedPlaneScale;

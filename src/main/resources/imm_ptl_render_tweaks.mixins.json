@@ -17,11 +17,14 @@
     "MixinEuphoriaDimensionRefresh_NoRebuild",
     "MixinIrisPipelineManager_EuphoriaPack",
     "IEIris_CurrentPack",
+    "MixinIrisPipelineManager_PortalViews",
+    "IEIrisRenderingPipeline_BlockIds",
     "IEInteractiveFoliageRenderer",
     "MixinInteractiveFoliageRenderer_PlayerWorldOnly",
     "MixinInteractiveFoliageSplit_PlayerWorldOnly",
     "MixinInteractiveFoliageIris_PlayerWorldOnly",
-    "MixinSwayEngine_OncePerFrame"
+    "MixinSwayEngine_OncePerFrame",
+    "MixinModMenu_OneEntry"
   ],
   "injectors": {
     "defaultRequire": 0

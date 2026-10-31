@@ -18,13 +18,16 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.living.MobSpawnEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
+import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.platform_specific.O_O;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
@@ -50,6 +53,16 @@ public class DimStackManagement {
     public static void init() {
         // Immersive Aeronautics: the pre-update event for a new world's stack is posted in onServerCreatedWorlds
         // (it listened for DimensionEvents.ServerDimensionsLoadEvent, which nothing posts since DimLib was dropped)
+
+        // Immersive Aeronautics: bedrock refuses spawns, its replacement may not, so keep them off a replaced roof
+        NeoForge.EVENT_BUS.addListener(MobSpawnEvent.SpawnPlacementCheck.class, event -> {
+            BlockPos pos = event.getPos();
+            ServerLevelAccessor level = event.getLevel();
+            if (pos.getY() == McHelper.getMaxContentYExclusive(level)
+                && level.getBlockState(pos.below()) == bedrockReplacementMap.get(level.getLevel().dimension())) {
+                event.setResult(MobSpawnEvent.SpawnPlacementCheck.Result.FAIL);
+            }
+        });
     }
 
     private static boolean isDimStackEnabled() {

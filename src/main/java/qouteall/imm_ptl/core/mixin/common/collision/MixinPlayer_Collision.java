@@ -14,6 +14,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 
 // Immersive Aeronautics: priority 900, as in IPSable 0.5.0 (r2smith141). Sable's player_standup.PlayerMixin wraps the
@@ -42,5 +46,30 @@ public abstract class MixinPlayer_Collision {
             // TODO check the issue of wrongly crouch after going through a scaling portal
             //  when head is touching ceiling because of floating point error
         );
+    }
+
+    // Immersive Aeronautics: the edge check of a sneaking player looks for ground in the player's own world only. With
+    // the eyes in the overworld and the feet on a stack's stairs in the nether it found none, and the player could not
+    // take a step.
+    @Inject(method = "canFallAtLeast", at = @At("RETURN"), cancellable = true)
+    private void ip_onCanFallAtLeast(double x, double z, float distance, CallbackInfoReturnable<Boolean> cir) {
+        if (!cir.getReturnValueZ()) {
+            return;
+        }
+
+        LivingEntity this_ = (LivingEntity) (Object) this;
+        PortalCollisionHandler collisionHandler = ((IEEntity) this_).ip_getPortalCollisionHandler();
+        if (collisionHandler == null) {
+            return;
+        }
+
+        AABB box = this_.getBoundingBox();
+        AABB ground = new AABB(
+            box.minX + x, box.minY - distance - 1.0E-5F, box.minZ + z,
+            box.maxX + x, box.minY, box.maxZ + z
+        );
+        if (collisionHandler.hasBlocksBehindPortal(this_, ground)) {
+            cir.setReturnValue(false);
+        }
     }
 }

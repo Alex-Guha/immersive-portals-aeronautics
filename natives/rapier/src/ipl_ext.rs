@@ -134,6 +134,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_removePortalRim<'loca
     }
     if scene_handle == 0 { return; }
     let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    crate::moving_portals::forget_rim(
+        &mut scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner), rim.body);
     let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
     // Removing the parent body removes its attached compound collider too. Destructure
     // the scene first so Rust can prove these mutable fields do not overlap.
@@ -172,6 +174,11 @@ fn shape_address(shape: &dyn Shape) -> usize {
 /// blocks above the opening touched a bar's inner face edge-on, which held the ship like a wall.
 pub fn is_portal_rim_shape(shape: &dyn Shape) -> bool {
     IPL_PORTAL_RIM_SHAPES.read().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&shape_address(shape))
+}
+
+/// The kinematic body of the rim `rim_id` in `scene_handle`'s scene.
+pub fn portal_rim_body(scene_handle: jlong, rim_id: jint) -> Option<RigidBodyHandle> {
+    IPL_PORTAL_RIMS.read().unwrap_or_else(std::sync::PoisonError::into_inner).get(&(scene_handle, rim_id)).map(|rim| rim.body)
 }
 
 fn next_portal_rim_id() -> jint {

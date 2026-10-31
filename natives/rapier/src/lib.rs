@@ -450,6 +450,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_initialize<'local>(
             bodies_by_chart: HashMap::<scene::ChartId, std::collections::HashSet<LevelColliderID>>::new(),
             ipl_excluded_pairs: std::collections::HashSet::new(),
             ipl_image_anchors: HashMap::new(),
+            ipl_rim_anchors: HashMap::new(),
             ipl_anchored_clip_bodies: std::collections::HashSet::new(),
         }));
         let manifold_info_map = Arc::new(SableManifoldInfoMap::default());
@@ -662,11 +663,10 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_step<'local>(
             let mut sable = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
             let sim = &mut *sim;
-            moving_portals::refresh(&mut sable, sim);
-            drop(sable);
-
             let params = get_physics_state();
             let params = &params.integration_parameters;
+            moving_portals::refresh(&mut sable, sim, params.dt);
+            drop(sable);
 
             sim.pipeline.step(
                 gravity,

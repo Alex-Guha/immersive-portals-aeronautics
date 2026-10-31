@@ -48,6 +48,16 @@ public final class IPStraddleRopes {
      */
     public static void drawProjectedGlobalBlockEntities(final ClientSubLevel ship, final SubLevelRenderDispatcher.BlockEntityRenderer renderer,
                                                         final double cameraX, final double cameraY, final double cameraZ, final float partialTick) {
+        drawProjected(ship, renderer, cameraX, cameraY, cameraZ, partialTick, blockEntity -> {
+            final BlockEntityRenderer<BlockEntity> blockEntityRenderer = renderer.getBlockEntityRenderDispatcher().getRenderer(blockEntity);
+            return blockEntityRenderer != null && blockEntityRenderer.shouldRenderOffScreen(blockEntity);
+        });
+    }
+
+    /** In a projection draw: draws the block entities of {@code ship} that {@code drawn} accepts, set up as above. */
+    static void drawProjected(final ClientSubLevel ship, final SubLevelRenderDispatcher.BlockEntityRenderer renderer,
+                              final double cameraX, final double cameraY, final double cameraZ, final float partialTick,
+                              final java.util.function.Predicate<BlockEntity> drawn) {
         final SubLevelRenderData data = ship.getRenderData();
         if (data == null) {
             return;
@@ -62,27 +72,32 @@ public final class IPStraddleRopes {
         dispatcher.sable$setCameraPosition(new Vec3(cameraPosition.x - chunkOffset.x, cameraPosition.y - chunkOffset.y, cameraPosition.z - chunkOffset.z));
         final PoseStack matrices = new PoseStack();
         matrices.mulPose(transformation);
-        // the client plot's chunk holder list stays empty (Sable fills it on the server); read the plot's chunks from the
-        // level instead (empty plot chunks do not exist on the client: null)
-        final var bounds = ship.getPlot().getBoundingBox();
-        final net.minecraft.world.level.Level level = ship.getLevel();
         try {
-            for (int chunkX = bounds.minX() >> 4; chunkX <= bounds.maxX() >> 4; chunkX++) {
-                for (int chunkZ = bounds.minZ() >> 4; chunkZ <= bounds.maxZ() >> 4; chunkZ++) {
-                    if (!(level.getChunk(chunkX, chunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false)
-                            instanceof final net.minecraft.world.level.chunk.LevelChunk chunk)) {
-                        continue;
-                    }
-                    for (final BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-                        final BlockEntityRenderer<BlockEntity> blockEntityRenderer = renderer.getBlockEntityRenderDispatcher().getRenderer(blockEntity);
-                        if (blockEntityRenderer != null && blockEntityRenderer.shouldRenderOffScreen(blockEntity)) {
-                            renderer.renderSingleBE(blockEntity, matrices, partialTick, -chunkOffset.x, -chunkOffset.y, -chunkOffset.z);
-                        }
-                    }
+            forEachBlockEntity(ship, blockEntity -> {
+                if (drawn.test(blockEntity)) {
+                    renderer.renderSingleBE(blockEntity, matrices, partialTick, -chunkOffset.x, -chunkOffset.y, -chunkOffset.z);
                 }
-            }
+            });
         } finally {
             dispatcher.sable$setCameraPosition(null);
+        }
+    }
+
+    /**
+     * Runs {@code action} on the block entities of client ship {@code ship}. The client plot's chunk holder list stays empty
+     * (Sable fills it on the server), so this reads the plot's chunks from the level (empty plot chunks do not exist on
+     * the client: null).
+     */
+    static void forEachBlockEntity(final ClientSubLevel ship, final java.util.function.Consumer<BlockEntity> action) {
+        final var bounds = ship.getPlot().getBoundingBox();
+        final net.minecraft.world.level.Level level = ship.getLevel();
+        for (int chunkX = bounds.minX() >> 4; chunkX <= bounds.maxX() >> 4; chunkX++) {
+            for (int chunkZ = bounds.minZ() >> 4; chunkZ <= bounds.maxZ() >> 4; chunkZ++) {
+                if (level.getChunk(chunkX, chunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false)
+                        instanceof final net.minecraft.world.level.chunk.LevelChunk chunk) {
+                    chunk.getBlockEntities().values().forEach(action);
+                }
+            }
         }
     }
 
@@ -189,7 +204,7 @@ public final class IPStraddleRopes {
      * The interval of {@code from -> to} through the portal of {@code session} (past its plane, inside its opening), in
      * the ship's own world, or null when no part of it is.
      */
-    private static double @Nullable [] throughInterval(final IPStraddleClientSessions.Session session, final Vector3dc from, final Vector3dc to) {
+    static double @Nullable [] throughInterval(final IPStraddleClientSessions.Session session, final Vector3dc from, final Vector3dc to) {
         final Vec3 a = new Vec3(from.x(), from.y(), from.z()).subtract(session.origin());
         final Vec3 d = new Vec3(to.x() - from.x(), to.y() - from.y(), to.z() - from.z());
         // past the plane: normal . p >= 0 (the session normal points from the source side into the portal)

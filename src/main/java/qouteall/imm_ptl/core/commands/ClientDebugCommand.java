@@ -626,11 +626,6 @@ public class ClientDebugCommand {
         );
         registerSwitchCommand(
             builder,
-            "experimental_iris_portal_renderer",
-            cond -> IPCGlobal.experimentalIrisPortalRenderer = cond
-        );
-        registerSwitchCommand(
-            builder,
             "portal_rendering_cave_culling",
             cond -> MyGameRenderer.enablePortalCaveCulling = cond
         );

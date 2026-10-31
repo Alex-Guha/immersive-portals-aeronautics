@@ -29,6 +29,8 @@ import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.teleportation.ServerTeleportationManager;
 
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+
 /**
  * Riders on a belt that runs into a nether-style portal (players, mobs, dropped items). Create carries an entity only
  * while it touches the belt; past the belt's last face it fell into the portal block, stood on the frame below the
@@ -58,7 +60,6 @@ public final class IPCreatePortalBeltRiders {
     private static final int THROUGH_TICKS = 10;
     /** Riders this carried through a portal, with the game tick (server; weak, as entities come and go). */
     private static final Map<Entity, Long> CARRIED_THROUGH = new WeakHashMap<>();
-    private static final boolean SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
 
     private IPCreatePortalBeltRiders() {
     }

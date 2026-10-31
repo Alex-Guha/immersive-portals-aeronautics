@@ -26,7 +26,6 @@ import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPCGlobal;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.IPModInfoChecking;
-import qouteall.imm_ptl.core.compat.iris_compatibility.ExperimentalIrisPortalRenderer;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisCompatibilityPortalRenderer;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisPortalRenderer;
@@ -34,6 +33,7 @@ import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.render.IPGlobalPortalFade;
+import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.TransformationManager;
@@ -167,7 +167,11 @@ public abstract class PortalRenderer {
         if (distance > IPGlobalPortalFade.viewRange(portal)) {
             return true;
         }
-        
+        // Immersive Aeronautics: inside a portal view with a portal view distance, a portal wholly past it is in fog
+        if (IPPortalViewDistance.isPastCut(portal, cameraPos)) {
+            return true;
+        }
+
         if (IPCGlobal.earlyFrustumCullingPortal) {
             // frustum culling does not work when portal is very close
             if (distance > 0.1) {
@@ -217,21 +221,28 @@ public abstract class PortalRenderer {
         PortalRendering.onBeginPortalWorldRendering();
         
         int renderDistance = getPortalRenderDistance(portal);
-        
-        invokeWorldRendering(
-            new WorldRenderInfo.Builder()
-                .setWorld(newWorld)
-                .setCameraPos(PortalRendering.getRenderingCameraPos())
-                .setCameraTransformation(portal.getAdditionalCameraTransformation())
-                .setOverwriteCameraTransformation(false)
-                .setDescription(portal.getDiscriminator())
-                .setRenderDistance(renderDistance)
-                .setDoRenderHand(false)
-                .setEnableViewBobbing(true)
-                .setDoRenderSky(!portal.isFuseView())
-                .build()
-        );
-        
+
+        // Immersive Aeronautics: the portal view distance (IPPortalViewDistance) holds for this pass
+        IPPortalViewDistance.beginPass(portal);
+        try {
+            invokeWorldRendering(
+                new WorldRenderInfo.Builder()
+                    .setWorld(newWorld)
+                    .setCameraPos(PortalRendering.getRenderingCameraPos())
+                    .setCameraTransformation(portal.getAdditionalCameraTransformation())
+                    .setOverwriteCameraTransformation(false)
+                    .setDescription(portal.getDiscriminator())
+                    .setRenderDistance(renderDistance)
+                    .setDoRenderHand(false)
+                    .setEnableViewBobbing(true)
+                    .setDoRenderSky(!portal.isFuseView())
+                    .build()
+            );
+        }
+        finally {
+            IPPortalViewDistance.endPass();
+        }
+
         PortalRendering.onEndPortalWorldRendering();
         
         GlStateManager._enableDepthTest();
@@ -314,7 +325,6 @@ public abstract class PortalRenderer {
         return portal.hasScaling() && portal.isFuseView();
     }
     
-    public void onBeginIrisTranslucentRendering(Matrix4f modelView) {}
     
     private static boolean fabulousWarned = false;
     
@@ -335,11 +345,6 @@ public abstract class PortalRenderer {
 
         if (IrisInterface.invoker.isIrisPresent()) {
             if (IrisInterface.invoker.isShaders()) {
-                if (IPCGlobal.experimentalIrisPortalRenderer) {
-                    switchRenderer(ExperimentalIrisPortalRenderer.instance);
-                    return;
-                }
-
                 switch (IPGlobal.renderMode) {
                     case normal -> switchRenderer(IrisPortalRenderer.instance);
                     case compatibility -> switchRenderer(IrisCompatibilityPortalRenderer.instance);

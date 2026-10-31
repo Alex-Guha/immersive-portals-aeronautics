@@ -46,6 +46,9 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
     private static final Set<String> STOCK_BACKEND_MODS = Set.of("pym");
 
     private static volatile boolean ownBackendActive;
+    /** Why ships cannot straddle, when it was not asked for. */
+    @Nullable
+    private static volatile String fallbackReason;
 
     private final PhysicsPipelineProvider stock = new RapierPhysicsPipelineProvider();
     @Nullable
@@ -57,6 +60,12 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
      */
     public static boolean isOwnBackendActive() {
         return ownBackendActive;
+    }
+
+    /** @return why ships cannot straddle portals although nobody switched it off, or null */
+    @Nullable
+    public static String getFallbackReason() {
+        return fallbackReason;
     }
 
     @Override
@@ -92,6 +101,7 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
         if (!SUPPORTED_SABLE_VERSIONS.contains(sableVersion)) {
             LOGGER.warn("[IPPhysics] Sable {} is not one of {}: using Sable's stock physics, ships cannot straddle portals",
                     sableVersion, SUPPORTED_SABLE_VERSIONS);
+            fallbackReason = "Sable " + sableVersion + " is not a supported version (" + String.join(", ", SUPPORTED_SABLE_VERSIONS) + ")";
             return null;
         }
 
@@ -99,6 +109,7 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
             if (ModList.get().isLoaded(modId)) {
                 LOGGER.warn("[IPPhysics] {} works only with Sable's own Rapier backend: using Sable's stock physics, ships cannot straddle portals",
                         modId);
+                fallbackReason = "the mod " + modId + " needs Sable's own physics";
                 return null;
             }
         }
@@ -107,10 +118,12 @@ public final class IPPhysicsPipelineProvider implements PhysicsPipelineProvider 
             if (!ipaeronautics.rapier.Rapier3D.isLoaded()) {
                 LOGGER.warn("[IPPhysics] ipa_rapier natives unavailable ({}): using Sable's stock physics, ships cannot straddle portals",
                         ipaeronautics.rapier.Rapier3D.getLoadFailure().toString());
+                fallbackReason = "the physics library could not be loaded";
                 return null;
             }
         } catch (final Throwable t) {
             LOGGER.error("[IPPhysics] could not initialise ipa_rapier: using Sable's stock physics", t);
+            fallbackReason = "the physics library could not be started";
             return null;
         }
 

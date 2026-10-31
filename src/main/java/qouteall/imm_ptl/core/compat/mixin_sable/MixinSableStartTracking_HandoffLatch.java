@@ -31,12 +31,18 @@ public abstract class MixinSableStartTracking_HandoffLatch {
 
     @Inject(method = "handle", at = @At("HEAD"), require = 0)
     private void ip_releaseHeldSlot(final PacketContext context, final CallbackInfo ci) {
+        if (context.level() == null) {
+            return;
+        }
         final long plot = this.plotCoordinate();
         IPStraddleHandoffLatch.releaseSlot(context.level(), ChunkPos.getX(plot), ChunkPos.getZ(plot), this.subLevelID());
     }
 
     @Inject(method = "handle", at = @At("TAIL"), require = 0)
     private void ip_linkHeldCopy(final PacketContext context, final CallbackInfo ci) {
+        if (context.level() == null) {
+            return;
+        }
         IPStraddleHandoffLatch.onTracked(context.level(), this.subLevelID());
     }
 }

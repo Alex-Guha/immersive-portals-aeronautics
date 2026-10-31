@@ -13,6 +13,7 @@ import com.simibubi.create.content.kinetics.belt.transport.TransportedItemStack;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
@@ -28,9 +29,13 @@ import org.joml.Quaterniond;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.compat.mixin_create.IPBeltInventoryAccessor;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
+
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * Create's belts through IP portals. A belt whose end opens onto a portal (the end's face within a block of the portal
@@ -51,11 +56,6 @@ public final class IPCreatePortalBelts {
     private static final String TAG = "[IPPortalBelts] ";
     /** {@code -Dip_aeronautics.debug.portalBelts=true}: logs every item handed through a portal and where it lands. */
     private static final boolean DEBUG = Boolean.getBoolean("ip_aeronautics.debug.portalBelts");
-    private static final double PLANE_EPSILON = 1.0e-3;
-    /** Slack for a belt at a ship-mounted portal, whose pose is worked out in doubles each tick, as for pipes. */
-    private static final double SHIP_COS = 1 - 1.0e-3;
-    private static final double SHIP_GAP = 0.05;
-    private static final boolean SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
 
     /** How far an item drawn on a belt reaches from its position along the belt (block items at half size, turned). */
     public static final float ITEM_REACH = 0.75f;
@@ -67,8 +67,8 @@ public final class IPCreatePortalBelts {
     /** The exit an item is being handed through on this thread, while Create's insertion runs. */
     private static final ThreadLocal<Exit> HANDING = new ThreadLocal<>();
 
-    /** Create's {@code BeltInventory.Ending} values (a private enum) that we return. */
-    public static final Object ENDING_BLOCKED = ending("BLOCKED");
+    /** Create's {@code BeltInventory.Ending.BLOCKED} (a private enum), or null if it was renamed. */
+    public static final @Nullable Object ENDING_BLOCKED = ending("BLOCKED");
 
     private IPCreatePortalBelts() {
     }
@@ -117,64 +117,15 @@ public final class IPCreatePortalBelts {
      */
     private static @Nullable Exit through(final Level level, final BlockPos pos, final Direction side) {
         final IPCreatePortalShafts.Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
-        final Vec3 nLocal = Vec3.atLowerCornerOf(side.getNormal());
-        final Vec3 faceLocal = Vec3.atCenterOf(pos).add(nLocal.scale(0.5));
-        final Vec3 n = frame == null ? nLocal : frame.toWorldDirection(nLocal).normalize();
-        final Vec3 face = frame == null ? faceLocal : frame.toWorld(faceLocal);
-        final AABB search = new AABB(face, face.add(n)).inflate(0.25);
-        for (final Portal portal : IPPortalLookup.touching(level, search, p -> p.isTeleportable() && !p.isRemoved())) {
-            final Exit exit = via(portal, frame, nLocal, face, n);
-            if (exit != null) {
-                return exit;
-            }
-        }
-        return null;
-    }
-
-    private static @Nullable Exit via(
-        final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 nLocal, final Vec3 face, final Vec3 n
-    ) {
-        if (Math.abs(portal.getScale() - 1) > 1.0e-6) {
-            return null;
-        }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        if (frame != null && (mount == null || !frame.ship().equals(mount.carrier()))) {
-            return null;
-        }
-        final double cos = mount != null ? SHIP_COS : 1 - PLANE_EPSILON;
-        final double slack = mount != null ? SHIP_GAP : PLANE_EPSILON;
-        final Vec3 normal = portal.getNormal();
-        if (normal.dot(n) > -cos) {
-            return null;
-        }
-        final double gap = portal.getDistanceToPlane(face);
-        if (gap < -slack || gap >= 1 - PLANE_EPSILON) {
-            return null;
-        }
-        final Vec3 onPlane = face.subtract(normal.scale(gap));
-        if (!portal.getPortalShape().isBoxInPortalProjection(portal.getThisSideState(), AABB.ofSize(onPlane, 0.1, 0.1, 0.1))) {
-            return null;
-        }
-        final Level farLevel = portal.getDestWorld();
-        if (farLevel == null) {
-            return null;
-        }
-        final Vec3 farOnPlane = portal.transformPoint(onPlane);
-        final Vec3 farDir = portal.transformLocalVecNonScale(n);
-        final Near near = new Near(portal, frame, nLocal, frame == null ? onPlane : frame.toLocal(onPlane), (float) Math.max(gap, 0));
-        if (mount == null || frame != null) {
-            return farEnd(near, farLevel, farOnPlane, farDir, null, cos, slack);
-        }
-        if (!SABLE) {
-            return null;
-        }
-        // a world belt at a ship-mounted portal: the far end is on the portal's ship
-        final AABB around = new AABB(farOnPlane, farOnPlane.add(farDir.scale(1.5))).inflate(1);
-        for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farLevel, around)) {
-            if (ship.ship().equals(mount.carrier())) {
-                final Exit found = farEnd(near, farLevel, farOnPlane, farDir, ship, cos, slack);
-                if (found != null) {
-                    return found;
+        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        for (final Portal portal : IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
+            final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+            if (opening != null) {
+                final Near near = new Near(portal, frame, face.localNormal(), frame == null ? opening.onPlane() : frame.toLocal(opening.onPlane()),
+                    (float) Math.max(opening.gap(), 0));
+                final Exit exit = IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) -> exit(near, opening.farLevel(), farFrame, candidate, out, gap, plane));
+                if (exit != null) {
+                    return exit;
                 }
             }
         }
@@ -185,28 +136,13 @@ public final class IPCreatePortalBelts {
     private record Near(Portal portal, IPCreatePortalShafts.@Nullable Frame frame, Vec3 into, Vec3 onPlane, float gap) {
     }
 
-    /** The block past the far plane in {@code farFrame} (null: the world) whose face towards the plane lies within a block of it. */
-    private static @Nullable Exit farEnd(
-        final Near near, final Level farLevel, final Vec3 farOnPlane, final Vec3 farDir, final IPCreatePortalShafts.@Nullable Frame farFrame,
-        final double cos, final double slack
+    private static Exit exit(
+        final Near near, final Level farLevel, final IPCreatePortalShafts.@Nullable Frame farFrame, final BlockPos candidate,
+        final Direction farOut, final double farGap, final Vec3 plane
     ) {
-        final Vec3 dir = farFrame == null ? farDir : farFrame.toLocalDirection(farDir).normalize();
-        final Vec3 plane = farFrame == null ? farOnPlane : farFrame.toLocal(farOnPlane);
-        final Direction farOut = Direction.getNearest(dir.x, dir.y, dir.z);
-        final Vec3 farN = Vec3.atLowerCornerOf(farOut.getNormal());
-        if (farN.dot(dir) < cos) {
-            return null; // rotated off the block grid
-        }
-        for (final double reach : new double[]{0.5, 1.5}) {
-            final BlockPos candidate = BlockPos.containing(plane.add(farN.scale(reach)));
-            final double farGap = Vec3.atCenterOf(candidate).subtract(farN.scale(0.5)).subtract(plane).dot(farN);
-            if (farGap >= -slack && farGap < 1 - PLANE_EPSILON && (farFrame == null || farFrame.holds(farLevel, candidate))) {
-                final Matrix4d nearToFar = inverse(frameMatrix(farFrame)).mul(portalMatrix(near.portal())).mul(frameMatrix(near.frame()));
-                return new Exit(near.portal(), farLevel, candidate, farOut, near.gap(), (float) Math.max(farGap, 0), near.into(),
-                    near.onPlane(), plane, near.frame(), farFrame, nearToFar);
-            }
-        }
-        return null;
+        final Matrix4d nearToFar = inverse(frameMatrix(farFrame)).mul(portalMatrix(near.portal())).mul(frameMatrix(near.frame()));
+        return new Exit(near.portal(), farLevel, candidate, farOut, near.gap(), (float) Math.max(farGap, 0), near.into(),
+            near.onPlane(), plane, near.frame(), farFrame, nearToFar);
     }
 
     /** A frame's coordinates to the world's (the identity for the world). */
@@ -362,7 +298,8 @@ public final class IPCreatePortalBelts {
         return atEnd ? controller.beltLength + exit.nearGap() : -exit.nearGap();
     }
 
-    private static Object ending(final String name) {
+    /** Null when Create changed: a failure in this class's initialiser would stop every belt, not only the portal ones. */
+    private static @Nullable Object ending(final String name) {
         try {
             final Class<?> type = Class.forName("com.simibubi.create.content.kinetics.belt.transport.BeltInventory$Ending");
             for (final Object value : type.getEnumConstants()) {
@@ -370,9 +307,10 @@ public final class IPCreatePortalBelts {
                     return value;
                 }
             }
-        } catch (final ClassNotFoundException e) {
-            throw new IllegalStateException(e);
+        } catch (final ClassNotFoundException ignored) {
+            // logged below
         }
-        throw new IllegalStateException("BeltInventory.Ending." + name);
+        LOGGER.warn(TAG + "Create's BeltInventory.Ending.{} is gone: belts no longer wait at a portal whose far side is not loaded", name);
+        return null;
     }
 }

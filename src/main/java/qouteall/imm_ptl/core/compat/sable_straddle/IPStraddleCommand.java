@@ -5,6 +5,7 @@ package qouteall.imm_ptl.core.compat.sable_straddle;
 
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
+import qouteall.imm_ptl.core.compat.IPMixinReport;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -30,6 +31,7 @@ public final class IPStraddleCommand {
     public static void register(final CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("ip_aeronautics")
                 .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("compat").executes(IPStraddleCommand::compat))
                 .then(Commands.literal("straddle")
                         .then(Commands.literal("on").executes(context -> setEnabled(context, true)))
                         .then(Commands.literal("off").executes(context -> setEnabled(context, false)))
@@ -42,7 +44,16 @@ public final class IPStraddleCommand {
                                                 .then(Commands.argument("to", BlockPosArgument.blockPos())
                                                         .executes(IPStraddleCommand::tieRope))))
                                 .then(Commands.literal("swivel").executes(IPStraddleCommand::assembleSwivels))
+                                .then(Commands.literal("dock").executes(IPStraddleCommand::dockConnectors))
                                 .then(Commands.literal("joints").executes(IPStraddleCommand::listJoints)))));
+    }
+
+    /** Which of our hooks in other mods are alive, as far as their classes have loaded. */
+    private static int compat(final CommandContext<CommandSourceStack> context) {
+        for (final String line : IPMixinReport.summary()) {
+            context.getSource().sendSuccess(() -> Component.literal(line), false);
+        }
+        return 1;
     }
 
     private static int setEnabled(final CommandContext<CommandSourceStack> context, final boolean on) {
@@ -75,6 +86,13 @@ public final class IPStraddleCommand {
         return count;
     }
 
+    /** Test hook: docks the first two docking connectors on the ships of the command's dimension. */
+    private static int dockConnectors(final CommandContext<CommandSourceStack> context) {
+        final boolean done = IPShipJoints.dockConnectors(context.getSource().getLevel());
+        context.getSource().sendSuccess(() -> Component.literal(done ? "Docked two connectors" : "No two connectors to dock"), true);
+        return done ? 1 : 0;
+    }
+
     /** Test hook: lists the ships of the command's dimension joined to other ships, with their partners. */
     private static int listJoints(final CommandContext<CommandSourceStack> context) {
         final ServerSubLevelContainer container = SubLevelContainer.getContainer(context.getSource().getLevel());
@@ -87,6 +105,14 @@ public final class IPStraddleCommand {
                     final String line = "Ship " + ship.getUniqueId() + " jointed to " + partners;
                     context.getSource().sendSuccess(() -> Component.literal(line), true);
                 }
+                final var connected = IPShipJoints.connected(ship);
+                if (!connected.isEmpty()) {
+                    final String line = "Ship " + ship.getUniqueId() + " connected to " + connected;
+                    context.getSource().sendSuccess(() -> Component.literal(line), true);
+                }
+            }
+            for (final String line : IPShipJoints.describeSprings(context.getSource().getLevel())) {
+                context.getSource().sendSuccess(() -> Component.literal(line), true);
             }
         }
         final int total = jointed;

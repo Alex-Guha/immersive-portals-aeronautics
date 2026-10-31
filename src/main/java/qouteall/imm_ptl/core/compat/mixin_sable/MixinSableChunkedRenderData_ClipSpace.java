@@ -21,6 +21,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalClip;
 import qouteall.imm_ptl.core.ducks.IEShader;
 import qouteall.imm_ptl.core.render.FrontClipping;
 
@@ -30,6 +31,8 @@ import qouteall.imm_ptl.core.render.FrontClipping;
  * clip-plane normal by the inverse of the sub-level's render orientation and uploads it to
  * the shader's {@code iportal_ClippingEquation} uniform, restoring the original plane at TAIL.
  * Note: only the normal is rotated; the D term is not adjusted for the ship's translation.
+ * In a portal pass through a portal whose far side this ship carries, {@link IPShipPortalClip} may give the plane
+ * without IP's 1 cm band instead.
  */
 @Mixin(
     targets = "dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData",
@@ -76,12 +79,22 @@ public class MixinSableChunkedRenderData_ClipSpace {
                 return;
             }
 
+            this.ip_savedClipEquation = clipEquation;
+            this.ip_savedUniform = clipUniform;
+            // the carrier of the far portal side: exactly at the plane, without IP's 1 cm band
+            double[] carrierEquation = IPShipPortalClip.equationFor(this.subLevel);
+            if (carrierEquation != null) {
+                clipUniform.set(
+                    (float) carrierEquation[0], (float) carrierEquation[1], (float) carrierEquation[2],
+                    (float) carrierEquation[3]
+                );
+                clipUniform.upload();
+                return;
+            }
             Quaterniondc orientation = this.subLevel.renderPose().orientation();
             Vector3d rotatedNormal = orientation.transformInverse(
                 new Vector3d(clipEquation[0], clipEquation[1], clipEquation[2])
             );
-            this.ip_savedClipEquation = clipEquation;
-            this.ip_savedUniform = clipUniform;
             clipUniform.set(
                 (float) rotatedNormal.x, (float) rotatedNormal.y, (float) rotatedNormal.z,
                 (float) clipEquation[3]

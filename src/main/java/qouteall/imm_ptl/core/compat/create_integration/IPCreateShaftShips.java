@@ -68,6 +68,20 @@ final class IPCreateShaftShips {
         return ship == null ? null : new ShipFrame(ship);
     }
 
+    /** The positions of the block entities of {@code frame}'s ship from {@code min} to {@code max} (plot coordinates). */
+    static List<BlockPos> blockEntitiesIn(final IPCreatePortalShafts.Frame frame, final BlockPos min, final BlockPos max) {
+        final List<BlockPos> found = new ArrayList<>();
+        for (final var holder : ((ShipFrame) frame).subLevel().getPlot().getLoadedChunks()) {
+            for (final BlockPos pos : holder.getChunk().getBlockEntities().keySet()) {
+                if (pos.getX() >= min.getX() && pos.getX() <= max.getX() && pos.getY() >= min.getY() && pos.getY() <= max.getY()
+                    && pos.getZ() >= min.getZ() && pos.getZ() <= max.getZ()) {
+                    found.add(pos);
+                }
+            }
+        }
+        return found;
+    }
+
     /** The frames of the ships whose bounds reach into {@code world}. */
     static List<IPCreatePortalShafts.Frame> shipsTouching(final Level level, final AABB world) {
         final List<IPCreatePortalShafts.Frame> frames = new ArrayList<>();

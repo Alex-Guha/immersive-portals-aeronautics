@@ -15,8 +15,10 @@ import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder;
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import dev.engine_room.flywheel.lib.util.RendererReloadCache;
 import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.math.AngleHelper;
 import net.createmod.catnip.render.SpriteShiftEntry;
@@ -38,7 +40,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.DyeColor;
@@ -55,13 +56,11 @@ import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
+
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * The look of a belt at a portal ({@link IPCreatePortalBelts}). A belt's end cell is drawn with the loop around its
@@ -154,19 +153,10 @@ public final class IPCreatePortalBeltLook {
      * docs/lessons/portal-rendering.md), as IP keeps terrain 1 cm short of the plane.
      */
     public static final float LOOP_SHORT = 0.01f;
-    private static final int SCAN_TICKS = 10;
-    private static final double PLANE_EPSILON = 1.0e-3;
-    /** Slack for portal blocks on a ship, whose pose is worked out in doubles (as for the shaft halves). */
-    private static final double SHIP_COS = 1 - 1.0e-3;
-    private static final double SHIP_PLANE = 0.05;
-    private static final boolean SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
-    private static final int MAX_CELLS = 64 * 64 * 2;
     /** Belt ends at portal blocks, by world and position, with what they meet. Read by Flywheel's workers too. */
     private static volatile Map<ResourceKey<Level>, Map<BlockPos, Mode>> modes = Map.of();
     /** End loops to draw, by the world they are drawn in. */
     private static volatile Map<ResourceKey<Level>, List<FarLoop>> loops = Map.of();
-    private static int tick;
-    private static boolean changed;
 
     /** What the belt end at {@code pos} meets across the portal (JOINED until it was looked at). */
     public static Mode mode(final Level level, final BlockPos pos) {
@@ -175,16 +165,9 @@ public final class IPCreatePortalBeltLook {
         return mode == null ? Mode.JOINED : mode;
     }
 
-    /** Client block change: a portal block or belt changing may change what a belt end meets or whether it is at one. */
-    public static void onBlockChanged(final Level level, final BlockPos pos, final BlockState oldState, final BlockState newState) {
-        if (oldState.getBlock() == newState.getBlock() && !AllBlocks.BELT.has(newState)) {
-            return;
-        }
+    /** Client block change: a portal block coming or going changes what the belts next to it meet at once. */
+    static void onBlockChanged(final Level level, final BlockPos pos, final BlockState oldState, final BlockState newState) {
         final boolean portal = oldState.getBlock() == PortalPlaceholderBlock.instance || newState.getBlock() == PortalPlaceholderBlock.instance;
-        if (!portal && !AllBlocks.BELT.has(oldState) && !AllBlocks.BELT.has(newState)) {
-            return;
-        }
-        changed = true;
         if (portal && oldState.getBlock() != newState.getBlock()) {
             for (final Direction side : Direction.Plane.HORIZONTAL) {
                 if (level.getBlockEntity(pos.relative(side)) instanceof BeltBlockEntity belt) {
@@ -194,127 +177,50 @@ public final class IPCreatePortalBeltLook {
         }
     }
 
-    public static void onClientTick(final IPGlobal.PostClientTickEvent event) {
-        if (++tick % SCAN_TICKS == 0) {
-            search();
-        }
-    }
-
-    public static void onPreGameRender(final IPGlobal.PreGameRenderEvent event) {
-        if (changed) {
-            search();
-        }
-    }
-
     /**
      * Every belt end at a portal block in every client world, and what it meets past the portal. Ends whose answer
      * changed get their visual updated. Every 10 ticks (belts reverse without a block change) and after block changes.
      */
-    private static void search() {
-        if (!ClientWorldLoader.getIsInitialized()) {
-            return;
-        }
-        changed = false;
-        final Map<ResourceKey<Level>, ClientLevel> worlds = new HashMap<>();
-        for (final ClientLevel world : ClientWorldLoader.getClientWorlds()) {
-            worlds.put(world.dimension(), world);
-        }
-        final Map<ResourceKey<Level>, Map<BlockPos, Mode>> found = new HashMap<>();
-        final Map<ResourceKey<Level>, List<FarLoop>> farLoops = new HashMap<>();
-        for (final ClientLevel world : worlds.values()) {
-            for (final Entity entity : world.entitiesForRendering()) {
-                if (entity instanceof Portal portal) {
-                    scan(world, portal, worlds, found, farLoops);
-                }
-            }
-        }
-        final Map<ResourceKey<Level>, Map<BlockPos, Mode>> previous = modes;
-        modes = found;
-        loops = farLoops;
-        for (final ClientLevel world : worlds.values()) {
-            final Map<BlockPos, Mode> before = previous.getOrDefault(world.dimension(), Map.of());
-            final Map<BlockPos, Mode> now = found.getOrDefault(world.dimension(), Map.of());
-            final Set<BlockPos> ends = new HashSet<>(before.keySet());
-            ends.addAll(now.keySet());
-            for (final BlockPos end : ends) {
-                if (before.get(end) != now.get(end) && world.getBlockEntity(end) instanceof BeltBlockEntity belt) {
-                    VisualizationHelper.queueUpdate(belt);
-                }
-            }
-        }
-    }
+    static final class BeltScan implements IPCreatePortalEndScan.Scan {
+        private final Map<ResourceKey<Level>, Map<BlockPos, Mode>> found = new HashMap<>();
+        private final Map<ResourceKey<Level>, List<FarLoop>> farLoops = new HashMap<>();
 
-    private static void scan(
-        final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ResourceKey<Level>, Map<BlockPos, Mode>> found, final Map<ResourceKey<Level>, List<FarLoop>> farLoops
-    ) {
-        if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6) {
-            return;
+        @Override
+        public boolean wants(final IPCreatePortalEndScan.Side side) {
+            return !side.front().getAxis().isVertical();
         }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        final AABB box = portal.getBoundingBox();
-        // the portal's blocks: in the world, or (the ship side of a ship-mounted portal) in its ship's plot
-        scanFrame(world, portal, null, box.deflate(PLANE_EPSILON), mount, worlds, found, farLoops);
-        if (SABLE && mount != null) {
-            for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(world, box.inflate(1))) {
-                if (ship.ship().equals(mount.carrier())) {
-                    scanFrame(world, portal, ship, IPCreatePortalShafts.toLocalBounds(ship, box.inflate(0.5)), mount, worlds, found, farLoops);
-                }
-            }
-        }
-    }
 
-    /** The portal blocks of {@code portal} in {@code cells}, in {@code frame}'s coordinates (null: the world). */
-    private static void scanFrame(
-        final ClientLevel world, final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final AABB cells,
-        final @Nullable IPShipMount mount, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ResourceKey<Level>, Map<BlockPos, Mode>> found, final Map<ResourceKey<Level>, List<FarLoop>> farLoops
-    ) {
-        final boolean ship = mount != null;
-        final Vec3 normal = frame == null ? portal.getNormal() : frame.toLocalDirection(portal.getNormal()).normalize();
-        final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
-        if (front.getAxis().isVertical() || Vec3.atLowerCornerOf(front.getNormal()).dot(normal) < (ship ? SHIP_COS : 1 - PLANE_EPSILON)) {
-            return;
-        }
-        final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
-        final BlockPos max = BlockPos.containing(cells.maxX, cells.maxY, cells.maxZ);
-        if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
-            return;
-        }
-        final Direction out = front.getOpposite();
-        final ClientLevel farWorld = worlds.get(portal.getDestDim());
-        for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
-            if (frame != null && !frame.holds(world, cell)) {
-                continue;
-            }
-            final Vec3 centre = Vec3.atCenterOf(cell);
-            final Vec3 worldCentre = frame == null ? centre : frame.toWorld(centre);
-            if (Math.abs(portal.getDistanceToPlane(worldCentre)) > (ship ? SHIP_PLANE : PLANE_EPSILON)
-                || !IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(cell), front)) {
-                continue;
-            }
+        @Override
+        public void cell(final IPCreatePortalEndScan.Side side, final BlockPos cell, final Vec3 worldCentre) {
+            final ClientLevel world = side.world();
+            final Portal portal = side.portal();
+            final IPCreatePortalShafts.Frame frame = side.frame();
+            final ClientLevel farWorld = side.farWorld();
+            final UUID farShip = side.farShip();
+            final Direction front = side.front();
+            final Direction out = front.getOpposite();
             final BlockPos end = cell.relative(front);
             if (!(world.getBlockEntity(end) instanceof BeltBlockEntity near) || portalSide(world, end, near.getBlockState()) != out) {
-                continue;
+                return;
             }
             Mode mode = Mode.ALONE;
             if (farWorld != null) {
                 final Vec3 farCentre = portal.transformPoint(worldCentre);
                 final Vec3 outWorld = frame == null ? Vec3.atLowerCornerOf(out.getNormal()) : frame.toWorldDirection(Vec3.atLowerCornerOf(out.getNormal()));
                 final Vec3 farOutWorld = portal.transformLocalVecNonScale(outWorld);
-                // the far portal block: in the world, or (from the fixed side of a ship-mounted portal) on the ship
+                // the far portal block: in the world, or (the other side of a ship-mounted portal on a ship) on that ship
                 IPCreatePortalShafts.Frame farFrame = null;
-                if (ship && frame == null) {
+                if (farShip != null) {
                     if (!SABLE) {
-                        continue;
+                        return;
                     }
                     for (final IPCreatePortalShafts.Frame candidate : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
-                        if (candidate.ship().equals(mount.carrier())) {
+                        if (candidate.ship().equals(farShip)) {
                             farFrame = candidate;
                         }
                     }
                     if (farFrame == null) {
-                        continue;
+                        return;
                     }
                 }
                 final Vec3 farLocal = farFrame == null ? farCentre : farFrame.toLocal(farCentre);
@@ -334,6 +240,24 @@ public final class IPCreatePortalBeltLook {
                 }
             }
             found.computeIfAbsent(world.dimension(), d -> new HashMap<>()).put(end.immutable(), mode);
+        }
+
+        @Override
+        public void finish(final Collection<ClientLevel> worlds, final boolean important) {
+            final Map<ResourceKey<Level>, Map<BlockPos, Mode>> previous = modes;
+            modes = found;
+            loops = farLoops;
+            for (final ClientLevel world : worlds) {
+                final Map<BlockPos, Mode> before = previous.getOrDefault(world.dimension(), Map.of());
+                final Map<BlockPos, Mode> now = found.getOrDefault(world.dimension(), Map.of());
+                final Set<BlockPos> ends = new HashSet<>(before.keySet());
+                ends.addAll(now.keySet());
+                for (final BlockPos end : ends) {
+                    if (before.get(end) != now.get(end) && world.getBlockEntity(end) instanceof BeltBlockEntity belt) {
+                        VisualizationHelper.queueUpdate(belt);
+                    }
+                }
+            }
         }
     }
 

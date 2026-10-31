@@ -5,7 +5,11 @@
 package qouteall.imm_ptl.core.compat.sable_straddle;
 
 import com.mojang.logging.LogUtils;
+import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
+import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.companion.math.Pose3dc;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import ipaeronautics.rapier.RapierExt;
@@ -14,7 +18,10 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3d;
 import org.joml.Quaterniond;
+import org.joml.Vector3d;
 import org.slf4j.Logger;
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
+import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 
@@ -38,13 +45,18 @@ import java.util.UUID;
  * give ship blocks against a rim Sable's interior check and the ship's full extent (natives/README.md); frame contact
  * ({@link IPShipCrossingDetector#frameContact}) counts it like frame blocks.
  * <p>
- * Only for portals without frame blocks (not {@link BreakablePortalEntity}: nether portals, datapack portals and
- * portals mounted on ships have frames), not for portals whose edges have solid blocks on both sides of the plane all
- * around (a frame of placed blocks), not for a portal set into a floor or wall (terrain on one side of the plane along
+ * Only for portals without frame blocks (not {@link BreakablePortalEntity}: nether portals and datapack portals have
+ * frames), not for portals whose edges have solid blocks on both sides of the plane all
+ * around (a frame of placed blocks, in the world or on a ship), not for a portal set into a floor or wall (terrain on one side of the plane along
  * an edge: that terrain holds a straddling ship already, and the rim would stand out of it as a half-block curb), one
  * rim per opening (the two faces of a two-sided portal share it), and only while a ship is near: {@link #need} keeps a
  * rim for {@value #KEEP_TICKS} ticks. A ship let through a stuck frame is let through every rim of its level too
  * ({@link #setLetThrough}).
+ * <p>
+ * A custom portal mounted on a ship (docs/plans/custom-mounts.md): its fixed side gets an ordinary rim. Its ship side's
+ * rim is anchored to the carrier in the engine ({@link RapierExt#setPortalRimAnchor}), so it moves with the carrier
+ * through every substep, and never touches the carrier itself; whether it needs one is judged in the carrier's plot (its
+ * hull is the terrain there). A ship-side portal whose carrier is not loaded gets none.
  */
 final class IPPortalRims {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -65,12 +77,16 @@ final class IPPortalRims {
         final int id;
         final double width;
         final double height;
+        /** The ship carrying the portal (its ship side), or null for a rim fixed in the world. */
+        @Nullable
+        final ServerSubLevel carrier;
         Vec3 origin;
         Vec3 axisW;
         Vec3 axisH;
         long neededTick;
 
-        Rim(final Portal portal, final ServerLevel level, final PhysicsPipeline pipeline, final long scene, final int id) {
+        Rim(final Portal portal, final ServerLevel level, final PhysicsPipeline pipeline, final long scene, final int id,
+            @Nullable final ServerSubLevel carrier) {
             this.portal = portal;
             this.level = level;
             this.pipeline = pipeline;
@@ -78,6 +94,7 @@ final class IPPortalRims {
             this.id = id;
             this.width = portal.getWidth();
             this.height = portal.getHeight();
+            this.carrier = carrier;
         }
     }
 
@@ -128,7 +145,12 @@ final class IPPortalRims {
         if (sharesOpening(portal) || (noRimUntil != null && tick < noRimUntil)) {
             return;
         }
-        final String noRim = noRimReason(level, portal);
+        final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
+        if (mount == null && IPShipPortals.isShipMounted(portal)) {
+            return; // its ship is not loaded
+        }
+        final ServerSubLevel carrier = mount == null ? null : mount.source();
+        final String noRim = noRimReason(level, portal, carrier);
         if (noRim != null) {
             NO_RIM.put(portal.getUUID(), tick + KEEP_TICKS);
             LOGGER.debug("[IPStraddle] no rim for portal {}: {}", portal.getUUID(), noRim);
@@ -144,11 +166,15 @@ final class IPPortalRims {
             LOGGER.warn("[IPStraddle] no rim for portal {} ({} x {})", portal.getUUID(), portal.getWidth(), portal.getHeight());
             return;
         }
-        final Rim rim = new Rim(portal, level, pipeline, scene, id);
+        final Rim rim = new Rim(portal, level, pipeline, scene, id, carrier);
         rim.neededTick = tick;
         place(rim);
+        if (carrier != null) {
+            RapierExt.setBodyPairExclusion(scene, id, carrier.getRuntimeId(), true);
+            anchor(rim, carrier);
+        }
         for (final ServerSubLevel ship : LET_THROUGH.values()) {
-            if (ship.getLevel() == level) {
+            if (ship.getLevel() == level && ship != carrier) {
                 RapierExt.setBodyPairExclusion(scene, id, ship.getRuntimeId(), true);
             }
         }
@@ -171,13 +197,15 @@ final class IPPortalRims {
                 continue;
             }
             if (rim.portal.isRemoved() || tick - rim.neededTick > KEEP_TICKS || !wants(rim.portal)
-                    || rim.portal.getWidth() != rim.width || rim.portal.getHeight() != rim.height) {
+                    || rim.portal.getWidth() != rim.width || rim.portal.getHeight() != rim.height
+                    || carrierOf(rim.portal) != rim.carrier) {
                 RapierExt.removePortalRim(rim.scene, rim.id);
                 it.remove();
                 continue;
             }
-            if (!rim.portal.getOriginPos().equals(rim.origin) || !rim.portal.getAxisW().equals(rim.axisW)
-                    || !rim.portal.getAxisH().equals(rim.axisH)) {
+            // an anchored rim follows its carrier in the engine
+            if (rim.carrier == null && (!rim.portal.getOriginPos().equals(rim.origin) || !rim.portal.getAxisW().equals(rim.axisW)
+                    || !rim.portal.getAxisH().equals(rim.axisH))) {
                 place(rim);
             }
         }
@@ -192,7 +220,8 @@ final class IPPortalRims {
             return;
         }
         for (final Rim rim : RIMS.values()) {
-            if (rim.level == ship.getLevel() && isLive(rim)) {
+            // a carrier never touches its own portal's rim, let through or not
+            if (rim.level == ship.getLevel() && rim.carrier != ship && isLive(rim)) {
                 RapierExt.setBodyPairExclusion(rim.scene, rim.id, ship.getRuntimeId(), on);
             }
         }
@@ -257,17 +286,32 @@ final class IPPortalRims {
         return false;
     }
 
+    /** The ship carrying {@code portal}'s side (loaded), or null for a portal fixed in the world. */
+    @Nullable
+    private static ServerSubLevel carrierOf(final Portal portal) {
+        final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
+        return mount == null ? null : mount.source();
+    }
+
     /**
      * Why {@code portal} needs no rim, or null. Samples the world just outside its edges (half a block out, a quarter of
      * a block before and past the plane, every block along each edge): terrain on one side of the plane only anywhere is
-     * a portal set into a floor or wall; solid blocks on both sides all around is a frame.
+     * a portal set into a floor or wall; solid blocks on both sides all around is a frame. A portal on {@code carrier} is
+     * sampled in its plot, where the carrier's own blocks are the terrain.
      */
     @Nullable
-    private static String noRimReason(final ServerLevel level, final Portal portal) {
-        final Vec3 origin = portal.getOriginPos();
-        final Vec3 normal = portal.getNormal().normalize();
-        final Vec3 axisW = portal.getAxisW().normalize();
-        final Vec3 axisH = portal.getAxisH().normalize();
+    private static String noRimReason(final ServerLevel level, final Portal portal, @Nullable final ServerSubLevel carrier) {
+        Vec3 origin = portal.getOriginPos();
+        Vec3 normal = portal.getNormal().normalize();
+        Vec3 axisW = portal.getAxisW().normalize();
+        Vec3 axisH = portal.getAxisH().normalize();
+        if (carrier != null) {
+            final Pose3dc pose = carrier.logicalPose();
+            origin = pose.transformPositionInverse(origin);
+            normal = pose.transformNormalInverse(normal);
+            axisW = pose.transformNormalInverse(axisW);
+            axisH = pose.transformNormalInverse(axisH);
+        }
         final double halfW = portal.getWidth() * 0.5;
         final double halfH = portal.getHeight() * 0.5;
         final int[] samples = new int[3]; // one side solid, both sides solid, all
@@ -287,8 +331,14 @@ final class IPPortalRims {
         final int steps = (int) Math.max(1, Math.min(64, Math.ceil(2.0 * halfLength)));
         for (int i = 0; i <= steps; i++) {
             final Vec3 point = centre.add(outward.scale(0.5)).add(along.scale(halfLength * (2.0 * i / steps - 1.0)));
-            final boolean front = isSolid(level, point.add(normal.scale(0.25)));
-            final boolean back = isSolid(level, point.add(normal.scale(-0.25)));
+            boolean front = isSolid(level, point.add(normal.scale(0.25)));
+            boolean back = isSolid(level, point.add(normal.scale(-0.25)));
+            // a ship's blocks on both sides frame the portal too (a custom portal unmounted from a ship's hull); on one
+            // side only they are a ship resting on the rim, which must keep it
+            if (!front && !back && isShipSolid(level, point.add(normal.scale(0.25))) && isShipSolid(level, point.add(normal.scale(-0.25)))) {
+                front = true;
+                back = true;
+            }
             if (front != back) {
                 samples[0]++;
             } else if (front) {
@@ -301,6 +351,16 @@ final class IPPortalRims {
     private static boolean isSolid(final ServerLevel level, final Vec3 point) {
         final net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(point);
         return level.isLoaded(pos) && !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
+    }
+
+    private static boolean isShipSolid(final ServerLevel level, final Vec3 point) {
+        for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(point, point))) {
+            final net.minecraft.core.BlockPos pos = net.minecraft.core.BlockPos.containing(ship.logicalPose().transformPositionInverse(point));
+            if (!ship.isRemoved() && level.isLoaded(pos) && !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isLive(final Rim rim) {
@@ -321,14 +381,43 @@ final class IPPortalRims {
         rim.origin = portal.getOriginPos();
         rim.axisW = portal.getAxisW();
         rim.axisH = portal.getAxisH();
-        final Vec3 x = rim.axisW.normalize();
-        final Vec3 y = portal.getNormal().normalize();
+        final Quaterniond rotation = rotationOf(rim);
+        RapierExt.setPortalRimTransform(rim.scene, rim.id, rim.origin.x, rim.origin.y, rim.origin.z,
+                rotation.x, rotation.y, rotation.z, rotation.w);
+    }
+
+    /**
+     * The rim's world rotation as {@link #place} puts it, the same for both faces of a doorway (local Y along the
+     * normal's dominant axis, positive). The two faces' rims are the same bars, yet a sphere resting half through a
+     * two-faced portal with its block faces on the plane was thrown out with the rim built from one face and held with
+     * the other's (contact points on the plane, the clip regions' skin deciding by rounding): which face got the rim
+     * went by UUID order, so it happened at random.
+     */
+    private static Quaterniond rotationOf(final Rim rim) {
+        Vec3 x = rim.axisW.normalize();
+        Vec3 y = rim.portal.getNormal().normalize();
+        final double ax = Math.abs(y.x), ay = Math.abs(y.y), az = Math.abs(y.z);
+        if ((ay >= ax && ay >= az ? y.y : ax >= az ? y.x : y.z) < 0.0) {
+            x = x.scale(-1.0);
+            y = y.scale(-1.0);
+        }
         final Vec3 z = x.cross(y).normalize();
-        final Quaterniond rotation = new Quaterniond().setFromNormalized(new Matrix3d(
+        return new Quaterniond().setFromNormalized(new Matrix3d(
                 x.x, x.y, x.z,
                 y.x, y.y, y.z,
                 z.x, z.y, z.z));
-        RapierExt.setPortalRimTransform(rim.scene, rim.id, rim.origin.x, rim.origin.y, rim.origin.z,
-                rotation.x, rotation.y, rotation.z, rotation.w);
+    }
+
+    /**
+     * Anchors a placed rim to {@code carrier}: its pose in the carrier's body frame, {@code B⁻¹ ∘ R}
+     * (docs/lessons/ship-mounted-portals.md: the body frame is {@code logicalPose}'s position and orientation).
+     */
+    private static void anchor(final Rim rim, final ServerSubLevel carrier) {
+        final Pose3dc pose = carrier.logicalPose();
+        final Quaterniond inverse = new Quaterniond(pose.orientation()).conjugate();
+        final Vector3d t = inverse.transform(new Vector3d(rim.origin.x - pose.position().x(),
+                rim.origin.y - pose.position().y(), rim.origin.z - pose.position().z()));
+        final Quaterniond q = inverse.mul(rotationOf(rim)).normalize();
+        RapierExt.setPortalRimAnchor(rim.scene, rim.id, carrier.getRuntimeId(), t.x, t.y, t.z, q.x, q.y, q.z, q.w);
     }
 }

@@ -411,6 +411,11 @@ public class CrossPortalEntityRenderer {
                 }
             }
             
+            // Immersive Aeronautics: wholly past the portal view distance, in fog
+            if (IPPortalViewDistance.isEntityPastCut(entity)) {
+                return false;
+            }
+            
             return renderingPortal.isOnDestinationSide(
                 getRenderingCameraPos(entity), -0.01
             );

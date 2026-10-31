@@ -23,7 +23,7 @@ public final class IPPhysicsStaffHooks {
     private IPPhysicsStaffHooks() {
     }
 
-    public static void onServerStarted() {
+    public static void clearState() {
         if (ACTIVE) {
             IPPhysicsStaffPortals.reset();
             IPHandlePortals.reset();

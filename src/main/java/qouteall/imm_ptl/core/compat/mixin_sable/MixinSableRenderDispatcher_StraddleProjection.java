@@ -6,6 +6,7 @@
 package qouteall.imm_ptl.core.compat.mixin_sable;
 
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRopes;
+import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleSprings;
 import dev.ryanhcode.sable.sublevel.render.dispatcher.SubLevelRenderDispatcher.BlockEntityRenderer;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.render.dispatcher.VanillaSubLevelRenderDispatcher;
@@ -59,5 +60,6 @@ public abstract class MixinSableRenderDispatcher_StraddleProjection {
             // global block entities (ropes) are not in the sections' lists; Sable draws them in the ship's own world only
             IPStraddleRopes.drawProjectedGlobalBlockEntities(ship, blockEntityRenderer, cameraX, cameraY, cameraZ, partialTick);
         });
+        IPStraddleSprings.drawFarParts(blockEntityRenderer, cameraX, cameraY, cameraZ, partialTick);
     }
 }

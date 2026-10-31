@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -34,10 +35,14 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.mixin_create.IPRotationPropagatorInvoker;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
+
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * Create shafts through IP portals. A kinetic block with a shaft on the face that opens onto a portal (the face
@@ -89,7 +94,6 @@ public final class IPCreatePortalShafts {
     private static final String TAG = "[IPPortalShafts] ";
     /** {@code -Dip_aeronautics.debug.portalShafts=true}: logs pairs found and dropped, and the stress they share. */
     private static final boolean DEBUG = Boolean.getBoolean("ip_aeronautics.debug.portalShafts");
-    private static final boolean SABLE = ModList.get().isLoaded("sable");
 
     private static final int SCAN_TICKS = 20;
     /** Scans a pair may go unseen (its portal not loaded yet, say) before it is dropped. */
@@ -98,11 +102,6 @@ public final class IPCreatePortalShafts {
     private static final int LOOP_COOLDOWN_TICKS = 100;
     /** Cells looked at per portal at most (a 64x64 portal, two deep). */
     private static final int MAX_CELLS = 64 * 64 * 2;
-    private static final double PLANE_EPSILON = 1.0e-3;
-    /** Slack for a ship's end, whose pose and portal are both doubles worked out each tick: about 2.5 degrees... */
-    private static final double SHIP_COS = 1 - 1.0e-3;
-    /** ...and 1/20 block. */
-    private static final double SHIP_GAP = 0.05;
 
     /** Where a block's coordinates sit in the world: a ship's plot, moved by the ship. World blocks have none (null). */
     interface Frame {
@@ -271,18 +270,19 @@ public final class IPCreatePortalShafts {
             }
         }
 
-        for (final Map.Entry<KineticBlockEntity, Integer> orphan : new ArrayList<>(ORPHANS.entrySet())) {
-            final KineticBlockEntity be = orphan.getKey();
+        // not a copy of the entry set: a WeakHashMap's holds copies of its entries, and setting those reaches nothing
+        for (final KineticBlockEntity be : new ArrayList<>(ORPHANS.keySet())) {
+            final int missed = ORPHANS.get(be);
             if (be.isRemoved() || inPair(be)) {
                 ORPHANS.remove(be);
-            } else if (orphan.getValue() + 1 >= MISSED_SCANS) {
+            } else if (missed + 1 >= MISSED_SCANS) {
                 ORPHANS.remove(be);
                 LOGGER.info(TAG + "{} {}: no portal any more, saved portal drive cleared",
                     be.getLevel().dimension().location(), be.getBlockPos().toShortString());
                 stopDriving(be);
                 setShare(be, 0, 0);
             } else {
-                orphan.setValue(orphan.getValue() + 1);
+                ORPHANS.put(be, missed + 1);
             }
         }
     }
@@ -295,14 +295,14 @@ public final class IPCreatePortalShafts {
         final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
         // the blocks whose face towards the portal lies within a block in front of its plane
         final AABB region = portal.getBoundingBox().expandTowards(normal.scale(1.5));
-        if (Vec3.atLowerCornerOf(front.getNormal()).dot(normal) >= 1 - PLANE_EPSILON) {
+        final UUID ownShip = IPShipPortals.ownSideCarrier(portal);
+        if (ownShip == null && Vec3.atLowerCornerOf(front.getNormal()).dot(normal) >= 1 - PLANE_EPSILON) {
             scanCells(level, portal, region.deflate(PLANE_EPSILON), null, front.getOpposite(), seen);
         }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        if (SABLE && mount != null) {
-            // the shafts of the portal's own ship, where the ship-side portal is
+        if (SABLE && ownShip != null) {
+            // the shafts of the ship carrying the portal's side
             for (final Frame ship : IPCreateShaftShips.shipsTouching(level, region.inflate(1))) {
-                if (ship.ship().equals(mount.carrier())) {
+                if (ship.ship().equals(ownShip)) {
                     scanCells(level, portal, toLocalBounds(ship, region.inflate(0.5)), ship, null, seen);
                 }
             }
@@ -319,10 +319,16 @@ public final class IPCreatePortalShafts {
     ) {
         final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
         final BlockPos max = BlockPos.containing(cells.maxX, cells.maxY, cells.maxZ);
-        if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
+        final Iterable<BlockPos> candidates;
+        if (frame != null) {
+            // in a ship's coordinates the bounds of a tilted portal hold far more cells than the portal: ask the ship
+            candidates = IPCreateShaftShips.blockEntitiesIn(frame, min, max);
+        } else if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
             return;
+        } else {
+            candidates = BlockPos.betweenClosed(min, max);
         }
-        for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
+        for (final BlockPos cell : candidates) {
             if (!level.isLoaded(cell) || !(level.getBlockEntity(cell) instanceof KineticBlockEntity be)
                 || (frame != null && !frame.holds(level, cell))) {
                 continue;
@@ -335,9 +341,20 @@ public final class IPCreatePortalShafts {
                 final FarEnd far = link(portal, level, cell, side, frame);
                 if (far != null) {
                     found(level, be, new End(level.dimension(), cell.immutable(), side), far, portal, frame != null, seen);
+                } else if (ORPHANS.containsKey(be) && !isFarSideLoaded(portal)) {
+                    ORPHANS.put(be, 0); // its portal stands: it keeps its last state until the other side is back
                 }
             }
         }
+    }
+
+    private static boolean isFarSideLoaded(final Portal portal) {
+        if (!(portal.getDestWorld() instanceof ServerLevel farLevel) || !farLevel.isLoaded(BlockPos.containing(portal.getDestPos()))) {
+            return false;
+        }
+        final UUID farShip = IPShipPortals.farSideCarrier(portal);
+        return farShip == null || !SABLE
+            || IPCreateShaftShips.shipsTouching(farLevel, AABB.ofSize(portal.getDestPos(), 2, 2, 2)).stream().anyMatch(ship -> ship.ship().equals(farShip));
     }
 
     private static void found(
@@ -375,111 +392,59 @@ public final class IPCreatePortalShafts {
     /**
      * The far end of the shaft face {@code side} of {@code pos} through {@code portal}, with a kinetic block that has
      * a shaft towards the portal, or null. Worked out in world space ({@code frame} is the near block's ship, null in
-     * the world). Through a ship-mounted portal (any portal of its cluster) exactly one end is on its ship: a ship's
-     * shaft at its own portal pairs with a shaft at the fixed side, and back. Through any other portal both ends are
-     * world blocks.
+     * the world). Each end is where its side of the portal is: on the ship carrying that side of a ship-mounted portal
+     * (a ship's shaft at its own portal), in the world at a fixed side ({@link #onOwnSide}). Both ends may be on ships,
+     * one ship or two.
      */
     private static @Nullable FarEnd link(final Portal portal, final ServerLevel level, final BlockPos pos, final Direction side, final @Nullable Frame frame) {
-        if (portal.isRemoved() || Math.abs(portal.getScale() - 1) > 1.0e-6
-            || !(portal.getDestWorld() instanceof ServerLevel farLevel)) {
+        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+        if (opening == null || !(opening.farLevel() instanceof ServerLevel farLevel)) {
             return null;
         }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        if (frame != null && (mount == null || !frame.ship().equals(mount.carrier()))) {
-            return null;
-        }
-        final boolean shipInvolved = mount != null;
         final BlockState nearState = level.getBlockState(pos);
         final boolean belt = isBeltEnd(nearState, side);
-        final double cos = shipInvolved ? SHIP_COS : 1 - PLANE_EPSILON;
-        final double slack = shipInvolved ? SHIP_GAP : PLANE_EPSILON;
-
-        final Vec3 localNormal = Vec3.atLowerCornerOf(side.getNormal());
-        final Vec3 localFace = Vec3.atCenterOf(pos).add(localNormal.scale(0.5));
-        final Vec3 n = frame == null ? localNormal : frame.toWorldDirection(localNormal).normalize();
-        final Vec3 face = frame == null ? localFace : frame.toWorld(localFace);
-        final Vec3 portalNormal = portal.getNormal();
-        if (portalNormal.dot(n) > -cos) {
-            return null;
-        }
-        final double gap = portal.getDistanceToPlane(face);
-        if (gap < -slack || gap >= 1 - PLANE_EPSILON) {
-            return null;
-        }
-        final Vec3 onPlane = face.subtract(portalNormal.scale(gap));
-        if (!portal.getPortalShape().isBoxInPortalProjection(portal.getThisSideState(), AABB.ofSize(onPlane, 0.1, 0.1, 0.1))) {
-            return null;
-        }
-
-        final Vec3 farOnPlane = portal.transformPoint(onPlane);
-        final Vec3 farDir = portal.transformLocalVecNonScale(n);
         final Vec3 localAxis = Vec3.atLowerCornerOf(Direction.get(Direction.AxisDirection.POSITIVE, side.getAxis()).getNormal());
         final Vec3 axisThere = portal.transformLocalVecNonScale(frame == null ? localAxis : frame.toWorldDirection(localAxis));
-
-        if (!shipInvolved || frame != null) {
-            // a world far end: fixed
-            return farCandidate(farLevel, farOnPlane, farDir, axisThere, null, cos, slack, belt ? nearState : null, side);
-        }
-        // a fixed shaft at a ship-mounted portal: the far end is on the portal's ship
-        if (!SABLE) {
-            return null;
-        }
-        final AABB around = new AABB(farOnPlane, farOnPlane.add(farDir.scale(1.5))).inflate(1);
-        for (final Frame ship : IPCreateShaftShips.shipsTouching(farLevel, around)) {
-            if (ship.ship().equals(mount.carrier())) {
-                final FarEnd found = farCandidate(farLevel, farOnPlane, farDir, axisThere, ship, cos, slack, belt ? nearState : null, side);
-                if (found != null) {
-                    return found;
-                }
-            }
-        }
-        return null;
+        return IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) ->
+            farCandidate(farLevel, axisThere, farFrame, candidate, out, belt ? nearState : null, side));
     }
 
     /**
-     * A kinetic block past the far plane in {@code frame} (null: the world) whose face towards the plane lines up: a
+     * Whether a near end in {@code frame} (null: the world) is where {@code portal}'s own side is: on the ship carrying
+     * that side, or in the world for a side fixed there. Server and client.
+     */
+    static boolean onOwnSide(final Portal portal, final @Nullable Frame frame) {
+        return Objects.equals(frame == null ? null : frame.ship(), IPShipPortals.ownSideCarrier(portal));
+    }
+
+    /**
+     * The kinetic block at {@code candidate} past the far plane, in {@code frame} (null: the world), if it lines up: a
      * shaft for a shaft, a belt's end for a belt's end ({@code nearBelt}: the near belt's state, its end on {@code nearSide}).
      */
     private static @Nullable FarEnd farCandidate(
-        final ServerLevel farLevel, final Vec3 farOnPlane, final Vec3 farDir, final Vec3 axisThere, final @Nullable Frame frame,
-        final double cos, final double slack, final @Nullable BlockState nearBelt, final Direction nearSide
+        final ServerLevel farLevel, final Vec3 axisThere, final @Nullable Frame frame, final BlockPos candidate, final Direction out,
+        final @Nullable BlockState nearBelt, final Direction nearSide
     ) {
-        final Vec3 dir = frame == null ? farDir : frame.toLocalDirection(farDir).normalize();
-        final Vec3 plane = frame == null ? farOnPlane : frame.toLocal(farOnPlane);
-        final Direction out = Direction.getNearest(dir.x, dir.y, dir.z);
-        final Vec3 outNormal = Vec3.atLowerCornerOf(out.getNormal());
-        if (outNormal.dot(dir) < cos) {
-            return null; // rotated off the block grid
+        if (!farLevel.isLoaded(candidate) || !(farLevel.getBlockEntity(candidate) instanceof KineticBlockEntity be)) {
+            return null;
         }
-        for (final double reach : new double[]{0.5, 1.5}) {
-            final BlockPos candidate = BlockPos.containing(plane.add(dir.scale(reach)));
-            final Vec3 candidateFace = Vec3.atCenterOf(candidate).subtract(outNormal.scale(0.5));
-            final double farGap = candidateFace.subtract(plane).dot(outNormal);
-            if (farGap < -slack || farGap >= 1 - PLANE_EPSILON) {
-                continue;
+        final Direction farSide = out.getOpposite();
+        if (nearBelt != null) {
+            if (!isBeltEnd(be.getBlockState(), farSide)) {
+                return null;
             }
-            if (!farLevel.isLoaded(candidate) || (frame != null && !frame.holds(farLevel, candidate))
-                || !(farLevel.getBlockEntity(candidate) instanceof KineticBlockEntity be)) {
-                continue;
-            }
-            final Direction farSide = out.getOpposite();
-            if (nearBelt != null) {
-                if (!isBeltEnd(be.getBlockState(), farSide)) {
-                    continue;
-                }
-                return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be,
-                    beltSign(nearBelt, nearSide, be.getBlockState(), farSide), frame != null);
-            }
-            if (!hasShaft(farLevel, candidate, be.getBlockState(), farSide) || isJoinedInLevel(farLevel, candidate, farSide)
-                || isBeltEnd(be.getBlockState(), farSide)) {
-                continue;
-            }
-            final Vec3 localAxis = Vec3.atLowerCornerOf(Direction.get(Direction.AxisDirection.POSITIVE, out.getAxis()).getNormal());
-            final Vec3 farAxis = frame == null ? localAxis : frame.toWorldDirection(localAxis);
-            final float sign = axisThere.dot(farAxis) >= 0 ? 1 : -1;
-            return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be, sign, frame != null);
+            return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be,
+                beltSign(nearBelt, nearSide, be.getBlockState(), farSide), frame != null);
         }
-        return null;
+        if (!hasShaft(farLevel, candidate, be.getBlockState(), farSide) || isJoinedInLevel(farLevel, candidate, farSide)
+            || isBeltEnd(be.getBlockState(), farSide)) {
+            return null;
+        }
+        final Vec3 localAxis = Vec3.atLowerCornerOf(Direction.get(Direction.AxisDirection.POSITIVE, out.getAxis()).getNormal());
+        final Vec3 farAxis = frame == null ? localAxis : frame.toWorldDirection(localAxis);
+        final float sign = axisThere.dot(farAxis) >= 0 ? 1 : -1;
+        return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be, sign, frame != null);
     }
 
     static AABB toLocalBounds(final Frame frame, final AABB world) {

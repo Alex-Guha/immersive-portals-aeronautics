@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.collision;
 
 import net.minecraft.core.BlockPos;
@@ -17,6 +24,7 @@ import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.compat.GravityChangerInterface;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.q_misc_util.Helper;
 import qouteall.q_misc_util.my_util.Plane;
 import qouteall.q_misc_util.my_util.Range;
@@ -55,8 +63,13 @@ public class PortalCollisionHandler {
             // the camera pos is behind this tick pos,
             // this tick pos may go behind the portal before teleportation.
             // use last tick pos to check whether it should collide
+            // Immersive Aeronautics: and this tick pos. After a teleport in a frame, last tick pos is mapped too and
+            // lies behind the portal just landed on. Dropping it there left the first move after a crossing without
+            // the other side's blocks: a player stepping up through a floor portal fell into the stairs.
             return !CollisionHelper.mayEntityCollideWithPortal(
                     entity, p.portal, entity.getEyePosition(0), entity.getBoundingBox()
+            ) && !CollisionHelper.mayEntityCollideWithPortal(
+                    entity, p.portal, entity.getEyePosition(1), entity.getBoundingBox()
             );
         });
     }
@@ -361,7 +374,13 @@ public class PortalCollisionHandler {
             IPGlobal.maxNormalPortalRadius,
             p -> true
         ).forEach(p -> CollisionHelper.notifyCollidingPortals(p, partialTicks));
-        
+
+        // Immersive Aeronautics: the box search above finds no global portal, so an entity crossing a dimension stack's
+        // floor or ceiling lost its footing on the other side until the end of the next tick.
+        CollisionHelper.notifyCollidingGlobalPortals(
+            entity, GlobalPortalStorage.getGlobalPortals(entity.level()), partialTicks
+        );
+
         // don't tickCollidingPortal() as it only removes collisions
         
         McHelper.setEyePos(entity, newEyePos, newLastTickEyePos);
@@ -370,6 +389,36 @@ public class PortalCollisionHandler {
     
     public boolean hasCollisionEntry() {
         return !portalCollisions.isEmpty();
+    }
+
+    /**
+     * Immersive Aeronautics: whether the part of the box behind a colliding portal meets blocks on the portal's other
+     * side.
+     */
+    public boolean hasBlocksBehindPortal(Entity entity, AABB box) {
+        for (PortalCollisionEntry portalCollision : portalCollisions) {
+            Portal portal = portalCollision.portal;
+
+            if (!portal.getHasCrossPortalCollision()) {
+                continue;
+            }
+
+            AABB behindPortal = CollisionHelper.clipBox(
+                box, portal.getOriginPos(), portal.getNormal().scale(-1)
+            );
+            if (behindPortal == null) {
+                continue;
+            }
+
+            AABB boxOtherSide = CollisionHelper.transformBox(portal, behindPortal);
+            for (VoxelShape shape : portal.getDestWorld().getBlockCollisions(entity, boxOtherSide)) {
+                if (!shape.isEmpty()) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
     
     public void notifyCollidingWithPortal(Entity entity, Portal portal) {

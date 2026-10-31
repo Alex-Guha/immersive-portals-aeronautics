@@ -8,6 +8,7 @@
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "MixinDhRenderBufferHandler_PortalViewDistance",
     "MixinDhTerrainShader_NearClipGap",
     "MixinDhApiRenderProxy_NearClipGap",
     "MixinDhIpBeforeRenderEvent_RenderInPortals",
@@ -28,7 +29,5 @@
   "injectors": {
     "defaultRequire": 0
   },
-  "mixins": [
-    "MixinDhConfigEntry_IgnoreGenWithC2ME"
-  ]
+  "mixins": []
 }

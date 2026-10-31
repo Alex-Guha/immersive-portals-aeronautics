@@ -4,15 +4,22 @@
 package qouteall.imm_ptl.core.compat.sable_integration;
 
 import com.mojang.logging.LogUtils;
+import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
 import dev.ryanhcode.sable.api.physics.PhysicsPipelineBody;
 import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
+import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
+import dev.simulated_team.simulated.content.blocks.spring.SpringBlock;
+import dev.simulated_team.simulated.content.blocks.spring.SpringBlockEntity;
 import dev.simulated_team.simulated.content.blocks.swivel_bearing.SwivelBearingBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -47,6 +54,7 @@ public final class IPShipJoints {
     }
 
     private static final List<Joint> JOINTS = new ArrayList<>();
+    private static boolean connectedFailureLogged;
 
     private IPShipJoints() {
     }
@@ -80,9 +88,74 @@ public final class IPShipJoints {
     }
 
     /**
-     * After ships crossed together, some into other plots ({@code shifts}: ship to plot shift): points the joints'
-     * saved plot positions of other ships at those ships' new plots. Each ship's own blocks were shifted in its saved
-     * data. Swivel bearings: the plate's position on the rotor ship, and the plate's link back to its bearing.
+     * @return the ships directly connected to {@code ship} as Sable sees them ({@code SubLevelHelper.getConnectedChain},
+     * one step of it), without {@code ship}: whatever names another ship from a block entity. That covers ropes and most
+     * joints, and springs, which are forces and never reach {@link #track}.
+     */
+    public static Set<UUID> connected(ServerSubLevel ship) {
+        Set<UUID> connected = new HashSet<>();
+        try {
+            for (BlockEntitySubLevelActor actor : ship.getPlot().getBlockEntityActors()) {
+                Iterable<SubLevel> dependencies = actor.sable$getConnectionDependencies();
+                if (dependencies != null) {
+                    for (SubLevel other : dependencies) {
+                        if (other != ship) {
+                            connected.add(other.getUniqueId());
+                        }
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            if (!connectedFailureLogged) {
+                connectedFailureLogged = true;
+                LOGGER.warn("[IPShipPortal] finding what is connected to ship {} failed: {}", ship.getUniqueId(), e.toString());
+            }
+        }
+        return connected;
+    }
+
+    /**
+     * Before a ship's data is snapshotted to leave its level. A spring saves its partner's position alone, so a spring
+     * whose other end stays behind would look in the destination, find some other block there, and break that block when
+     * it gives up. It snaps here instead, in its own level. Springs among the {@code travelling} ships go along, marked as
+     * moving: a spring removed any other way takes its partner with it.
+     */
+    public static void prepareSpringsForMove(ServerLevel level, ServerSubLevel ship, Set<UUID> travelling) {
+        if (!SIMULATED_LOADED) {
+            return;
+        }
+        try {
+            Impl.prepareSpringsForMove(level, ship, travelling);
+        } catch (Throwable e) {
+            LOGGER.warn("[IPShipPortal] simulated: preparing the springs of ship {} failed: {}", ship.getUniqueId(), e.toString());
+        }
+    }
+
+    /** Test hook: the springs on the ships of {@code level}, one line each. */
+    /** @return how far [blocks] the springs on {@code ship} hold its partners before snapping, 0 without springs */
+    public static double springReach(ServerSubLevel ship) {
+        return SIMULATED_LOADED ? Impl.springReach(ship) : 0.0;
+    }
+
+    public static List<String> describeSprings(ServerLevel level) {
+        return SIMULATED_LOADED ? Impl.describeSprings(level) : List.of();
+    }
+
+    /**
+     * Test hook ({@code /ip_aeronautics straddle debug dock}): docks the first two docking connectors found on the ships
+     * of {@code level}, as their magnets do.
+     *
+     * @return whether two were found
+     */
+    public static boolean dockConnectors(ServerLevel level) {
+        return SIMULATED_LOADED && Impl.dockConnectors(level);
+    }
+
+    /**
+     * After ships moved, some into other plots ({@code shifts}: ship to plot shift): points the saved plot positions of
+     * other ships at those ships' new plots. Each ship's own blocks were shifted in its saved data. Swivel bearings: the
+     * plate's position on the rotor ship, and the plate's link back to its bearing. Springs and docking connectors: their
+     * partner's position.
      */
     public static void shiftLoadedJoints(ServerLevel level, Map<UUID, BlockPos> shifts) {
         if (!SIMULATED_LOADED || shifts.values().stream().allMatch(BlockPos.ZERO::equals)) {
@@ -91,7 +164,7 @@ public final class IPShipJoints {
         try {
             Impl.shiftLoadedJoints(level, shifts);
         } catch (Throwable e) {
-            LOGGER.warn("[IPShipPortal] simulated: shifting the joints of moved ships failed: {}", e.toString());
+            LOGGER.warn("[IPShipPortal] simulated: pointing ships' joints at moved plots failed: {}", e.toString());
         }
     }
 
@@ -116,14 +189,115 @@ public final class IPShipJoints {
                 if (!(container.getSubLevel(moved.getKey()) instanceof ServerSubLevel ship)) {
                     continue;
                 }
-                for (var holder : ship.getPlot().getLoadedChunks()) {
-                    for (BlockEntity blockEntity : List.copyOf(holder.getChunk().getBlockEntities().values())) {
-                        if (blockEntity instanceof SwivelBearingBlockEntity bearing) {
-                            shiftBearing(bearing, moved.getValue(), shifts);
+                for (BlockEntity blockEntity : blockEntities(ship)) {
+                    if (blockEntity instanceof SwivelBearingBlockEntity bearing) {
+                        shiftBearing(bearing, moved.getValue(), shifts);
+                    } else if (blockEntity instanceof SpringBlockEntity spring) {
+                        shiftSpring(level, spring, shifts);
+                    } else if (blockEntity instanceof DockingConnectorBlockEntity connector) {
+                        shiftConnector(connector, shifts);
+                    }
+                }
+            }
+        }
+
+        private static List<BlockEntity> blockEntities(ServerSubLevel ship) {
+            List<BlockEntity> blockEntities = new ArrayList<>();
+            for (var holder : ship.getPlot().getLoadedChunks()) {
+                blockEntities.addAll(holder.getChunk().getBlockEntities().values());
+            }
+            return blockEntities;
+        }
+
+        static void prepareSpringsForMove(ServerLevel level, ServerSubLevel ship, Set<UUID> travelling) {
+            for (BlockEntity blockEntity : blockEntities(ship)) {
+                if (!(blockEntity instanceof SpringBlockEntity spring)) {
+                    continue;
+                }
+                BlockPos pos = spring.getBlockPos();
+                BlockState state = spring.getBlockState();
+                UUID partner = spring.getPartnerSubLevelID();
+                if (partner != null && travelling.contains(partner)) {
+                    if (state.getBlock() instanceof SpringBlock block) {
+                        block.beforeMove(level, level, state, pos, pos);
+                    }
+                } else {
+                    LOGGER.info("[IPShipPortal] simulated: spring at {} of ship {} snaps, its other end stays behind",
+                        pos.toShortString(), ship.getUniqueId());
+                    level.destroyBlock(pos, true);
+                }
+            }
+        }
+
+        private static void shiftSpring(ServerLevel level, SpringBlockEntity spring, Map<UUID, BlockPos> shifts) {
+            UUID partner = spring.getPartnerSubLevelID();
+            BlockPos shift = partner == null ? null : shifts.get(partner);
+            if (shift == null || shift.equals(BlockPos.ZERO)) {
+                return;
+            }
+            // the block entity has no getter for it
+            CompoundTag saved = spring.saveWithoutMetadata(level.registryAccess());
+            if (saved.contains("Goal")) {
+                spring.setPartnerPos(BlockPos.of(saved.getLong("Goal")).offset(shift), partner);
+                spring.setChanged();
+            }
+        }
+
+        private static void shiftConnector(DockingConnectorBlockEntity connector, Map<UUID, BlockPos> shifts) {
+            BlockPos shift = connector.otherConnectorSubLevelId == null ? null : shifts.get(connector.otherConnectorSubLevelId);
+            if (connector.otherConnectorPosition != null && shift != null && !shift.equals(BlockPos.ZERO)) {
+                connector.otherConnectorPosition = connector.otherConnectorPosition.offset(shift);
+                connector.setChanged();
+            }
+        }
+
+        static double springReach(ServerSubLevel ship) {
+            double reach = 0.0;
+            for (BlockEntity blockEntity : blockEntities(ship)) {
+                if (blockEntity instanceof SpringBlockEntity spring) {
+                    reach = Math.max(reach, spring.getSnappingDistance());
+                }
+            }
+            return reach;
+        }
+
+        static List<String> describeSprings(ServerLevel level) {
+            ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+            List<String> lines = new ArrayList<>();
+            if (container != null) {
+                for (ServerSubLevel ship : container.getAllSubLevels()) {
+                    for (BlockEntity blockEntity : blockEntities(ship)) {
+                        if (blockEntity instanceof SpringBlockEntity spring) {
+                            lines.add("Spring on ship " + ship.getUniqueId() + " tied to " + spring.getPartnerSubLevelID()
+                                + (spring.getPairedSpring() == null ? ": no partner" : ": paired"));
+                        } else if (blockEntity instanceof DockingConnectorBlockEntity connector) {
+                            DockingConnectorBlockEntity other = connector.getOtherConnector();
+                            lines.add("Docking connector on ship " + ship.getUniqueId() + " tied to " + connector.otherConnectorSubLevelId
+                                + (other != null && connector.getBlockPos().equals(other.otherConnectorPosition) ? ": docked" : ": not docked"));
                         }
                     }
                 }
             }
+            return lines;
+        }
+
+        static boolean dockConnectors(ServerLevel level) {
+            ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+            List<DockingConnectorBlockEntity> connectors = new ArrayList<>();
+            if (container != null) {
+                for (ServerSubLevel ship : container.getAllSubLevels()) {
+                    for (BlockEntity blockEntity : blockEntities(ship)) {
+                        if (blockEntity instanceof DockingConnectorBlockEntity connector) {
+                            connectors.add(connector);
+                        }
+                    }
+                }
+            }
+            if (connectors.size() < 2) {
+                return false;
+            }
+            connectors.get(0).pairTo(connectors.get(1));
+            return true;
         }
 
         static int assembleSwivelBearings(ServerLevel level) {
@@ -148,7 +322,7 @@ public final class IPShipJoints {
         private static void shiftBearing(SwivelBearingBlockEntity bearing, BlockPos ownShift, Map<UUID, BlockPos> shifts) {
             BlockPos plate = bearing.getPlatePos();
             UUID rotor = bearing.getSubLevelID();
-            if (plate == null || rotor == null) {
+            if (plate == null || rotor == null || !shifts.containsKey(rotor)) {
                 return;
             }
             BlockPos rotorShift = shifts.getOrDefault(rotor, BlockPos.ZERO);

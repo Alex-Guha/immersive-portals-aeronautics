@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import net.createmod.catnip.data.Pair;
 import net.createmod.catnip.math.BlockFace;
@@ -43,10 +44,14 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.compat.mixin_create.IPFluidNetworkAccessor;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPipeConnectionAccessor;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipMount;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
+
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
+import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * Create's fluid pipes through IP portals. A pipe end that opens onto a portal (its face within a block of the portal
@@ -75,12 +80,6 @@ public final class IPCreatePortalPipes {
     /** {@code -Dip_aeronautics.debug.portalPipes=true}: logs links, mirrored pressure and cross-portal updates. */
     private static final boolean DEBUG = Boolean.getBoolean("ip_aeronautics.debug.portalPipes");
 
-    /** Slack for a pipe face lying in the portal plane or a hair past it. */
-    private static final double PLANE_EPSILON = 1.0e-3;
-    /** Slack for a pipe on a ship, whose pose is worked out in doubles each tick (about 2.5 degrees, 1/20 block). */
-    private static final double SHIP_COS = 1 - 1.0e-3;
-    private static final double SHIP_GAP = 0.05;
-    private static final boolean SABLE = net.neoforged.fml.ModList.get().isLoaded("sable");
     /** Ticks a {@link PortalSource} keeps its link before looking for the portal again. */
     private static final int LINK_REFRESH_TICKS = 20;
     /** Portal ends passed one into another within one fill (a network looping through several portals). */
@@ -133,13 +132,9 @@ public final class IPCreatePortalPipes {
     /** The portal a pipe face opens onto and the far end, or null. */
     public static @Nullable Link link(final ServerLevel level, final BlockPos pos, final Direction side) {
         final IPCreatePortalShafts.Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
-        final Vec3 localNormal = Vec3.atLowerCornerOf(side.getNormal());
-        final Vec3 localFace = Vec3.atCenterOf(pos).add(localNormal.scale(0.5));
-        final Vec3 n = frame == null ? localNormal : frame.toWorldDirection(localNormal);
-        final Vec3 face = frame == null ? localFace : frame.toWorld(localFace);
-        final AABB search = new AABB(face, face.add(n)).inflate(0.25);
-        for (final Portal portal : IPPortalLookup.touching(level, search, p -> p.isTeleportable() && !p.isRemoved())) {
-            final Link found = linkVia(portal, pos, side, frame);
+        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        for (final Portal portal : IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
+            final Link found = linkVia(portal, face, frame);
             if (found != null) {
                 // a belt or shaft across the portal owns the space between: nothing passes ({@link IPCreatePortalEnds})
                 return IPCreatePortalEnds.outranked(found.farLevel(), found.farPos(), found.farSide(), IPCreatePortalEnds.Kind.PIPE)
@@ -150,82 +145,17 @@ public final class IPCreatePortalPipes {
     }
 
     /**
-     * The far end of the face {@code side} of {@code pos} through {@code portal}: when the face lies within a block in
-     * front of its plane, facing it, inside the opening, and the portal keeps the block grid. Else null. Worked out in
-     * world space ({@code frame}: the ship whose plot holds {@code pos}, null in the world): through a ship-mounted
-     * portal (any portal of its cluster) exactly one end is on its ship, as for shafts ({@link IPCreatePortalShafts}): a
-     * pipe on a ship at its own portal joins the fixed far side, and back.
+     * The far end of {@code face} through {@code portal}: the block past the far plane ({@link IPCreatePortalEnds#far}:
+     * a pipe on a ship at its own portal joins the far side, fixed or on a ship, and back). Else null.
      */
     private static @Nullable Link linkVia(
-        final Portal portal, final BlockPos pos, final Direction side, final IPCreatePortalShafts.@Nullable Frame frame
+        final Portal portal, final IPCreatePortalEnds.Face face, final IPCreatePortalShafts.@Nullable Frame frame
     ) {
-        if (Math.abs(portal.getScale() - 1) > 1.0e-6 || !(portal.getDestWorld() instanceof ServerLevel farLevel)) {
+        final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+        if (opening == null || !(opening.farLevel() instanceof ServerLevel farLevel)) {
             return null;
         }
-        final IPShipMount mount = IPShipPortals.clusterMountOf(portal);
-        if (frame != null && (mount == null || !frame.ship().equals(mount.carrier()))) {
-            return null;
-        }
-        final double cos = mount != null ? SHIP_COS : 1 - PLANE_EPSILON;
-        final double slack = mount != null ? SHIP_GAP : PLANE_EPSILON;
-        final Vec3 localNormal = Vec3.atLowerCornerOf(side.getNormal());
-        final Vec3 localFace = Vec3.atCenterOf(pos).add(localNormal.scale(0.5));
-        final Vec3 n = frame == null ? localNormal : frame.toWorldDirection(localNormal).normalize();
-        final Vec3 face = frame == null ? localFace : frame.toWorld(localFace);
-        final Vec3 portalNormal = portal.getNormal();
-        if (portalNormal.dot(n) > -cos) {
-            return null;
-        }
-        final double gap = portal.getDistanceToPlane(face);
-        if (gap < -slack || gap >= 1 - PLANE_EPSILON) {
-            return null;
-        }
-        final Vec3 onPlane = face.subtract(portalNormal.scale(gap));
-        if (!portal.getPortalShape().isBoxInPortalProjection(portal.getThisSideState(), AABB.ofSize(onPlane, 0.1, 0.1, 0.1))) {
-            return null;
-        }
-        final Vec3 farOnPlane = portal.transformPoint(onPlane);
-        final Vec3 farDir = portal.transformLocalVecNonScale(n);
-        if (mount == null || frame != null) {
-            return farEnd(portal, farLevel, farOnPlane, farDir, null, cos, slack);
-        }
-        if (!SABLE) {
-            return null;
-        }
-        // a fixed pipe at a ship-mounted portal: the far end is on the portal's ship
-        final AABB around = new AABB(farOnPlane, farOnPlane.add(farDir.scale(1.5))).inflate(1);
-        for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farLevel, around)) {
-            if (ship.ship().equals(mount.carrier())) {
-                final Link found = farEnd(portal, farLevel, farOnPlane, farDir, ship, cos, slack);
-                if (found != null) {
-                    return found;
-                }
-            }
-        }
-        return null;
-    }
-
-    /** The block past the far plane in {@code frame} (null: the world) whose face towards the plane lies within a block of it. */
-    private static @Nullable Link farEnd(
-        final Portal portal, final ServerLevel farLevel, final Vec3 farOnPlane, final Vec3 farDir,
-        final IPCreatePortalShafts.@Nullable Frame frame, final double cos, final double slack
-    ) {
-        final Vec3 dir = frame == null ? farDir : frame.toLocalDirection(farDir).normalize();
-        final Vec3 plane = frame == null ? farOnPlane : frame.toLocal(farOnPlane);
-        final Direction farOut = Direction.getNearest(dir.x, dir.y, dir.z);
-        final Vec3 farN = Vec3.atLowerCornerOf(farOut.getNormal());
-        if (farN.dot(dir) < cos) {
-            return null; // rotated off the block grid
-        }
-        for (final double reach : new double[]{0.5, 1.5}) {
-            final BlockPos candidate = BlockPos.containing(plane.add(farN.scale(reach)));
-            final Vec3 candidateFace = Vec3.atCenterOf(candidate).subtract(farN.scale(0.5));
-            final double farGap = candidateFace.subtract(plane).dot(farN);
-            if (farGap >= -slack && farGap < 1 - PLANE_EPSILON && (frame == null || frame.holds(farLevel, candidate))) {
-                return new Link(portal, farLevel, candidate, farOut.getOpposite());
-            }
-        }
-        return null;
+        return IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) -> new Link(portal, farLevel, candidate, out.getOpposite()));
     }
 
     /** The far pipe of a link when loaded and open towards the portal, else null. */

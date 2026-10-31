@@ -53,6 +53,7 @@ public final class IPStraddle {
         enabled = on;
         if (!on) {
             IPStraddleSessions.closeAll("straddling switched off");
+            IPStraddleController.releaseFrames(server);
             IPPortalRims.clearAll();
             IPShipCrossingDetector.reset();
             // no straddle tick runs while off: retract the sessions from clients now
@@ -70,9 +71,9 @@ public final class IPStraddle {
     }
 
     /**
-     * A server starts: forgets every session and trail of the previous one (its physics scenes are gone).
+     * A server starts or stops: forgets every session and trail (its physics scenes are or will be gone).
      */
-    public static void onServerStarted(final MinecraftServer server) {
+    public static void clearState() {
         IPStraddleSessions.reset();
         IPShipCrossingDetector.reset();
         IPStraddleController.reset();
@@ -80,8 +81,12 @@ public final class IPStraddle {
         IPPortalRims.reset();
         IPStraddleDebugTrace.reset();
         IPStraddleSync.reset();
-        IPStraddleSeats.onServerStarted();
+        IPStraddleSeats.clearState();
         IPStraddleShields.reset();
+    }
+
+    /** A server's first tick. */
+    public static void onServerStarted() {
         if (!IPPhysicsPipelineProvider.isOwnBackendActive()) {
             LOGGER.info("[IPStraddle] ships cannot straddle portals: the ipa_rapier physics backend is not active");
         } else {

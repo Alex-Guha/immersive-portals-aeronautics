@@ -37,6 +37,9 @@ public class IPConfig {
     // Immersive Aeronautics: how far away a dimension stack's floor or ceiling is drawn, in chunks (0: the render
     // distance; more needs Distant Horizons); it fades out over the last quarter (IPGlobalPortalFade)
     public int dimensionStackViewDistance = 0;
+    // Immersive Aeronautics: how far past a portal its view shows the other side, in chunks, ending in fog
+    // (0: the render distance; IPPortalViewDistance)
+    public int portalViewDistance = 0;
     public boolean netherPortalOverlay = false;
     public boolean enableNetherPortalEffect = true;
     public boolean enableClientPerformanceAdjustment = true;
@@ -83,8 +86,13 @@ public class IPConfig {
     public boolean easeCommandStickPermission = false;
     public boolean portalsChangeGravityByDefault = false;
     public boolean portalWandUsableOnSurvivalMode = false;
-    // Immersive Aeronautics: portals on Sable ships (docs/plans/ship-mounted-portals.md)
-    public boolean shipMountedPortals = true;
+    // Immersive Aeronautics: portals on Sable ships (docs/plans/ship-mounted-portals.md, link-strain.md). The mode is
+    // null until onConfigChanged settles it: a config with shipMountedPortals keeps what it did, a new one is limited
+    public IPGlobal.ShipPortalMode shipPortalMode = null;
+    public int shipPortalRangeChunks = 64;
+    // read from configs older than shipPortalMode, then dropped
+    @Nullable
+    public Boolean shipMountedPortals = null;
 
     // common invisible configs
     
@@ -103,6 +111,11 @@ public class IPConfig {
     @Nullable
     public JsonObject dimStackPreset = null;
     
+    // in chunks. A fresh portal may link to a frame up to about 532 overworld blocks from its mapped position: a lower
+    // limit could break a portal as it is lit (docs/plans/link-strain.md)
+    public static final int SHIP_PORTAL_RANGE_MIN = 38;
+    public static final int SHIP_PORTAL_RANGE_MAX = 625;
+    
     public static IPConfig getConfig() {
         return IPGlobal.configHolder.getConfig();
     }
@@ -116,6 +129,14 @@ public class IPConfig {
         indirectLoadingRadiusCap = Mth.clamp(indirectLoadingRadiusCap, 1, 32);
         regularPortalLengthLimit = Mth.clamp(regularPortalLengthLimit, 3, 64);
         scaleLimit = Mth.clamp(scaleLimit, 8, 128);
+        // Immersive Aeronautics
+        portalViewDistance = Mth.clamp(portalViewDistance, 0, 32);
+        shipPortalRangeChunks = Mth.clamp(shipPortalRangeChunks, SHIP_PORTAL_RANGE_MIN, SHIP_PORTAL_RANGE_MAX);
+        if (shipPortalMode == null) {
+            shipPortalMode = shipMountedPortals == null ? IPGlobal.ShipPortalMode.limited
+                : shipMountedPortals ? IPGlobal.ShipPortalMode.unlimited : IPGlobal.ShipPortalMode.off;
+        }
+        shipMountedPortals = null;
         if (netherPortalMode == null) {
             netherPortalMode = IPGlobal.NetherPortalMode.adaptive;
         }

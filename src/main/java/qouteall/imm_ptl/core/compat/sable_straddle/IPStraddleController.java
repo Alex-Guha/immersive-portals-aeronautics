@@ -110,7 +110,7 @@ final class IPStraddleController {
     private static final Map<String, Long> DECLINED_LOGGED = new HashMap<>();
     /**
      * How long [ticks] a ship wholly through a portal waits for the ships roped to it before crossing alone. Ships tied
-     * only by joints wait as long as the joints hold.
+     * only by joints or springs wait as long as those hold.
      */
     private static final long GROUP_WAIT_TICKS = 100;
     /** Extra clip depth [blocks] for a ship waiting for the ships tied to it. */
@@ -139,6 +139,24 @@ final class IPStraddleController {
         WAITING_SINCE.clear();
         STUCK_SINCE.clear();
         LET_THROUGH.clear();
+    }
+
+    /** Straddling switched off: ships let through frame blocks collide with them again. */
+    static void releaseFrames(final MinecraftServer server) {
+        for (final ServerLevel level : server.getAllLevels()) {
+            final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+            if (container == null) {
+                continue;
+            }
+            for (final ServerSubLevel ship : container.getAllSubLevels()) {
+                if (LET_THROUGH.remove(ship.getUniqueId()) != null) {
+                    IPStraddleSessions.setGhosts(ship, level, List.of());
+                    IPPortalRims.setLetThrough(ship, false);
+                }
+            }
+        }
+        LET_THROUGH.clear();
+        STUCK_SINCE.clear();
     }
 
     static void tick(final MinecraftServer server, final long tick) {
@@ -193,13 +211,13 @@ final class IPStraddleController {
     }
 
     /**
-     * Hands off the ships wholly through a portal this tick. Ships tied together by ropes or joints ({@link
+     * Hands off the ships wholly through a portal this tick. Ships tied together by ropes, joints or springs ({@link
      * #crossingGroup}) cross as a group, in the same tick, with their ropes; their joints' owners rebuild the joints in
      * the destination. A ship whose group is not all through the same portal yet waits in its session (physically in
-     * the destination already). In a group with ropes it waits up to {@value #GROUP_WAIT_TICKS} ticks, then crosses
-     * alone, its ropes to the others broken as before (a roped ship can drift a rope's length past the plane, beyond
-     * its session's reach). A ship tied only by joints waits as long as they hold: its partners keep it within reach of
-     * the plane, and the group sits in the portal like one straddling ship.
+     * the destination already). In a group with ropes it waits up to {@value #GROUP_WAIT_TICKS} ticks, then crosses alone,
+     * its ropes and springs to the others broken (a roped ship can drift a rope's length past the plane, beyond its
+     * session's reach). A ship tied only by joints or springs waits as long as they hold: its partners keep it within
+     * reach of the plane, and the group sits in the portal like one straddling ship.
      */
     private static void handOffAll(final MinecraftServer server, final List<Handoff> handoffs, final long tick) {
         final Map<UUID, Handoff> ready = new HashMap<>();
@@ -228,7 +246,7 @@ final class IPStraddleController {
                     done.add(shipId);
                     continue;
                 }
-                LOGGER.info("[IPStraddle] ship {} waited {} ticks for the ships tied to it; crossing alone (its ropes to them break, its joints to them come apart)",
+                LOGGER.info("[IPStraddle] ship {} waited {} ticks for the ships tied to it; crossing alone (its ropes and springs to them break, its joints to them come apart)",
                         shipId, tick - since);
                 group = Set.of(shipId);
                 members = Map.of(shipId, handoff);
@@ -249,23 +267,26 @@ final class IPStraddleController {
                     LOGGER.error("[IPStraddle] hand-off of ship {} failed", member, e);
                 }
             }
+            if (dest != null) {
+                IPShipJoints.shiftLoadedJoints(dest, shifts);
+            }
             if (group.size() > 1 && dest != null) {
                 IPShipRopeCompat.shiftLoadedAnchors(dest, shifts);
-                IPShipJoints.shiftLoadedJoints(dest, shifts);
                 LOGGER.info("[IPStraddle] {} ships tied together crossed as one group", shifts.size());
             }
         }
     }
 
     /**
-     * @return the ships of {@code level} that cross a portal together with {@code ship}: tied to it by ropes or by
-     * joints between ships (swivel bearings, docking connectors), directly or through other ships, including {@code ship}
+     * @return the ships of {@code level} that cross a portal together with {@code ship}: tied to it by ropes, by joints
+     * between ships (swivel bearings, docking connectors) or by anything else Sable counts as connecting them (springs),
+     * directly or through other ships, including {@code ship}
      */
     static Set<UUID> crossingGroup(final ServerLevel level, final ServerSubLevel ship) {
         return crossingGroup(level, ship, null);
     }
 
-    /** @param roped if not null, its element is set when a rope ties any two ships of the group */
+    /** @param roped if not null, its element is set when ships of the group are tied by a rope */
     private static Set<UUID> crossingGroup(final ServerLevel level, final ServerSubLevel ship, @Nullable final boolean[] roped) {
         final ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         final Set<UUID> group = new HashSet<>();
@@ -276,6 +297,7 @@ final class IPStraddleController {
         while (!queue.isEmpty()) {
             final ServerSubLevel member = queue.poll();
             final Set<UUID> tied = new HashSet<>(IPShipJoints.partners(member));
+            final Set<UUID> connected = IPShipJoints.connected(member);
             if (!inRopeGroup.contains(member.getUniqueId())) {
                 // a rope group is closed: its other members need no lookup of their own
                 final Set<UUID> ropeGroup = IPShipRopeCompat.ropeGroup(level, member);
@@ -285,6 +307,7 @@ final class IPStraddleController {
                     roped[0] = true;
                 }
             }
+            tied.addAll(connected);
             for (final UUID id : tied) {
                 if (group.add(id) && container != null && container.getSubLevel(id) instanceof final ServerSubLevel next
                         && !next.isRemoved()) {
@@ -446,8 +469,9 @@ final class IPStraddleController {
     private static void waitForGroup(final Handoff handoff, final long tick) {
         final Vec3 normal = handoff.portal().getNormal().scale(-1.0);
         if (IPStraddleSessions.openOrRefresh(handoff.ship(), handoff.portal(), handoff.level(), normal, tick)) {
+            // a spring holds its ships up to its snapping distance apart
             IPStraddleSessions.setExtraDepth(new IPStraddleSessions.Key(handoff.ship().getUniqueId(), handoff.portal().getUUID()),
-                    WAITING_EXTRA_DEPTH);
+                    Math.max(WAITING_EXTRA_DEPTH, IPShipJoints.springReach(handoff.ship())));
         }
     }
 
@@ -460,7 +484,9 @@ final class IPStraddleController {
         if (swept == null) {
             return;
         }
-        final boolean tooLarge = swept.getXsize() * swept.getYsize() * swept.getZsize() > MAX_SUBLEVEL_VOLUME;
+        // for opening only: a big ship tilting mid-crossing must not lose the sessions it has
+        final boolean tooLarge = swept.getXsize() * swept.getYsize() * swept.getZsize() > MAX_SUBLEVEL_VOLUME
+                && !IPStraddleSessions.anyOfShip(ship.getUniqueId());
 
         final List<Portal> nearby = nearbyPortals(level, ship, swept.inflate(PORTAL_QUERY_INFLATION));
         if (!tooLarge && (!nearby.isEmpty() || LET_THROUGH.containsKey(ship.getUniqueId()))) {
@@ -841,6 +867,7 @@ final class IPStraddleController {
             refuse(ship, handoff.level(), portal, portal.getNormal().scale(-1.0), server.getTickCount(), refusal);
             if (travelling.size() > 1) {
                 IPShipRopeCompat.breakAttachedRopes(handoff.level(), ship, Set.of(shipId));
+                IPShipJoints.prepareSpringsForMove(handoff.level(), ship, Set.of(shipId));
             }
             return null;
         }
@@ -867,6 +894,7 @@ final class IPStraddleController {
         if (LET_THROUGH.remove(shipId) != null) {
             // the frame blocks are the source level's; the moved ship gets a new body
             IPStraddleSessions.setGhosts(ship, handoff.level(), List.of());
+            IPPortalRims.setLetThrough(ship, false);
         }
         STUCK_SINCE.remove(shipId);
         IPStraddleSync.markHandedOff(new IPStraddleSessions.Key(shipId, portal.getUUID()));
@@ -922,6 +950,7 @@ final class IPStraddleController {
             if (travelling.size() > 1) {
                 // its partners crossed: ropes tied to them now name ships of another level
                 IPShipRopeCompat.breakAttachedRopes(handoff.level(), restored, Set.of(shipId));
+                IPShipJoints.prepareSpringsForMove(handoff.level(), restored, Set.of(shipId));
             }
             refuse(restored, handoff.level(), handoff.portal(), handoff.portal().getNormal().scale(-1.0), tick,
                     "loading it in the destination failed");

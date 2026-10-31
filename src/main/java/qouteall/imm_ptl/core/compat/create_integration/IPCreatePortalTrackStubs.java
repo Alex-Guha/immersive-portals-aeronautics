@@ -7,6 +7,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,21 +25,18 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.AddSectionGeometryEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.mixin_create.IPLevelRendererSectionInvoker;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
+
 
 /**
  * The far half of a track's bridge into a portal when the other end has no track ({@link IPCreatePortalTracks}): a
@@ -54,10 +52,6 @@ import qouteall.imm_ptl.core.portal.Portal;
  * {@link #SCAN_TICKS} ticks for the rest. Not for ship-mounted portals (Create's portal tracks never link there).
  */
 public final class IPCreatePortalTrackStubs {
-    private static final int SCAN_TICKS = 10;
-    /** Portal blocks walked per portal at most (a 64x64 portal). */
-    private static final int MAX_CELLS = 64 * 64;
-    private static final double PLANE_EPSILON = 1.0e-3;
     private static final float FACE_EPSILON = 1.0e-4f;
     private static final RandomSource RANDOM = RandomSource.create();
     /** Every cull face and none: the stub draws all its faces. */
@@ -72,118 +66,64 @@ public final class IPCreatePortalTrackStubs {
 
     /** Per dimension, per section ({@link SectionPos#asLong}) of the far portal block, the stubs in it. */
     private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> stubs = Map.of();
-    private static int tick;
     private static boolean changed;
     private static boolean changedImportant;
 
     private IPCreatePortalTrackStubs() {
     }
 
-    /** Client block change in any world (main thread). Portal tracks have a block entity; portal blocks matter too. */
-    public static void onBlockChanged(final BlockState oldState, final BlockState newState, final int flags) {
-        if (oldState.getBlock() instanceof TrackBlock || newState.getBlock() instanceof TrackBlock
-            || oldState.getBlock() == qouteall.imm_ptl.core.portal.PortalPlaceholderBlock.instance
-            || newState.getBlock() == qouteall.imm_ptl.core.portal.PortalPlaceholderBlock.instance) {
-            changed = true;
-            changedImportant |= (flags & Block.UPDATE_IMMEDIATE) != 0;
-        }
-    }
+    /** The stubs found in a walk: portals in the world, between world tracks. */
+    static final class TrackScan implements IPCreatePortalEndScan.Scan {
+        private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
 
-    public static void onClientTick(final IPGlobal.PostClientTickEvent event) {
-        if (++tick % SCAN_TICKS == 0) {
-            search(false);
+        @Override
+        public boolean wants(final IPCreatePortalEndScan.Side side) {
+            return side.frame() == null && side.farWorld() != null && IPShipPortals.clusterMountOf(side.portal()) == null
+                && !side.front().getAxis().isVertical() && !out(side).getAxis().isVertical();
         }
-    }
 
-    /** Before each frame: the search for a block change, so both halves are meshed in the frame the track changes. */
-    public static void onPreGameRender(final IPGlobal.PreGameRenderEvent event) {
-        if (changed) {
-            search(changedImportant);
+        /** A train going into the portal from the front side moves this way, and comes out of the far end that way. */
+        private static Direction out(final IPCreatePortalEndScan.Side side) {
+            final Vec3 outVector = side.portal().transformLocalVec(Vec3.atLowerCornerOf(side.front().getOpposite().getNormal()));
+            return Direction.getNearest(outVector.x, outVector.y, outVector.z);
         }
-    }
 
-    private static void search(final boolean important) {
-        // IP's world list is empty from a vanilla dimension change (respawn packet) until IP sets it up again
-        if (!ClientWorldLoader.getIsInitialized()) {
-            return;
-        }
-        changed = false;
-        changedImportant = false;
-        final Map<ResourceKey<Level>, ClientLevel> worlds = new HashMap<>();
-        for (final ClientLevel world : ClientWorldLoader.getClientWorlds()) {
-            worlds.put(world.dimension(), world);
-        }
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
-        for (final ClientLevel world : worlds.values()) {
-            for (final Entity entity : world.entitiesForRendering()) {
-                if (entity instanceof final Portal portal) {
-                    scan(world, portal, worlds, found);
-                }
-            }
-        }
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previous = stubs;
-        stubs = found;
-        markChanged(previous, found, important);
-        markChanged(found, previous, important);
-    }
-
-    /** The portal blocks of {@code portal} with a portal track in front of them on its front side. */
-    private static void scan(
-        final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds,
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found
-    ) {
-        if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6
-            || IPShipPortals.clusterMountOf(portal) != null) {
-            return;
-        }
-        final Vec3 normal = portal.getNormal();
-        final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
-        if (front.getAxis().isVertical() || Vec3.atLowerCornerOf(front.getNormal()).dot(normal) < 1 - PLANE_EPSILON) {
-            return;
-        }
-        final ClientLevel farWorld = worlds.get(portal.getDestDim());
-        if (farWorld == null) {
-            return;
-        }
-        final AABB cells = portal.getBoundingBox().deflate(PLANE_EPSILON);
-        final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
-        final BlockPos max = BlockPos.containing(cells.maxX, cells.maxY, cells.maxZ);
-        if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
-            return;
-        }
-        // a train going into the portal from the front side moves this way, and comes out of the far end that way
-        final Direction in = front.getOpposite();
-        final Vec3 outVector = portal.transformLocalVec(Vec3.atLowerCornerOf(in.getNormal()));
-        final Direction out = Direction.getNearest(outVector.x, outVector.y, outVector.z);
-        if (out.getAxis().isVertical()) {
-            return;
-        }
-        for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
-            final Vec3 centre = Vec3.atCenterOf(cell);
-            if (Math.abs(portal.getDistanceToPlane(centre)) > PLANE_EPSILON
-                || !IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(cell), front)) {
-                continue;
-            }
+        @Override
+        public void cell(final IPCreatePortalEndScan.Side side, final BlockPos cell, final Vec3 worldCentre) {
+            final ClientLevel world = side.world();
+            final ClientLevel farWorld = side.farWorld();
+            final Portal portal = side.portal();
+            final Direction front = side.front();
+            final Direction in = front.getOpposite();
+            final Direction out = out(side);
             final BlockState track = world.getBlockState(cell.relative(front));
             if (!(track.getBlock() instanceof TrackBlock) || track.getValue(TrackBlock.SHAPE) != TrackShape.asPortal(in)) {
-                continue;
+                return;
             }
-            final BlockPos farCell = BlockPos.containing(portal.transformPoint(centre));
+            final BlockPos farCell = BlockPos.containing(portal.transformPoint(worldCentre));
             if (!IPCreatePortalPipes.isPlaceholderFacing(farWorld.getBlockState(farCell), out)) {
-                continue;
+                return;
             }
             final BlockPos spot = farCell.relative(out);
             final BlockState there = farWorld.getBlockState(spot);
             final TrackShape farShape = TrackShape.asPortal(out.getOpposite());
             if (there.getBlock() instanceof TrackBlock && there.getValue(TrackBlock.SHAPE) == farShape) {
-                continue; // the far end's own track draws its half
+                return; // the far end's own track draws its half
             }
             if (IPCreatePortalEnds.outranked(farWorld, spot, out.getOpposite(), IPCreatePortalEnds.Kind.TRACK)) {
-                continue; // a belt, shaft or pipe there owns the space between ({@link IPCreatePortalEnds})
+                return; // a belt, shaft or pipe there owns the space between ({@link IPCreatePortalEnds})
             }
             found.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
                 .computeIfAbsent(SectionPos.asLong(farCell), s -> new ArrayList<>())
                 .add(new Stub(farCell.immutable(), spot.immutable(), track.setValue(TrackBlock.SHAPE, farShape)));
+        }
+
+        @Override
+        public void finish(final Collection<ClientLevel> worlds, final boolean important) {
+            final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previous = stubs;
+            stubs = found;
+            markChanged(previous, found, important);
+            markChanged(found, previous, important);
         }
     }
 

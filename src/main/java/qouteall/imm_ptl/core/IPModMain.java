@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
 import org.slf4j.Logger;
@@ -114,6 +115,9 @@ public class IPModMain {
         // Immersive Aeronautics: portals mounted on Sable ships (their animation driver is read on both sides)
         if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
             qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors.init();
+            qouteall.imm_ptl.core.compat.sable_integration.IPShipPortalTraversal.init();
+            NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
+                event -> qouteall.imm_ptl.core.compat.IPMixinReport.report());
         }
 
         // Immersive Aeronautics: Create shafts through portals

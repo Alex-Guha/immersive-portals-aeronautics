@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal;
 
 import com.mojang.logging.LogUtils;
@@ -932,6 +939,15 @@ public class Portal extends Entity implements
         animation.tick(this);
         
         super.tick();
+    }
+    
+    /**
+     * Immersive Aeronautics: a portal is not pushed by fluids, and looking for them walks every block of its bounding
+     * box, which is large for a tilted portal on a ship: 1.5% of the render thread for a 19x24 one.
+     */
+    @Override
+    protected boolean updateInWaterStateAndDoFluidPushing() {
+        return false;
     }
     
     @Override

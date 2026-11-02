@@ -1,6 +1,6 @@
 // Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
 //
-// Moving portals (portals mounted on ships, docs/plans/ship-mounted-portals.md phase 2). A body straddling a portal
+// Moving portals (portals mounted on ships, docs/lessons/ship-mounted-portals.md). A body straddling a portal
 // that is mounted on another body (the carrier) has an image whose portal isometry follows the carrier: it is derived
 // from the carrier's pose at the start of every step, never sent per tick from Java, and the image gets the portal's
 // frame velocity (Rapier surface velocity, see the engine's contact builders) so its contacts see the portal move.
@@ -12,7 +12,7 @@
 //     body frame to the fixed side, and the prefix is `P = k ∘ B⁻¹`;
 //   - carrier is the destination (the body is at the fixed portal, its image at the carrier): `k` maps the fixed side
 //     into the carrier's body frame, and `P = B ∘ k`;
-//   - both sides on carriers (docs/reports/both-ends-on-ships.md; the source carrier `S` and the destination carrier `D`,
+//   - both sides on carriers (docs/lessons/ship-mounted-portals.md; the source carrier `S` and the destination carrier `D`,
 //     possibly one body): `k` maps the source carrier's body frame into the destination carrier's, and `P = D ∘ k ∘ S⁻¹`.
 
 use jni::JNIEnv;

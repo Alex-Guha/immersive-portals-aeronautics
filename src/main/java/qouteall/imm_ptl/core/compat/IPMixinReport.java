@@ -63,7 +63,8 @@ public final class IPMixinReport {
         "com.seibel.distanthorizons.", "Distant Horizons",
         "me.cortex.voxy.", "Voxy",
         "net.irisshaders.", "Iris",
-        "net.caffeinemc.mods.sodium.", "Sodium"
+        "net.caffeinemc.mods.sodium.", "Sodium",
+        "top.leonx.dynlight.", "Create Dynamic Lights"
     );
 
     private record Applied(String mod, String mixin, ClassNode target, List<String> handlers) {

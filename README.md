@@ -150,16 +150,17 @@ code. Rules: `docs/provenance.md`.
 | `src/main/java/ipaeronautics/rapier/` | Our copy of Sable's Rapier backend (PolyForm Shield) |
 | `natives/` | Rust sources of `ipa_rapier` (Sable's crate with IPSable's changes, vendored Rapier engine) |
 | `scripts/` | Build, test and audit helpers; `scripts/server-test/` holds headless test command files |
-| `docs/` | Plans, licensing, provenance, testing; `docs/lessons/` holds what we learned, one file per subject |
+| `docs/` | Licensing, provenance, testing, bugs, feature requests and the changelog; subfolders under "Docs" below |
 | `reference/` | The fork's decompile (`decompiled/`), its diff against upstream and a per-class analysis |
 | `deps/` | Extracted jar-in-jar libraries for compilation (gitignored) |
-| `BUGS.md` | Open bug reports, concerns and the owed test matrix |
-| `changelog.md` | Changes per release |
 
 ## Docs
 
-- `docs/seamless-ships.md`: ships straddling portals, status and next steps.
-- `docs/lessons/`: how Sable, IP and the other mods behave where it matters to us, and the history of each feature.
+- `docs/lessons/`: how Sable, IP and the other mods behave where it matters to us, and the history of each feature, one file
+  per subject (`README.md` there is the index; `straddling.md` is the way into ships straddling portals).
+- `docs/plans/`: work not built yet. `docs/completed/`: what is left of work that shipped. `docs/reports/`: surveys.
+- `docs/BUGS.md`: open bug reports, concerns and the owed test matrix. `docs/FEATURE-REQUESTS.md`. `docs/changelog.md`: changes per
+  release.
 - `docs/glossary.md`: our internal terms (far half, portal pass, back-bleed, ...).
 - `docs/testing.md`: headless and in-game testing, static checks.
 - `docs/licensing.md`, `docs/provenance.md`, `NOTICE`: licences and the origin of every file.

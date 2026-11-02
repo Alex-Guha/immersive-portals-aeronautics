@@ -20,7 +20,7 @@ import qouteall.imm_ptl.peripheral.wand.ProtoPortal;
 import qouteall.imm_ptl.peripheral.wand.ProtoPortalSide;
 
 /**
- * IP's portal wand on ships (docs/plans/custom-mounts.md, step 3), client side; only called with Sable present.
+ * IP's portal wand on ships (docs/lessons/ship-mounted-portals.md), client side; only called with Sable present.
  * <p>
  * Every point the wand keeps (corners, cursor, the plane and circle that constrain the next corner) is in a frame: the
  * world, or the plot of the ship it was put on, which its coordinates tell. Sable's raycast already gives plot

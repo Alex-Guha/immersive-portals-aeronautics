@@ -14,6 +14,7 @@
     "MixinDatabankPostShaders_PortalPassSkip",
     "MixinSodiumDynamicLights_PerDimensionUpdate",
     "MixinSodiumDynamicLights_StraddleLights",
+    "MixinCreateDynLights_PortalBlocks",
     "MixinEuphoriaDimensionRefresh_NoRebuild",
     "MixinIrisPipelineManager_EuphoriaPack",
     "IEIris_CurrentPack",

@@ -64,19 +64,19 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 /**
- * Server side of ship-mounted portals (docs/plans/ship-mounted-portals.md, phase 1): anchoring a portal to its carrier
+ * Server side of ship-mounted portals (docs/lessons/ship-mounted-portals.md): anchoring a portal to its carrier
  * ship, capture on assembly, restore on disassembly, and shattering.
  * <p>
  * A ship-mounted portal is an ordinary IP breakable portal cluster (two faces on each side) whose ship-side holder has
  * an {@link IPShipPortalDriver}. Its frame and portal blocks are in the carrier's plot, so the holders' block shape is
  * in plot coordinates while the entities are in the world, at the carrier's pose. The fixed side is untouched.
  * <p>
- * Custom portals (IP's portal wand, {@code /portal} commands; docs/plans/custom-mounts.md) are mounted the same way,
+ * Custom portals (IP's portal wand, {@code /portal} commands; docs/lessons/ship-mounted-portals.md) are mounted the same way,
  * on any plain portal cluster, but have no frame: they belong to the blocks they touch ({@link #support}), are never
  * judged by their blocks, and are removed with the same effects wherever a nether portal shatters. Their other side
  * may be in the carrier's own dimension.
  * <p>
- * Both ends of a cluster may be on ships, one ship or two (docs/reports/both-ends-on-ships.md): the holder then has a
+ * Both ends of a cluster may be on ships, one ship or two (docs/lessons/ship-mounted-portals.md): the holder then has a
  * second driver on the other side of its animation, for the far end's ship, and its other-side reference state is the
  * far end in that ship's plot. Each end is mounted, carried and detached on its own ({@link End}); a holder may keep
  * only its other-side driver when its own end leaves its ship.
@@ -939,7 +939,7 @@ public final class IPShipPortalAnchors {
 
     /**
      * A portal made with IP's portal wand or {@code /portal} commands: the plain portal entity type, not global, not a
-     * mirror, an end portal or a nether portal (docs/plans/custom-mounts.md).
+     * mirror, an end portal or a nether portal (docs/lessons/ship-mounted-portals.md, "Custom portals").
      */
     public static boolean isCustom(final Portal portal) {
         return portal.getType() == Portal.ENTITY_TYPE && !portal.getIsGlobal();

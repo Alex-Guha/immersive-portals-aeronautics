@@ -62,7 +62,7 @@ public final class IPCreateCarriageCrossingClient {
      * entities exactly at the far portal (no band, {@code MixinFlywheelRenderDispatcher_PortalClipState}), so the 1 cm
      * the ship cut keeps clear of the plane showed as a seam between the two halves (1.24.7).
      */
-    private static final double SEAM = FrontClipping.ADJUSTMENT;
+    static final double SEAM = FrontClipping.ADJUSTMENT;
     private static final float[] REJECT = {0f, 0f, 0f, -1f};
 
     /** The carriage copy whose bogeys are being placed on this thread ({@code translateBogey} has no entity). */
@@ -218,7 +218,7 @@ public final class IPCreateCarriageCrossingClient {
         }
     }
 
-    /** A carriage's model is being built ({@code ContraptionVisual.setupStructure}): note what for. */
+    /** A carriage's model is being built ({@code ContraptionVisual.setupStructure}, or Create's vanilla path): note what for. */
     public static void onStructureBuilt(@Nullable final Contraption contraption) {
         if (!(contraption instanceof final CarriageContraption carriageContraption)
             || !(contraption instanceof final IPCarriageCrossingHolder holder)) {
@@ -290,6 +290,11 @@ public final class IPCreateCarriageCrossingClient {
         return null;
     }
 
+    /** Copies reaching through a portal with no placed copy on the other side, and the crossing each is cut by. */
+    static Map<CarriageContraptionEntity, IPCreateCarriageCrossing.Crossing> farHalves() {
+        return FAR_HALVES;
+    }
+
     /** Remembers a Flywheel embedding drawing (part of) a carriage. */
     public static void registerEmbedding(@Nullable final VisualEmbedding embedding, @Nullable final Entity entity) {
         if (embedding instanceof final EmbeddedEnvironment environment && entity instanceof final CarriageContraptionEntity carriage) {
@@ -325,11 +330,13 @@ public final class IPCreateCarriageCrossingClient {
         if (crossing == null) {
             return null;
         }
-        if (facesPortalClipAway(crossing.keepPoint(), crossing.keepNormal())) {
+        if (facesPortalClipAway(IPCreateTrainShipsClient.renderPoint(entity, crossing.keepPoint()),
+            IPCreateTrainShipsClient.renderDirection(entity, crossing.keepNormal()))) {
             return REJECT;
         }
-        final Vec3 n = crossing.keepNormal();
-        final Vec3 rel = crossing.keepPoint().subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
+        final Vec3 n = IPCreateTrainShipsClient.renderDirection(entity, crossing.keepNormal());
+        final Vec3 rel = IPCreateTrainShipsClient.renderPoint(entity, crossing.keepPoint())
+            .subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
         final double w = -n.dot(rel) + (PortalRendering.isRendering() ? SEAM : 0.0);
         return new float[]{(float) n.x, (float) n.y, (float) n.z, (float) w};
     }
@@ -390,7 +397,8 @@ public final class IPCreateCarriageCrossingClient {
      */
     public static BitSet withoutBeyondPlane(final BitSet shouldRender, final List<BlockEntity> blockEntities,
                                             @Nullable final AbstractContraptionEntity entity, final BitSet scratch) {
-        if (!(entity instanceof CarriageContraptionEntity) || shouldRender.isEmpty() || IPCreateCarriageCrossing.STOCK) {
+        if (!(entity instanceof CarriageContraptionEntity) || shouldRender.isEmpty() || IPCreateCarriageCrossing.STOCK
+            || IPCreateCarriageVanillaDraw.isDrawingFarHalf()) {
             return shouldRender;
         }
         BitSet result = shouldRender;
@@ -429,29 +437,37 @@ public final class IPCreateCarriageCrossingClient {
         final Vec3 middle = first.add(second).scale(0.5);
         final Vec3 axis = first.subtract(second).normalize();
         final AABB box = entity.getBoundingBox();
-        final List<Portal> portals = IPPortalLookup.touching(entity.level(), box.inflate(0.5),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6);
-        Portal best = null;
+        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(entity.level(), middle);
+        final Vec3 worldMiddle = frame == null ? middle : frame.toWorld(middle);
+        final List<Portal> portals = IPPortalLookup.touching(entity.level(), frame == null ? box.inflate(0.5)
+                : new AABB(worldMiddle, worldMiddle).inflate(box.getSize() + 0.5),
+            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6
+                && (frame == null || IPCreatePortalShafts.onOwnSide(p, frame)));
+        IPCreateTrainPortal best = null;
         Vec3 bestHit = null;
         double bestDistance = Double.MAX_VALUE;
         for (final Portal portal : portals) {
-            final Vec3 normal = portal.getNormal();
+            final IPCreateTrainPortal via = IPCreateTrainPortal.of(portal, frame);
+            if (via == null) {
+                continue;
+            }
+            final Vec3 normal = via.normal();
             final double along = axis.dot(normal);
             if (Math.abs(along) < MIN_AXIS_DOT) {
                 continue;
             }
-            final double distance = portal.getDistanceToPlane(middle);
+            final double distance = via.distanceToPlane(middle);
             final Vec3 hit = middle.subtract(axis.scale(distance / along));
-            if (portal.getDistanceToNearestPointInPortal(hit) > 0.5) {
+            if (via.distanceToOpening(hit) > 0.5) {
                 continue;
             }
             // a copy straddling the plane by its bounding box only: some corner lies on the other side
             final double sign = Math.signum(distance) == 0.0 ? 1.0 : Math.signum(distance);
-            if (!reachesPast(box, portal.getOriginPos(), normal.scale(sign))) {
+            if (!reachesPast(box, via.origin(), normal.scale(sign))) {
                 continue;
             }
             if (Math.abs(distance) < bestDistance) {
-                best = portal;
+                best = via;
                 bestHit = hit;
                 bestDistance = Math.abs(distance);
             }
@@ -459,8 +475,8 @@ public final class IPCreateCarriageCrossingClient {
         if (best == null) {
             return null;
         }
-        final double sign = best.getDistanceToPlane(middle) < 0.0 ? -1.0 : 1.0;
-        return new IPCreateCarriageCrossing.Crossing(best, best.getOriginPos(), best.getNormal().scale(sign), true,
+        final double sign = best.distanceToPlane(middle) < 0.0 ? -1.0 : 1.0;
+        return new IPCreateCarriageCrossing.Crossing(best, best.origin(), best.normal().scale(sign), true,
             otherKeyThrough(best, bestHit));
     }
 
@@ -470,12 +486,13 @@ public final class IPCreateCarriageCrossingClient {
      * at track level half a block from the plane).
      */
     private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> otherKeyThrough(
-        final Portal portal, final Vec3 hit) {
+        final IPCreateTrainPortal via, final Vec3 hit) {
+        final Portal portal = via.portal();
         if (!portal.getDestDim().equals(portal.level().dimension())) {
             return portal.getDestDim();
         }
         final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> face =
-            IPCreateTrainSides.faceKeyNear(portal.getDestDim(), portal.transformPoint(hit), 3.0);
+            IPCreateTrainSides.faceKeyNear(portal.getDestDim(), via.through(hit), 3.0);
         return face != null ? face : portal.getDestDim();
     }
 
@@ -498,7 +515,7 @@ public final class IPCreateCarriageCrossingClient {
      * carriage left: either way it is not placed and stands still), or another copy draws the far half into its
      * dimension while this one is not ready.
      */
-    private static boolean isHidden(final CarriageContraptionEntity entity) {
+    static boolean isHidden(final CarriageContraptionEntity entity) {
         if (IPCreateCarriageCrossing.STOCK) {
             return false;
         }
@@ -547,10 +564,10 @@ public final class IPCreateCarriageCrossingClient {
                 || !IPCreateCarriageCrossing.isFinite(second)) {
                 continue;
             }
-            final Portal portal = crossing.portal();
-            final Vec3 position = portal.transformPoint(anchor.add(IPCreateCarriageCrossing.shift(leaderEntity, leader)));
-            final Vec3 a = portal.transformPoint(first);
-            final Vec3 b = portal.transformPoint(second);
+            final IPCreateTrainPortal via = crossing.via();
+            final Vec3 position = via.through(anchor.add(IPCreateCarriageCrossing.shift(leaderEntity, leader)));
+            final Vec3 a = via.through(first);
+            final Vec3 b = via.through(second);
             final double dx = a.x - b.x;
             final double dy = a.y - b.y;
             final double dz = a.z - b.z;
@@ -569,11 +586,11 @@ public final class IPCreateCarriageCrossingClient {
             }
             FOLLOWING.put(entity, Boolean.TRUE);
             // its cut: this dimension's portal back to the leader, keeping the side away from the leader's part
-            final Vec3 keepPoint = portal.transformPoint(crossing.keepPoint());
-            final Portal back = portalBack(entity.level(), keepPoint, IPCreateTrainSides.realDimension(entry.getKey()));
+            final Vec3 keepPoint = via.through(crossing.keepPoint());
+            final IPCreateTrainPortal back = portalBack(entity.level(), keepPoint, IPCreateTrainSides.realDimension(entry.getKey()));
             if (entity.getContraption() instanceof final IPCarriageCrossingHolder holder) {
                 holder.ip_setCrossing(back == null ? null : new IPCreateCarriageCrossing.Crossing(back, keepPoint,
-                    portal.transformLocalVecNonScale(crossing.keepNormal()).scale(-1.0), false, entry.getKey()));
+                    via.throughDirection(crossing.keepNormal()).scale(-1.0), false, entry.getKey()));
                 refreshRendered(entity);
             }
             return true;
@@ -582,15 +599,19 @@ public final class IPCreateCarriageCrossingClient {
     }
 
     @Nullable
-    private static Portal portalBack(final net.minecraft.world.level.Level level, final Vec3 point,
-                                     final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> leaderDim) {
-        Portal best = null;
+    private static IPCreateTrainPortal portalBack(final net.minecraft.world.level.Level level, final Vec3 point,
+                                                  final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> leaderDim) {
+        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(level, point);
+        final Vec3 world = frame == null ? point : frame.toWorld(point);
+        IPCreateTrainPortal best = null;
         double bestDistance = 1.0;
-        for (final Portal candidate : IPPortalLookup.touching(level, new AABB(point, point).inflate(1.5),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && leaderDim.equals(p.getDestDim()))) {
-            final double distance = candidate.getDistanceToNearestPointInPortal(point);
-            if (distance < bestDistance) {
-                best = candidate;
+        for (final Portal candidate : IPPortalLookup.touching(level, new AABB(world, world).inflate(1.5),
+            p -> !(p instanceof Mirror) && p.getTeleportable() && leaderDim.equals(p.getDestDim())
+                && IPCreatePortalShafts.onOwnSide(p, frame))) {
+            final double distance = candidate.getDistanceToNearestPointInPortal(world);
+            final IPCreateTrainPortal via = distance < bestDistance ? IPCreateTrainPortal.of(candidate, frame) : null;
+            if (via != null) {
+                best = via;
                 bestDistance = distance;
             }
         }
@@ -643,7 +664,8 @@ public final class IPCreateCarriageCrossingClient {
      * with Create alone).
      */
     public static boolean drawsVanillaPart(@Nullable final Entity entity, final net.minecraft.core.BlockPos localPos) {
-        if (!(entity instanceof final CarriageContraptionEntity carriageEntity) || IPCreateCarriageCrossing.STOCK) {
+        if (!(entity instanceof final CarriageContraptionEntity carriageEntity) || IPCreateCarriageCrossing.STOCK
+            || IPCreateCarriageVanillaDraw.isDrawingFarHalf()) {
             return true;
         }
         final boolean drawn = drawsVanillaPartOf(carriageEntity, localPos);
@@ -758,7 +780,7 @@ public final class IPCreateCarriageCrossingClient {
             final IPFlywheelStraddleClip.FarHalf selection = (sourceLevel, environment, root, renderOrigin) -> {
                 final CarriageContraptionEntity owner = ownerOf(environment, root);
                 final IPCreateCarriageCrossing.Crossing crossing = owner != null ? carriages.get(owner) : null;
-                final float[] plane = crossing != null && !isOutdated(owner, true) ? farHalfPlane(crossing, renderOrigin) : null;
+                final float[] plane = crossing != null && !isOutdated(owner, true) ? farHalfPlane(owner, crossing, renderOrigin) : null;
                 if (plane != null) {
                     IPCreateCrossingTrace.plane(owner, plane);
                 }
@@ -780,19 +802,21 @@ public final class IPCreateCarriageCrossingClient {
     }
 
     /** The cut of a copy's far half: keeps the part past the plane, in the copy's own dimension. */
-    private static float[] farHalfPlane(final IPCreateCarriageCrossing.Crossing crossing, final Vec3i renderOrigin) {
+    private static float[] farHalfPlane(final CarriageContraptionEntity entity, final IPCreateCarriageCrossing.Crossing crossing,
+                                        final Vec3i renderOrigin) {
         final Portal portal = crossing.portal();
-        final Vec3 n = crossing.keepNormal().scale(-1.0);
-        if (facesPortalClipAway(portal.transformPoint(crossing.keepPoint()), portal.transformLocalVecNonScale(n))) {
+        final Vec3 point = IPCreateTrainShipsClient.renderPoint(entity, crossing.keepPoint());
+        final Vec3 n = IPCreateTrainShipsClient.renderDirection(entity, crossing.keepNormal()).scale(-1.0);
+        if (facesPortalClipAway(portal.transformPoint(point), portal.transformLocalVecNonScale(n))) {
             return REJECT;
         }
-        final Vec3 rel = crossing.keepPoint().subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
+        final Vec3 rel = point.subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
         final double w = -n.dot(rel) + (PortalRendering.isRendering() ? SEAM : 0.0);
         return new float[]{(float) n.x, (float) n.y, (float) n.z, (float) w};
     }
 
     /** Whether, in the current portal pass, IP's clip plane is the plane (point, keep normal) facing the other way. */
-    private static boolean facesPortalClipAway(final Vec3 point, final Vec3 keepNormal) {
+    static boolean facesPortalClipAway(final Vec3 point, final Vec3 keepNormal) {
         if (!PortalRendering.isRendering()) {
             return false;
         }

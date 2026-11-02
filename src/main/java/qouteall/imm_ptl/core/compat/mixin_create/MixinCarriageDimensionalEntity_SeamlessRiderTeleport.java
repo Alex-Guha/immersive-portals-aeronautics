@@ -98,7 +98,7 @@ public class MixinCarriageDimensionalEntity_SeamlessRiderTeleport {
         final Vec3 seated = ip_seatedPosition;
         ip_seatedPosition = null;
         if (crossing != null && seated != null && crossing.portal().getDestDim().equals(level.dimension())) {
-            target = crossing.portal().transformPoint(seated);
+            target = crossing.via().riderThrough(seated);
             final Vec3 look = crossing.portal().transformLocalVecNonScale(player.getLookAngle());
             player.setYRot((float) Math.toDegrees(Math.atan2(-look.x, look.z)));
             player.setXRot((float) Math.toDegrees(Math.atan2(-look.y, Math.sqrt(look.x * look.x + look.z * look.z))));

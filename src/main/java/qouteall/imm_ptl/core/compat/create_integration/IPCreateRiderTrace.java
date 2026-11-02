@@ -68,7 +68,7 @@ public final class IPCreateRiderTrace {
         final float partialTick = client.getTimer().getGameTimeDeltaPartialTick(false);
         final Vec3 eye = player.getEyePosition(partialTick);
         final IPCreateCarriageCrossing.Crossing crossing = onTrain ? IPCreateCarriageCrossingClient.crossingOf(vehicle) : null;
-        final double depth = crossing == null ? Double.NaN : -eye.subtract(crossing.keepPoint()).dot(crossing.keepNormal());
+        final double depth = crossing == null ? Double.NaN : -crossing.worldDepth(eye);
         if (crossing != null && Math.abs(depth) < NEAR) {
             framesLeft = Math.max(framesLeft, 1);
         }

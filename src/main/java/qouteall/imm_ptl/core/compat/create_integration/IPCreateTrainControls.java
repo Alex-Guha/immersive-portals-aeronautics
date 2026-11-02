@@ -138,7 +138,8 @@ public final class IPCreateTrainControls {
      */
     public static boolean canReach(final AbstractContraptionEntity entity, final Player player, final Vec3 localPos,
                                    final double distance) {
-        final AABB block = new AABB(BlockPos.containing(entity.toGlobalVector(localPos, 0.0f)));
+        // a copy on a ship stands in its plot: portals and players are in the world
+        final AABB block = new AABB(BlockPos.containing(worldPosition(entity, entity.toGlobalVector(localPos, 0.0f))));
         final double range = player.blockInteractionRange() + distance;
         final Vec3 eye = player.getEyePosition();
         for (final Portal portal : IPMcHelper.getNearbyPortalList(player.level(), eye, range,
@@ -179,7 +180,7 @@ public final class IPCreateTrainControls {
         final boolean told = level.getPlayerByUUID(driver.get()) != null;
         final String where = player == null ? "offline" : player.level().dimension().location()
             + (player.level() == level ? ", " + String.format("%.2f",
-            entity.toGlobalVector(Vec3.atCenterOf(controlsPos), 1.0f).distanceTo(player.getEyePosition()))
+            worldPosition(entity, entity.toGlobalVector(Vec3.atCenterOf(controlsPos), 1.0f)).distanceTo(player.getEyePosition()))
             + " from the controls" : "");
         if (player != null && !told) {
             CatnipServices.NETWORK.sendToClient(player, ControlsStopControllingPacket.INSTANCE);
@@ -222,7 +223,7 @@ public final class IPCreateTrainControls {
             if (copy == null || copy.isRemoved() || copy.level() != player.level()) {
                 continue;
             }
-            final double distance = copy.distanceToSqr(player);
+            final double distance = worldPosition(copy, copy.position()).distanceToSqr(player.position());
             if (distance < bestDistance) {
                 best = copy;
                 bestDistance = distance;
@@ -258,6 +259,12 @@ public final class IPCreateTrainControls {
             from.setControllingPlayer(null);
         }
         to.setControllingPlayer(driver);
+    }
+
+    /** A position of a carriage copy, in the world: on a ship through its pose. */
+    private static Vec3 worldPosition(final AbstractContraptionEntity entity, final Vec3 position) {
+        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(entity.level(), position);
+        return frame == null ? position : frame.toWorld(position);
     }
 
     /** The calls that led here (callers of the logging hook), for the log. */

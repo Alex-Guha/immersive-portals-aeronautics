@@ -156,7 +156,7 @@ public class IPGlobal {
         disabled
     }
     
-    // Immersive Aeronautics: portals on Sable ships (docs/plans/link-strain.md)
+    // Immersive Aeronautics: portals on Sable ships (docs/lessons/ship-mounted-portals.md, "Link strain")
     public static enum ShipPortalMode {
         off,
         limited,

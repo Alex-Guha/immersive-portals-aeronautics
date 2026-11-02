@@ -15,7 +15,7 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
  * bound framebuffer's stencil bits, so DH restored 0. A portal pass draws where the stencil equals its layer (1 or
  * more); with 0, DH's full-screen LOD composite and then the rest of the pass drew everywhere outside the portal: the
  * other dimension's LODs and terrain across the screen (player reports with 2.2.4 on Mesa, 2026-10-16; story in
- * docs/lessons/portal-rendering.md). NVIDIA returns the unclamped value, so it never showed there.
+ * docs/lessons/portal-rendering-dh.md). NVIDIA returns the unclamped value, so it never showed there.
  * <p>
  * The settings are read at the start of each DH call, while Minecraft's framebuffer is bound; DH never changes them
  * itself, so they are the true ones for the whole call. Every DH snapshot taken during the call gets them

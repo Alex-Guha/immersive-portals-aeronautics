@@ -120,7 +120,7 @@ public final class IPShipPortalCommand {
     }
 
     /**
-     * {@code mount}: mounts each custom portal's side on the ship whose blocks it touches (docs/plans/custom-mounts.md).
+     * {@code mount}: mounts each custom portal's side on the ship whose blocks it touches (docs/lessons/ship-mounted-portals.md).
      * {@code unmount}: leaves each mounted custom portal in the world where it is. One portal per cluster.
      */
     private static int mount(final CommandContext<CommandSourceStack> context, final boolean mount,

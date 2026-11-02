@@ -32,6 +32,7 @@ import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.collision.PortalCollisionEntry;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
+import qouteall.imm_ptl.core.compat.sable_integration.IPPlotEntitiesClient;
 import qouteall.imm_ptl.core.ducks.IEEntity;
 import qouteall.imm_ptl.core.ducks.IEWorldRenderer;
 import qouteall.imm_ptl.core.portal.Mirror;
@@ -56,6 +57,8 @@ public class CrossPortalEntityRenderer {
     public static boolean isRenderingEntityNormally = false;
     
     public static boolean isRenderingEntityProjection = false;
+    
+    private static final double LONG_ENTITY = 3;
     
     public static void init() {
         NeoForge.EVENT_BUS.addListener(IPGlobal.PostClientTickEvent.class, postClientTickEvent -> CrossPortalEntityRenderer.onClientTick());
@@ -416,11 +419,22 @@ public class CrossPortalEntityRenderer {
                 return false;
             }
             
+            // Immersive Aeronautics: an entity in a ship's plot is tested where the ship puts it
             return renderingPortal.isOnDestinationSide(
-                getRenderingCameraPos(entity), -0.01
+                IPPlotEntitiesClient.toWorld(entity, getRenderingCameraPos(entity)), -reachPastPortal(entity)
             );
         }
         return true;
+    }
+    
+    /**
+     * Immersive Aeronautics: how far an entity's eye may be short of the far portal with the entity still drawn. A long
+     * one (a train carriage) reaches through well before its middle does; IP's clip plane cuts what is short of the portal.
+     */
+    private static double reachPastPortal(Entity entity) {
+        AABB box = entity.getBoundingBoxForCulling();
+        double longest = Math.max(box.getXsize(), Math.max(box.getYsize(), box.getZsize()));
+        return longest > LONG_ENTITY ? longest / 2 : 0.01;
     }
     
     public static boolean shouldRenderPlayerNormally(Entity entity) {

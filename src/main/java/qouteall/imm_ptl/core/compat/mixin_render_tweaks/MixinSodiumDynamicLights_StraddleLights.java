@@ -23,6 +23,10 @@ import java.util.function.Consumer;
  * What {@code IPStraddleDynLights} needs from SodiumDynamicLights to light both halves of a straddling ship: the
  * current sources (to find Create Dynamic Lights' lights of the ship's far-half lamps), and leaving out of the light
  * at a block the sources it suppresses ({@link IPDynLightsSuppression}).
+ * <p>
+ * The light at a block also skips sources out of range before SDL asks for their luminance. SDL does that last, and
+ * this runs per source for every light lookup: Create Dynamic Lights' sources read their config for each answer, 9.6%
+ * of the render thread with a 19x24 portal on a ship (spark, 2026-10-31).
  */
 @Mixin(value = SodiumDynamicLights.class, remap = false)
 public abstract class MixinSodiumDynamicLights_StraddleLights implements IPSodiumDynamicLightsExt {
@@ -33,6 +37,10 @@ public abstract class MixinSodiumDynamicLights_StraddleLights implements IPSodiu
     @Shadow
     @Final
     private ReentrantReadWriteLock lightSourcesLock;
+
+    @Shadow
+    @Final
+    private static double MAX_RADIUS_SQUARED;
 
     @Override
     public void ip_forEachSource(Consumer<DynamicLightSource> action) {
@@ -59,6 +67,13 @@ public abstract class MixinSodiumDynamicLights_StraddleLights implements IPSodiu
     ) {
         Set<Object> suppressed = IPDynLightsSuppression.suppressed;
         if (!suppressed.isEmpty() && suppressed.contains(source)) {
+            return currentLightLevel;
+        }
+        // as in maxDynamicLightLevel, which gives currentLightLevel for these whatever the luminance
+        double x = pos.getX() - source.sdl$getDynamicLightX() + 0.5;
+        double y = pos.getY() - source.sdl$getDynamicLightY() + 0.5;
+        double z = pos.getZ() - source.sdl$getDynamicLightZ() + 0.5;
+        if (x * x + y * y + z * z > MAX_RADIUS_SQUARED) {
             return currentLightLevel;
         }
         return original.call(pos, source, currentLightLevel);

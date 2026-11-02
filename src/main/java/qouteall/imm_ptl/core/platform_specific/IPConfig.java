@@ -86,7 +86,7 @@ public class IPConfig {
     public boolean easeCommandStickPermission = false;
     public boolean portalsChangeGravityByDefault = false;
     public boolean portalWandUsableOnSurvivalMode = false;
-    // Immersive Aeronautics: portals on Sable ships (docs/plans/ship-mounted-portals.md, link-strain.md). The mode is
+    // Immersive Aeronautics: portals on Sable ships (docs/lessons/ship-mounted-portals.md). The mode is
     // null until onConfigChanged settles it: a config with shipMountedPortals keeps what it did, a new one is limited
     public IPGlobal.ShipPortalMode shipPortalMode = null;
     public int shipPortalRangeChunks = 64;
@@ -112,7 +112,7 @@ public class IPConfig {
     public JsonObject dimStackPreset = null;
     
     // in chunks. A fresh portal may link to a frame up to about 532 overworld blocks from its mapped position: a lower
-    // limit could break a portal as it is lit (docs/plans/link-strain.md)
+    // limit could break a portal as it is lit (docs/lessons/ship-mounted-portals.md, "Link strain")
     public static final int SHIP_PORTAL_RANGE_MIN = 38;
     public static final int SHIP_PORTAL_RANGE_MAX = 625;
     

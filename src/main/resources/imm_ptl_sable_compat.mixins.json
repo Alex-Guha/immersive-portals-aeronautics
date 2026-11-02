@@ -9,6 +9,7 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "MixinEntity_SeatProxyRider",
+    "MixinServerPlayer_SeatInOtherLevel",
     "MixinSableSeatPositionDimStamp",
     "MixinSableTracking_EntityRespawn",
     "MixinSablePhysicsTickets_BlockTickingFix",
@@ -42,6 +43,7 @@
   ],
   "client": [
     "MixinAcsCameraController_PortalPass",
+    "MixinFlywheelCompat_PosesPerLevel",
     "MixinRenderSection_GlobalBlockEntitiesPerLevel",
     "MixinSectionOcclusionGraph_NullGuard",
     "MixinSableStartTracking_DupGuard",
@@ -58,6 +60,7 @@
     "MixinSableClientSubLevel_StraddlePose",
     "MixinSableChunkedRenderData_StraddleClip",
     "MixinSableRenderDispatcher_StraddleProjection",
+    "MixinSableSingleRenderData_FarHalfLight",
     "MixinSableBlockEntityRenderer_StraddleCut",
     "MixinSableStopTracking_HandoffLatch",
     "MixinSableStartTracking_HandoffLatch",

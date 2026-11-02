@@ -49,7 +49,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * Both sides look the far side up, so the client's items also run on to the plane rather than stopping at the belt's
  * end until the server hands them over. A belt on a ship goes through a portal mounted on that same ship, to the
  * fixed far side, and back (2.6.12.8), as shafts and pipes do. Portals at scale 1 and on the block grid. Mixin: {@code MixinBeltInventory_PortalBelts}. Plan and next steps:
- * docs/plans/belts.md.
+ * docs/lessons/create-belts.md.
  */
 public final class IPCreatePortalBelts {
     private static final Logger LOGGER = LogUtils.getLogger();

@@ -214,12 +214,11 @@ public final class IPCreateCrossingTrace {
         }
         final IPCreateCarriageCrossing.Crossing own = IPCreateCarriageCrossingClient.crossingOf(copy);
         if (own != null && own.otherKey().equals(referenceKey)) {
-            return own.portal().transformPoint(position);
+            return own.via().through(position);
         }
         final IPCreateCarriageCrossing.Crossing ref = IPCreateCarriageCrossingClient.crossingOf(reference);
         if (ref != null && ref.otherKey().equals(copyKey)) {
-            final Portal portal = ref.portal();
-            return portal.inverseTransformPoint(position);
+            return ref.via().back(position);
         }
         return null;
     }

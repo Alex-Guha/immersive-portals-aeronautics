@@ -58,7 +58,7 @@ public final class IPStraddleClientSessions {
     }
 
     /**
-     * A session at a portal mounted on a ship (docs/plans/ship-mounted-portals.md, phase 4): its geometry follows the
+     * A session at a portal mounted on a ship (docs/lessons/ship-mounted-portals.md): its geometry follows the
      * carriers as drawn ({@code IPStraddleSync.sendMount} for the invariants). A side without a carrier is fixed.
      */
     private record Mount(boolean hasSource, UUID source, ResourceKey<Level> sourceDim,

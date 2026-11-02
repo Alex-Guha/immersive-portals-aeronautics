@@ -44,6 +44,8 @@ import java.util.List;
  *     plane mirrored, so only the part past the destination plane shows. Same compiled geometry, no copy.</li>
  *     <li><b>Block entities</b> are kept or dropped whole, by block centre, on either side (they are batched and drawn
  *     after the ship, outside any per-ship clip).</li>
+ *     <li><b>Single-block ships</b> are cut on the CPU, on both sides ({@link #drawSingleBlock}): Sable draws them in a
+ *     batch after the section layers.</li>
  * </ul>
  * Only the vanilla terrain shaders and an Iris shader pack's terrain programs carry the plane
  * (shader_transformation.json). A shader without it (a pack's shadow programs) gets no source cut, and no projection is
@@ -511,6 +513,52 @@ public final class IPStraddleRender {
         final org.joml.Vector3f drawingNormal = matrix.transformDirection(
                 new org.joml.Vector3f((float) localNormal.x, (float) localNormal.y, (float) localNormal.z)).normalize();
         return new org.joml.Vector3f[]{drawingNormal, anchor};
+    }
+
+    /**
+     * Draws the block of a single-block ship, which Sable batches after the section layers: neither the ship's cut
+     * ({@link #beginShipDraw}) nor IP's portal plane is on there and a batch has no per-ship uniform, so both are applied
+     * on the CPU, at the same places as for a ship drawn in sections. Its vertices are written in drawing space,
+     * {@code modelView (world - camera)}.
+     *
+     * @param draw draws the block into the consumer it is given
+     */
+    public static void drawSingleBlock(final ClientSubLevel ship, final com.mojang.blaze3d.vertex.VertexConsumer consumer,
+                                       final org.joml.Matrix4f modelView, final Vec3 camera,
+                                       final java.util.function.Consumer<com.mojang.blaze3d.vertex.VertexConsumer> draw) {
+        final KeepPlane plane = planeFor(ship);
+        if (plane != null && facesPortalClipAway(plane)) {
+            return;
+        }
+        final Plane portal = PortalRendering.isRendering() ? PortalRendering.getActiveClippingPlane() : null;
+        IPPlaneClippingVertexConsumer atCut = null;
+        IPPlaneClippingVertexConsumer atPortal = null;
+        com.mojang.blaze3d.vertex.VertexConsumer target = consumer;
+        if (plane != null) {
+            target = atCut = clippingInDrawingSpace(target, plane.point().subtract(plane.normal().scale(seamReach())),
+                    plane.normal(), modelView, camera);
+        }
+        if (portal != null) {
+            target = atPortal = clippingInDrawingSpace(target, portal.pos().subtract(portal.normal().scale(FrontClipping.ADJUSTMENT)),
+                    portal.normal(), modelView, camera);
+        }
+        draw.accept(target);
+        // the outer one first: its last quad goes through the inner one
+        if (atPortal != null) {
+            atPortal.flush();
+        }
+        if (atCut != null) {
+            atCut.flush();
+        }
+    }
+
+    private static IPPlaneClippingVertexConsumer clippingInDrawingSpace(final com.mojang.blaze3d.vertex.VertexConsumer consumer,
+                                                                        final Vec3 point, final Vec3 normal,
+                                                                        final org.joml.Matrix4f modelView, final Vec3 camera) {
+        final Vec3 rel = point.subtract(camera);
+        return new IPPlaneClippingVertexConsumer(consumer,
+                modelView.transformDirection(new org.joml.Vector3f((float) normal.x, (float) normal.y, (float) normal.z)).normalize(),
+                modelView.transformPosition(new org.joml.Vector3f((float) rel.x, (float) rel.y, (float) rel.z)));
     }
 
     /**

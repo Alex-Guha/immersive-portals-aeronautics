@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Ships straddling portals (docs/seamless-ships.md). Entry points for the rest of the mod; only called with Sable
+ * Ships straddling portals (docs/lessons/straddling.md). Entry points for the rest of the mod; only called with Sable
  * present.
  * <p>
  * {@link #isAvailable()} (D4) is true when our physics backend runs every level and straddling is switched on. Then

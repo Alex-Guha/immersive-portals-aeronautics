@@ -23,6 +23,6 @@ public class MixinTrackBlockEntity_PortalTracks {
         at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;destroyBlock(Lnet/minecraft/core/BlockPos;Z)Z")
     )
     private boolean ip_keepLaidTrack(final ServerLevel level, final BlockPos pos, final boolean drop, final Operation<Boolean> original) {
-        return IPCreatePortalTracks.onPartnerRemoved(level, pos) || original.call(level, pos, drop);
+        return IPCreatePortalTracks.onPartnerRemoved(level, pos, ((TrackBlockEntity) (Object) this).getBlockPos()) || original.call(level, pos, drop);
     }
 }

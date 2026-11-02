@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * IP's portal wand on ships (docs/plans/custom-mounts.md, step 3), server side; only called with Sable present. A corner
+ * IP's portal wand on ships (docs/lessons/ship-mounted-portals.md), server side; only called with Sable present. A corner
  * the wand puts on a ship's block is in that ship's plot (Sable's raycast gives plot coordinates), and the client keeps
  * the rest of that side in the same plot ({@code IPShipPortalWandClient}). So a side drawn on a ship arrives in plot
  * coordinates: it is mapped into the world at the ship's pose now, the portals are made there as usual, and that side

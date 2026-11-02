@@ -62,6 +62,13 @@ final class IPCreateShaftShips {
         }
     }
 
+    /** The frame of the ship with this id in {@code level}, or null when it is not there. */
+    static IPCreatePortalShafts.@Nullable Frame frameOf(final Level level, final UUID ship) {
+        final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container = dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        final SubLevel subLevel = container == null ? null : container.getSubLevel(ship);
+        return subLevel == null ? null : new ShipFrame(subLevel);
+    }
+
     /** The frame of the ship whose plot holds {@code pos}, or null for a world block. */
     static IPCreatePortalShafts.@Nullable Frame frameAt(final Level level, final BlockPos pos) {
         final SubLevel ship = Sable.HELPER.getContaining(level, pos);

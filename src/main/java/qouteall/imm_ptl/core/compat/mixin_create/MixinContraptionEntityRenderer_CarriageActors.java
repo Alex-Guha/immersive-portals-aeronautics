@@ -7,15 +7,19 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
+import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.api.behaviour.movement.MovementBehaviour;
 import com.simibubi.create.content.contraptions.behaviour.MovementContext;
 import com.simibubi.create.content.contraptions.render.ContraptionEntityRenderer;
 import com.simibubi.create.content.contraptions.render.ContraptionMatrices;
 import com.simibubi.create.foundation.virtualWorld.VirtualRenderWorld;
+import net.createmod.catnip.render.SuperByteBuffer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.level.LevelAccessor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageCrossingClient;
 
 /**
@@ -45,6 +49,16 @@ public class MixinContraptionEntityRenderer_CarriageActors {
                                                   @Local(argsOnly = true) final AbstractContraptionEntity entity) {
         final boolean supported = original.call(level);
         return supported || IPCreateCarriageCrossingClient.skipsVanillaStructure(entity, "block structure");
+    }
+
+    /**
+     * Without Flywheel (a shader pack) this builds the carriage's model. Unnoted, every client tick found it outdated
+     * and threw it away ({@link IPCreateCarriageCrossingClient#rebuildIfOutdated}).
+     */
+    @Inject(method = "buildStructureBuffer", at = @At("HEAD"), require = 0)
+    private static void ip_noteStructureBuilt(final CallbackInfoReturnable<SuperByteBuffer> cir,
+                                              @Local(argsOnly = true) final Contraption contraption) {
+        IPCreateCarriageCrossingClient.onStructureBuilt(contraption);
     }
 
     @WrapOperation(

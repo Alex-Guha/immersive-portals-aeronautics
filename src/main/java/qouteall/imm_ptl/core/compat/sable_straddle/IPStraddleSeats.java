@@ -10,6 +10,7 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Display;
@@ -112,6 +113,41 @@ public final class IPStraddleSeats {
         for (final Proxy proxy : new ArrayList<>(BY_PLAYER.values())) {
             maintain(server, proxy);
         }
+    }
+
+    // ---- a seat in another level
+
+    /**
+     * {@code player} took a seat in another level: on a far half, or on something seen through a portal. Riding needs the
+     * vehicle in the rider's level: the client never learns of such a ride and stays at the plot position Sable sends it,
+     * where the server then generates terrain. So the player moves to the seat's world first and sits like anyone there,
+     * and {@link #crossRiders} takes them back through the portal if their head is past it. This waits for a task of its
+     * own: the click runs inside IP's packet redirection, which must not see the player change dimension.
+     */
+    public static void sitInOtherLevel(final ServerPlayer player, final Entity seat) {
+        final MinecraftServer server = player.server;
+        server.tell(new TickTask(server.getTickCount(), () -> {
+            if (player.hasDisconnected() || !player.isAlive() || player.isPassenger()) {
+                return;
+            }
+            final ServerLevel level = (ServerLevel) seat.level();
+            final SubLevel ship = Sable.HELPER.getContaining(seat);
+            final Vec3 plot = seat.position();
+            final Vec3 feet = ship == null ? plot : ship.logicalPose().transformPosition(plot);
+            ServerTeleportationManager.of(server).forceTeleportPlayer(player, level.dimension(), feet);
+            if (player.level() != level) {
+                LOGGER.warn("[IPStraddle] could not move {} to a seat in {}; left standing", player.getGameProfile().getName(),
+                    level.dimension().location());
+                return;
+            }
+            if (seat.isRemoved()) {
+                sit(level, seat.blockPosition(), player);
+            } else {
+                player.startRiding(seat, true);
+            }
+            LOGGER.info("[IPStraddle] {} took a seat in {} from another dimension", player.getGameProfile().getName(),
+                level.dimension().location());
+        }));
     }
 
     // ---- through the portal

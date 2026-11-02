@@ -94,7 +94,7 @@ public final class RapierExt {
                                              double tx, double ty, double tz, double qx, double qy, double qz, double qw);
 
     /**
-     * Moving portals with both sides on carriers (docs/reports/both-ends-on-ships.md): the image follows the source
+     * Moving portals with both sides on carriers (docs/lessons/ship-mounted-portals.md): the image follows the source
      * carrier {@code sourceId} and the destination carrier {@code destId} (possibly one body); {@code k} maps the source
      * carrier's body frame into the destination carrier's. A negative id drops the anchoring.
      */

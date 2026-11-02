@@ -18,7 +18,7 @@ import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 import java.util.UUID;
 
 /**
- * Lighting a nether portal on a ship (docs/plans/ship-mounted-portals.md, phase 1). IP's own generation runs on the
+ * Lighting a nether portal on a ship (docs/lessons/ship-mounted-portals.md). IP's own generation runs on the
  * frame in the ship's plot; the other side is searched for or placed from the ship's world position, and the new
  * ship-side portal is put at the ship's world pose before IP derives the other three portals from it, then mounted.
  * Only called through {@link IPShipPortals} with Sable present.

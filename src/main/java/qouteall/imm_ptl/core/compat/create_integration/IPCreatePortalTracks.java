@@ -12,7 +12,9 @@ import com.simibubi.create.content.trains.track.TrackShape;
 import net.createmod.catnip.math.BlockFace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -21,6 +23,8 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Create tracks through IP portals. Create's own linking ({@code TrackBlock.connectToPortal}) places the exit track at
@@ -37,7 +41,10 @@ import java.util.Collection;
  *     ({@link #onPortalBlockPlaced}).</li>
  * </ul>
  * Pairs Create linked itself before (an exit track it placed for free) keep Create's behaviour, so no free track turns
- * into a drop. A pair within one dimension becomes a portal edge in Create's graph ({@link #onGraphWalk}).
+ * into a drop. A pair within one dimension becomes a portal edge in Create's graph ({@link #onGraphWalk}). An end may be
+ * on a ship (a portal on a ship): it lies in the ship's plot, and a pair stays linked when Sable moves an end into a
+ * plot or out of one ({@link #beforeBlocksMoved}, {@link #afterBlocksMoved}). Track and portal move as one, so the pair
+ * needs nothing else while the ship flies.
  */
 public final class IPCreatePortalTracks {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -45,7 +52,75 @@ public final class IPCreatePortalTracks {
     /** A bridge piece of ours (a portal track whose ends were laid by a player), linked or waiting. */
     private static final String OWN = "ip_aeronautics:own_portal_track";
 
+    /** An end of a pair being moved by Sable: where it goes, and the end it is bound to. */
+    private record Moving(ServerLevel to, BlockPos toPos, ResourceKey<Level> boundDimension, BlockPos boundPos) {
+    }
+
+    /** The ends of ours in the current {@code moveBlocks}, by where they stood. Server thread. */
+    private static final Map<BlockPos, Moving> MOVING = new HashMap<>();
+    private static ResourceKey<Level> movingFrom;
+
     private IPCreatePortalTracks() {
+    }
+
+    /** Sable is about to move {@code blocks}: notes every end of ours among them. */
+    public static void beforeBlocksMoved(final ServerLevel level, final Iterable<BlockPos> blocks, final java.util.function.UnaryOperator<BlockPos> moved,
+                                         final ServerLevel to) {
+        MOVING.clear();
+        movingFrom = level.dimension();
+        for (final BlockPos block : blocks) {
+            final BlockState state = level.getBlockState(block);
+            if (state.getBlock() instanceof TrackBlock && state.getValue(TrackBlock.SHAPE).isPortal() && isOwn(level, block)
+                && level.getBlockEntity(block) instanceof final TrackBlockEntity track && track.boundLocation != null) {
+                MOVING.put(block.immutable(), new Moving(to, moved.apply(block), track.boundLocation.getFirst(), track.boundLocation.getSecond()));
+            }
+        }
+    }
+
+    /** Sable has moved the blocks: each moved end and its other end are bound to where the other now is. */
+    public static void afterBlocksMoved() {
+        for (final Moving end : MOVING.values()) {
+            final Moving other = end.boundDimension().equals(movingFrom) ? MOVING.get(end.boundPos()) : null;
+            final ServerLevel otherLevel = other != null ? other.to() : end.to().getServer().getLevel(end.boundDimension());
+            final BlockPos otherPos = other != null ? other.toPos() : end.boundPos();
+            if (!(end.to().getBlockEntity(end.toPos()) instanceof final TrackBlockEntity moved) || otherLevel == null) {
+                continue;
+            }
+            moved.bind(otherLevel.dimension(), otherPos);
+            moved.getPersistentData().putBoolean(OWN, true);
+            moved.setChanged();
+            end.to().scheduleTick(end.toPos(), moved.getBlockState().getBlock(), 1);
+            if (otherLevel.isLoaded(otherPos) && otherLevel.getBlockEntity(otherPos) instanceof final TrackBlockEntity far) {
+                far.bind(end.to().dimension(), end.toPos());
+                far.setChanged();
+                otherLevel.scheduleTick(otherPos, far.getBlockState().getBlock(), 1);
+            }
+            LOGGER.info(TAG + "the track moved to {} in {} stays linked to {} in {}", end.toPos(), end.to().dimension().location(),
+                otherPos, otherLevel.dimension().location());
+        }
+        MOVING.clear();
+    }
+
+    /** A one-sided link (an end moved before ends followed their pair, or while the other was not loaded): both ways again. */
+    private static void mendLink(final ServerLevel level, final BlockPos pos, final TrackBlockEntity track) {
+        final ServerLevel otherLevel = level.getServer().getLevel(track.boundLocation.getFirst());
+        final BlockPos otherPos = track.boundLocation.getSecond();
+        if (otherLevel == null || !otherLevel.isLoaded(otherPos) || !isOwn(otherLevel, otherPos)
+            || !(otherLevel.getBlockEntity(otherPos) instanceof final TrackBlockEntity other)) {
+            return;
+        }
+        if (other.boundLocation != null) {
+            final ServerLevel boundLevel = level.getServer().getLevel(other.boundLocation.getFirst());
+            if ((other.boundLocation.getSecond().equals(pos) && other.boundLocation.getFirst().equals(level.dimension()))
+                || (boundLevel != null && boundLevel.isLoaded(other.boundLocation.getSecond())
+                && boundLevel.getBlockState(other.boundLocation.getSecond()).getBlock() instanceof TrackBlock)) {
+                return;
+            }
+        }
+        other.bind(level.dimension(), pos);
+        other.setChanged();
+        otherLevel.scheduleTick(otherPos, other.getBlockState().getBlock(), 1);
+        LOGGER.info(TAG + "the portal track at {} in {} is linked to {} in {} again", otherPos, otherLevel.dimension().location(), pos, level.dimension().location());
     }
 
     /**
@@ -136,8 +211,11 @@ public final class IPCreatePortalTracks {
         if (!(state.getBlock() instanceof final TrackBlock block) || !state.getValue(TrackBlock.HAS_BE)
             || !state.getValue(TrackBlock.SHAPE).isPortal()
             || !(level.getBlockEntity(pos) instanceof final TrackBlockEntity track) || track.boundLocation == null
-            || !track.boundLocation.getFirst().equals(level.dimension()) || !track.getPersistentData().getBoolean(OWN)
-            || IPCreateTeleportersTrains.isLeftToIt(track)) {
+            || !track.getPersistentData().getBoolean(OWN)) {
+            return;
+        }
+        mendLink(level, pos, track);
+        if (!track.boundLocation.getFirst().equals(level.dimension()) || IPCreateTeleportersTrains.isLeftToIt(track)) {
             return;
         }
         final BlockPos boundPos = track.boundLocation.getSecond();
@@ -183,7 +261,10 @@ public final class IPCreatePortalTracks {
      * Returns whether that is handled here: an end of ours stays as a waiting bridge, and a track that is no longer a
      * portal track is left alone. Otherwise Create destroys it.
      */
-    public static boolean onPartnerRemoved(final ServerLevel level, final BlockPos pos) {
+    public static boolean onPartnerRemoved(final ServerLevel level, final BlockPos pos, final BlockPos removed) {
+        if (MOVING.containsKey(removed)) {
+            return true; // only moving: afterBlocksMoved links the pair again
+        }
         final BlockState state = level.getBlockState(pos);
         if (!(state.getBlock() instanceof TrackBlock) || !state.getValue(TrackBlock.SHAPE).isPortal()) {
             return true;

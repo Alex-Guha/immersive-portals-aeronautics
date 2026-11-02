@@ -84,6 +84,8 @@ public class IPModEntryClient {
 
         // Immersive Aeronautics: Create's portal-track rails end in the portal plane; drop those faces (z-fighting).
         // The rails' purple glow follows the portal's frame (gold for glowstone, plain for non-obsidian frames)
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.client.event.ClientTickEvent.Post.class,
+            event -> qouteall.imm_ptl.core.compat.IPStallRecorder.beat());
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(
                 net.neoforged.bus.api.EventPriority.LOWEST,
@@ -113,6 +115,11 @@ public class IPModEntryClient {
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onRenderStage
+            );
+            // Immersive Aeronautics: with Flywheel off, the part of a carriage past a portal
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageVanillaDraw::onRenderStage
             );
             // Immersive Aeronautics: belt items at a portal, cut at the plane and drawn on both sides
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(

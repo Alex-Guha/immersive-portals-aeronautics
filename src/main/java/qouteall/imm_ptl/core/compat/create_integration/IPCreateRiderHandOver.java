@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import qouteall.imm_ptl.core.compat.mixin_create.IPCarriageAccessor;
 
 /**
- * Server: which copy of a carriage crossing an IP portal carries the riders of a seat (docs/lessons/create.md, 1.24.12).
+ * Server: which copy of a carriage crossing an IP portal carries the riders of a seat (docs/lessons/create-trains.md, 1.24.12).
  * <p>
  * Create hands riders over between copies by its whole-block cut ({@code DimensionalCarriageEntity
  * .updatePassengerLoadout}: a seat outside {@code min/maxAllowedLocalCoord} goes to the other copy), measured from the

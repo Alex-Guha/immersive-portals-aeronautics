@@ -26,10 +26,15 @@ import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
  * ship-mounted portals on they are mounted with the blocks they touch, otherwise they stay in the world.
  */
 public final class IPShipPortalAssemblyGuard {
+    private static final boolean CREATE = net.neoforged.fml.ModList.get().isLoaded("create");
+
     private IPShipPortalAssemblyGuard() {
     }
 
     public static void onBlocksMoving(ServerLevel level, SubLevelAssemblyHelper.AssemblyTransform transform, Iterable<BlockPos> blocks) {
+        if (CREATE) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTracks.beforeBlocksMoved(level, blocks, transform::apply, transform.getLevel());
+        }
         int minX = Integer.MAX_VALUE;
         int minY = Integer.MAX_VALUE;
         int minZ = Integer.MAX_VALUE;
@@ -60,5 +65,8 @@ public final class IPShipPortalAssemblyGuard {
     /** Sable's block move is done: portal blocks the assembler left out are put back where their frame went. */
     public static void afterBlocksMoved() {
         IPShipPortalAnchors.afterBlocksMoved();
+        if (CREATE) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTracks.afterBlocksMoved();
+        }
     }
 }

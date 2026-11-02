@@ -74,11 +74,11 @@ public final class IPCreateSeatedView {
             return null;
         }
         final Vec3 eye = player.getEyePosition(partialTick);
-        final double depth = -eye.subtract(crossing.keepPoint()).dot(crossing.keepNormal());
+        final double depth = -crossing.worldDepth(eye);
         if (depth <= 0.0) {
             return null;
         }
-        final Vec3 origin = eye.add(crossing.keepNormal().scale(depth + ORIGIN_OFFSET));
+        final Vec3 origin = eye.add(crossing.via().toWorldDirection(crossing.keepNormal()).scale(depth + ORIGIN_OFFSET));
         // any portal entity to the other dimension: a nether portal has one per face, a ray only hits one from its
         // front, and the crossing may name the other face (1.24.14: the view never went through)
         final Portal portal = PortalUtils.raytracePortals(player.level(), origin, eye, true,

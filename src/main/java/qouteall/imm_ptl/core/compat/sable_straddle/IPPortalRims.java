@@ -53,7 +53,7 @@ import java.util.UUID;
  * rim for {@value #KEEP_TICKS} ticks. A ship let through a stuck frame is let through every rim of its level too
  * ({@link #setLetThrough}).
  * <p>
- * A custom portal mounted on a ship (docs/plans/custom-mounts.md): its fixed side gets an ordinary rim. Its ship side's
+ * A custom portal mounted on a ship (docs/lessons/ship-mounted-portals.md): its fixed side gets an ordinary rim. Its ship side's
  * rim is anchored to the carrier in the engine ({@link RapierExt#setPortalRimAnchor}), so it moves with the carrier
  * through every substep, and never touches the carrier itself; whether it needs one is judged in the carrier's plot (its
  * hull is the terrain there). A ship-side portal whose carrier is not loaded gets none.

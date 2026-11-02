@@ -167,6 +167,18 @@ versionRange="*"
 ordering="NONE"
 side="BOTH"
 
+# Dimensional Threading runs each dimension's tick on a thread of its own, but under one lock, so only one ticks at a time
+# and it gains nothing. Everything that reaches across dimensions assumes one main thread: on a dimension thread another
+# level's block entities read as null (Create pipes through portals carry nothing) and the fused physics step logs an
+# error per dimension per tick (docs/lessons/mod-compat.md).
+[[dependencies.ip_aeronautics]]
+modId="dimthread"
+type="incompatible"
+reason="Dimensional Threading stops Create pipes working through portals and fills the log with errors, and it gives no speed-up here, as dimensions still tick one at a time. Remove Dimensional Threading."
+versionRange="*"
+ordering="NONE"
+side="BOTH"
+
 # The versions tested. A mod outside them still loads, but what we hook in it can stop working with nothing to show for
 # it (most compat injectors are require = 0), so players are told at load. The range names the versions warned about.
 # Sodium and Iris report "0.8.13+mc1.21.1": for a range that sorts after 0.8.13, so their ranges start at the next minor.

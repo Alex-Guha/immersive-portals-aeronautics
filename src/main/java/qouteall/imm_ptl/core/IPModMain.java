@@ -121,6 +121,7 @@ public class IPModMain {
         }
 
         // Immersive Aeronautics: Create shafts through portals
+        qouteall.imm_ptl.core.compat.IPStallRecorder.init();
         if (net.neoforged.fml.ModList.get().isLoaded("create")) {
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShafts.init();
             // trains through portals within one dimension: their portal edges, synced to clients

@@ -43,7 +43,7 @@ import qouteall.imm_ptl.core.render.context_management.RenderStates;
 
  * <p>
  * Not for fuse-view portals (no fog there), global portals (a dimension stack's floor and ceiling:
- * {@link IPGlobalPortalFade}) or mirrors. Plan and stages: {@code docs/plans/portal-view-distance.md}.
+ * {@link IPGlobalPortalFade}) or mirrors. Plan and stages: {@code docs/lessons/portal-view-distance.md}.
  */
 public final class IPPortalViewDistance {
     private static final double DH_FOG_PER_CUT = 0.8;
@@ -105,7 +105,8 @@ public final class IPPortalViewDistance {
      * off; a name tag is drawn without fog.
      */
     public static boolean isEntityPastCut(Entity entity) {
-        return hasCut() && isPastCut(entity.getBoundingBoxForCulling(), PortalRendering.getRenderingCameraPos());
+        return hasCut() && isPastCut(qouteall.imm_ptl.core.compat.sable_integration.IPPlotEntitiesClient.toWorld(
+            entity, entity.getBoundingBoxForCulling()), PortalRendering.getRenderingCameraPos());
     }
 
     /** Whether a particle seen in the portal pass in progress lies wholly past its cut (particles are not culled). */

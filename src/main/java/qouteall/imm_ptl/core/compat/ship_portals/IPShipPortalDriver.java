@@ -29,10 +29,10 @@ import qouteall.q_misc_util.my_util.DQuaternion;
 import java.util.UUID;
 
 /**
- * The animation driver of a ship-mounted portal (docs/plans/ship-mounted-portals.md, phase 1): on the ship-side
+ * The animation driver of a ship-mounted portal (docs/lessons/ship-mounted-portals.md): on the ship-side
  * portal that holds the cluster's animation, it places the portal where its frame is on the carrier ship. On the other
  * side of the holder's animation it does the same for the far end when that end is on a ship too
- * (docs/reports/both-ends-on-ships.md); {@link #dimension} is then the far end's.
+ * (docs/lessons/ship-mounted-portals.md, "Both ends on ships"); {@link #dimension} is then the far end's.
  * <p>
  * The reference state of the holder's side it drives is that side in the carrier's plot ({@link #plotOrigin} is its
  * position), and the delta is the carrier's pose: offset {@code pose(p) - p}, rotation the pose's orientation. So the
@@ -125,6 +125,11 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
         final SubLevelContainer container = level == null ? null : SubLevelContainer.getContainer(level);
         final SubLevel ship = container == null ? null : container.getSubLevel(this.carrier);
         return ship == null || ship.isRemoved() ? null : ship.logicalPose();
+    }
+
+    @Override
+    public Vec3 plotOrigin() {
+        return this.plotOrigin;
     }
 
     @Override

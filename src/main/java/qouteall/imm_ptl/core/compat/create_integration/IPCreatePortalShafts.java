@@ -87,7 +87,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * kinetic block next to a portal block loads or is placed. While one end is unloaded the other keeps its state, as a
  * Create network keeps turning while its generator's chunk is unloaded. Mixins: {@code MixinKineticBlockEntity_PortalShafts},
  * {@code MixinKineticNetwork_PortalShafts}. Rendering: {@code IPCreatePortalShaftHalves}. Gaps and limits:
- * docs/lessons/create.md, "Shafts through portals".
+ * docs/lessons/create-kinetics.md, "Shafts through portals".
  */
 public final class IPCreatePortalShafts {
     private static final Logger LOGGER = LogUtils.getLogger();

@@ -165,7 +165,7 @@ final class IPStraddleSessions {
             return false;
         }
 
-        // a ship carrying portals going through a portal shatters them first (docs/plans/ship-mounted-portals.md)
+        // a ship carrying portals going through a portal shatters them first (docs/lessons/ship-mounted-portals.md)
         IPShipPortalAnchors.shatterCarriedPortals(ship.getUniqueId(), "its ship is going through a portal");
         final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
         checkAgainstPortal(isometry, portal);

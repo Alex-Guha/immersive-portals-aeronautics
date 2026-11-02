@@ -1,7 +1,7 @@
 # ipa_rapier natives
 
 The Rust half of our own copy of Sable's Rapier physics backend, used for ships straddling portals
-(`docs/seamless-ships.md`). The Java half is `src/main/java/ipaeronautics/rapier/`.
+(`docs/lessons/straddling.md`). The Java half is `src/main/java/ipaeronautics/rapier/`.
 
 **Licence:** Sable's code is PolyForm Shield 1.0.0 (`LICENSE.md` here), as are our changes to it; IPSable's changes
 on top of it and the Rapier engine are Apache-2.0. See `docs/licensing.md`.

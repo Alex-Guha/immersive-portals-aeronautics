@@ -14,7 +14,7 @@ import org.joml.Vector3d;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors;
 
 /**
- * Straddling a portal mounted on a ship (docs/plans/ship-mounted-portals.md, phase 3). The native side derives the
+ * Straddling a portal mounted on a ship (docs/lessons/ship-mounted-portals.md). The native side derives the
  * image's portal isometry and frame velocity from the carrier's body every step (natives/rapier/src/moving_portals.rs);
  * this class gives it the transforms in the carrier's body frame (the body's translation and rotation are Sable's
  * logical pose; the native side is f32 and never sees plot coordinates), places clip regions in that frame, and adds

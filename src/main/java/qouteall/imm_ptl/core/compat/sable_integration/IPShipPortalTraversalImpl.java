@@ -152,7 +152,7 @@ public final class IPShipPortalTraversalImpl {
         }
 
         if (IPStraddle.isAvailable()) {
-            // ships straddle portals and are handed off once through (docs/seamless-ships.md); replaces the scan below
+            // ships straddle portals and are handed off once through (docs/lessons/straddling.md); replaces the scan below
             guarded("straddling", tick, () -> IPStraddle.tick(server, tick));
             return;
         }
@@ -302,7 +302,7 @@ public final class IPShipPortalTraversalImpl {
      */
     private static void moveThroughPortal(ServerLevel level, ServerLevel destLevel, ServerSubLevel sub, Portal portal, long tick) {
         UUID shipId = sub.getUniqueId();
-        // a ship carrying portals going through a portal shatters them first (docs/plans/ship-mounted-portals.md)
+        // a ship carrying portals going through a portal shatters them first (docs/lessons/ship-mounted-portals.md)
         IPShipPortalAnchors.shatterCarriedPortals(shipId, "its ship is going through a portal");
         Vec3 destPos = portal.transformPoint(toVec3(sub));
         Quaterniond rotation = portalRotation(portal);
@@ -544,7 +544,7 @@ public final class IPShipPortalTraversalImpl {
 
     /** A portal ships are carried through: teleportable, with a destination, unscaled. */
     private static boolean isShipPortal(Portal portal) {
-        // ships do not go through ship-mounted portals (docs/plans/ship-mounted-portals.md)
+        // ships do not go through ship-mounted portals (docs/lessons/ship-mounted-portals.md)
         return portal.getTeleportable() && portal.getDestDim() != null && !(Math.abs(portal.getScale() - 1.0) > 1.0E-4)
             && !IPShipPortalAnchors.isShipMounted(portal);
     }

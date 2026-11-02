@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Portals mounted on ships (docs/plans/ship-mounted-portals.md). Entry points for the rest of the mod; only called with
+ * Portals mounted on ships (docs/lessons/ship-mounted-portals.md). Entry points for the rest of the mod; only called with
  * Sable present.
  * <p>
  * The switch is the config option {@code shipPortalMode}: off, limited (nether portals break past {@code shipPortalRangeChunks}
@@ -124,7 +124,7 @@ public final class IPShipPortals {
 
     /**
      * The ship mount of the other side of this portal's animation, or null. A holder has one when the far end of its
-     * cluster is on a ship too (docs/reports/both-ends-on-ships.md): that ship moves the holder's destination.
+     * cluster is on a ship too (docs/lessons/ship-mounted-portals.md): that ship moves the holder's destination.
      */
     @Nullable
     public static IPShipMount otherSideMountOf(final Portal portal) {
@@ -177,12 +177,23 @@ public final class IPShipPortals {
 
     @Nullable
     private static UUID sideCarrier(final Portal portal, final boolean own) {
+        final IPShipMount mount = sideMount(portal, own);
+        return mount == null ? null : mount.carrier();
+    }
+
+    /** The mount of {@code portal}'s own side, or null when that side is fixed in the world. Server and client. */
+    @Nullable
+    public static IPShipMount ownSideMount(final Portal portal) {
+        return sideMount(portal, true);
+    }
+
+    @Nullable
+    private static IPShipMount sideMount(final Portal portal, final boolean own) {
         final Portal holder = portal.getAnimationHolder();
         if (holder == null) {
             return null;
         }
-        final IPShipMount mount = isOnHolderSide(portal, holder) == own ? mountOf(holder) : otherSideMountOf(holder);
-        return mount == null ? null : mount.carrier();
+        return isOnHolderSide(portal, holder) == own ? mountOf(holder) : otherSideMountOf(holder);
     }
 
     /**
@@ -245,7 +256,7 @@ public final class IPShipPortals {
     /**
      * How far {@code portal}'s link has moved from a local one, in overworld chunks: the horizontal distance between its
      * two ends, each at its dimension's coordinate scale. Worked out from the ends each time, for one end or two on ships:
-     * a saved starting point could be reset by disassembling and reassembling (docs/plans/link-strain.md).
+     * a saved starting point could be reset by disassembling and reassembling (docs/lessons/ship-mounted-portals.md).
      */
     public static double linkStrain(final Portal portal) {
         final Vec3 origin = portal.getOriginPos();

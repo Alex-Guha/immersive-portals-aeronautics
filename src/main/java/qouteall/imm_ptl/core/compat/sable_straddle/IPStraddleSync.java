@@ -92,7 +92,7 @@ final class IPStraddleSync {
 
     /**
      * A session at a portal mounted on a ship: the client derives its geometry every frame from the carriers as they
-     * are drawn (docs/plans/ship-mounted-portals.md, phase 4), from invariants in their plots. The portal maps
+     * are drawn (docs/lessons/ship-mounted-portals.md), from invariants in their plots. The portal maps
      * {@code D ∘ K ∘ S⁻¹}, with {@code S} the source carrier's pose and {@code D} the destination carrier's (either the
      * identity for a side fixed in the world): the plane in the source frame ({@code plot*}), and {@code K} as the
      * plane origin's image in the destination frame ({@code kDest}) and a rotation.

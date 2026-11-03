@@ -59,6 +59,8 @@ public final class IPShipRiderCarry {
     private static boolean seatTicketLogged;
     private static boolean seatTicketErrorLogged;
     private static final List<PendingRemount> PENDING_REMOUNTS = new ArrayList<>();
+    /** Players the last {@link #replay} moved with its ship, for {@link IPPhysicsStaffHooks#onShipMoved} (server thread). */
+    private static final List<ServerPlayer> CARRIED_PLAYERS = new ArrayList<>();
     private static final List<PendingSit> PENDING_SITS = new ArrayList<>();
 
     private IPShipRiderCarry() {
@@ -136,9 +138,12 @@ public final class IPShipRiderCarry {
             LOGGER.info("[IPShipPortal] ship {} leaves {} train carriage copy(ies) and rider(s) under it to Create", sub.getUniqueId(), leftOnTrain);
         }
 
-        // (c) players riding a vehicle that is on the ship (plus the vehicle, and the seat block to re-sit on)
-        for (ServerPlayer player : level.players()) {
-            Entity vehicle = player.getVehicle();
+        // (c) entities riding a vehicle that is on the ship (plus the vehicle, and the seat block to re-sit on), wherever
+        // they are: Sable puts a rider at its seat a tick behind the ship, outside the hull on a fast one. The hand-off
+        // deletes the old ship, which kills its seat entities (ServerLevelPlot.kickAllEntities), so every rider of one
+        // is sat down again on its seat block
+        for (Entity rider : level.getAllEntities()) {
+            Entity vehicle = rider.getVehicle();
             if (vehicle != null) {
                 boolean vehicleOnShip = seen.contains(vehicle.getUUID());
                 if (!vehicleOnShip && container != null) {
@@ -154,9 +159,9 @@ public final class IPShipRiderCarry {
                         bindings.add(new Binding(vehicle.getUUID(), vehicle.position(), vehicle.getYRot(), vehicle.getXRot(), true));
                     }
 
-                    seats.add(new SeatBinding(player.getUUID(), vehicle.blockPosition()));
-                    if (seen.add(player.getUUID())) {
-                        bindings.add(new Binding(player.getUUID(), player.position(), player.getYRot(), player.getXRot(), true));
+                    seats.add(new SeatBinding(rider.getUUID(), vehicle.blockPosition()));
+                    if (seen.add(rider.getUUID())) {
+                        bindings.add(new Binding(rider.getUUID(), rider.position(), rider.getYRot(), rider.getXRot(), true));
                     }
                 }
             }
@@ -191,6 +196,7 @@ public final class IPShipRiderCarry {
     }
 
     public static void replay(ServerLevel srcLevel, ServerLevel dstLevel, ServerSubLevel sub, BlockPos shift, Captured captured, Vec3 velocity) {
+        CARRIED_PLAYERS.clear();
         if (captured.isEmpty()) {
             return;
         }
@@ -198,11 +204,15 @@ public final class IPShipRiderCarry {
         Vector3d subPosition = sub.logicalPose().position();
         Vec3 subPos = new Vec3(subPosition.x(), subPosition.y(), subPosition.z());
         Vec3 shipDelta = subPos.subtract(captured.subPosBefore());
-        Replay replay = new Replay(dstLevel, shift, velocity, subPos, shipDelta);
+        Replay replay = new Replay(dstLevel, sub, shift, velocity, subPos, shipDelta);
 
         for (MountLink link : captured.mounts()) {
             replay.passengerToVehicle.put(link.passenger(), link.vehicle());
             replay.vehicles.add(link.vehicle());
+        }
+
+        for (SeatBinding seat : captured.seats()) {
+            replay.seatOf.put(seat.riderUuid(), seat.seatBlockPos().offset(shift));
         }
 
         for (Binding binding : orderVehiclesFirst(captured.bindings(), replay)) {
@@ -215,8 +225,10 @@ public final class IPShipRiderCarry {
 
         for (SeatBinding seat : captured.seats()) {
             BlockPos seatPos = seat.seatBlockPos().offset(shift);
+            // a mob cannot hold on by itself: sit it down on the next tick, at the seat it was put on
+            int delay = replay.mobsAtSeat.contains(seat.riderUuid()) ? 1 : REMOUNT_DELAY_TICKS;
             synchronized (PENDING_SITS) {
-                PENDING_SITS.add(new PendingSit(seat.riderUuid(), seatPos, dstLevel.dimension(), REMOUNT_DELAY_TICKS, REMOUNT_ATTEMPTS));
+                PENDING_SITS.add(new PendingSit(seat.riderUuid(), seatPos, dstLevel.dimension(), delay, REMOUNT_ATTEMPTS));
             }
         }
 
@@ -246,6 +258,16 @@ public final class IPShipRiderCarry {
         );
     }
 
+    /**
+     * @return the players the last {@link #replay} moved through with its ship, then forgets them: they went through the
+     * ship's portal without IP's own teleport, so nothing told the physics staff or a held handle
+     */
+    public static List<ServerPlayer> takeCarriedPlayers() {
+        final List<ServerPlayer> players = List.copyOf(CARRIED_PLAYERS);
+        CARRIED_PLAYERS.clear();
+        return players;
+    }
+
     /** Bindings re-ordered so vehicles (non-passengers) come before their passengers. */
     private static List<Binding> orderVehiclesFirst(List<Binding> bindings, Replay replay) {
         ArrayList<Binding> ordered = new ArrayList<>();
@@ -268,6 +290,7 @@ public final class IPShipRiderCarry {
     /** Mutable state of one {@link #replay} run, with the per-entity move logic. */
     private static final class Replay {
         final ServerLevel dstLevel;
+        final ServerSubLevel sub;
         final BlockPos shift;
         final Vec3 velocity;
         final Vec3 subPos;
@@ -276,13 +299,18 @@ public final class IPShipRiderCarry {
         final LinkedHashSet<UUID> movedAsUnit = new LinkedHashSet<>();
         final HashMap<UUID, UUID> passengerToVehicle = new HashMap<>();
         final LinkedHashSet<UUID> vehicles = new LinkedHashSet<>();
+        /** The seat block (in the arrived ship's plot) of each rider of a seat. */
+        final HashMap<UUID, BlockPos> seatOf = new HashMap<>();
+        /** Mobs whose seat died with the old ship, put at its place on the arrived one. */
+        final LinkedHashSet<UUID> mobsAtSeat = new LinkedHashSet<>();
         int playersMoved;
         int vanished;
         int landedOnDeck;
         int forceDismounted;
 
-        Replay(ServerLevel dstLevel, BlockPos shift, Vec3 velocity, Vec3 subPos, Vec3 shipDelta) {
+        Replay(ServerLevel dstLevel, ServerSubLevel sub, BlockPos shift, Vec3 velocity, Vec3 subPos, Vec3 shipDelta) {
             this.dstLevel = dstLevel;
+            this.sub = sub;
             this.shift = shift;
             this.velocity = velocity;
             this.subPos = subPos;
@@ -329,15 +357,19 @@ public final class IPShipRiderCarry {
         }
 
         /**
-         * Where the entity lands: on its already-moved vehicle, above the ship for an orphaned passenger or a
-         * plot-space player without a mount link, plot-shifted for other plot-space entities, otherwise moved
-         * by the ship's displacement.
+         * Where the entity lands: on its already-moved vehicle, at its seat on the arrived ship for a mob whose seat
+         * died with the old one, above the ship for another orphaned passenger or a plot-space player without a mount
+         * link, plot-shifted for other plot-space entities, otherwise moved by the ship's displacement.
          */
         private Vec3 targetFor(Binding binding, Entity entity, UUID vehicleId) {
             boolean plotSpace = IPSableCompatHelper.isPlotSpacePosition(binding.position().x, binding.position().z);
             Entity movedVehicle = vehicleId == null ? null : this.moved.get(vehicleId);
+            BlockPos seat = this.seatOf.get(binding.uuid());
             if (movedVehicle != null) {
                 return movedVehicle.position();
+            } else if (vehicleId != null && seat != null && !(entity instanceof Player)) {
+                this.mobsAtSeat.add(binding.uuid());
+                return this.sub.logicalPose().transformPosition(Vec3.atCenterOf(seat));
             } else if (vehicleId != null) {
                 return this.subPos.add(0.0, 1.0, 0.0);
             } else if (plotSpace && entity instanceof Player) {
@@ -363,6 +395,7 @@ public final class IPShipRiderCarry {
             }
 
             this.playersMoved++;
+            CARRIED_PLAYERS.add(player);
             if (vehicleId != null && !this.moved.containsKey(vehicleId)) {
                 // the seat did not survive the plot removal; dismount so the client releases it
                 player.stopRiding();

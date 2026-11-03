@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
+import qouteall.imm_ptl.core.chunk_loading.WorldInfoSender;
 import qouteall.imm_ptl.core.network.PacketRedirection;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.teleportation.ServerTeleportationManager;
@@ -47,6 +48,9 @@ public class MixinPlayerList {
         if (!ServerTeleportationManager.of(player.server).isFiringMyChangeDimensionEvent) {
             GlobalPortalStorage.onPlayerLoggedIn(player);
         }
+        // Immersive Aeronautics: vanilla sends the weather here only while it rains; the client may keep an older
+        // world of this dimension with rain that has since ended
+        WorldInfoSender.sendWeather(player, world);
     }
     
     @Inject(method = "placeNewPlayer", at = @At("TAIL"))

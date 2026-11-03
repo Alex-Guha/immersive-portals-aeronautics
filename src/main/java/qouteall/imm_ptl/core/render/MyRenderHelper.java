@@ -129,7 +129,7 @@ public class MyRenderHelper {
             }
         });
 
-        // Immersive Aeronautics: a fading global portal's backdrop blended back (IPGlobalPortalFade)
+        // Immersive Aeronautics: a fading portal's backdrop blended back (IPPortalDrawDistance)
         loadShaderSignal.connect((resourceManager, resultConsumer) -> {
             try {
                 ShaderInstance shader = new ShaderInstance(
@@ -198,7 +198,7 @@ public class MyRenderHelper {
     public static ShaderInstance portalAreaShader;
     // Immersive Aeronautics: see IPDhLodOcclusion
     public static ShaderInstance portalAreaLodShader;
-    // Immersive Aeronautics: see IPGlobalPortalFade
+    // Immersive Aeronautics: see IPPortalDrawDistance
     public static ShaderInstance portalFadeShader;
     public static ShaderInstance portalBeamDepthShader;
     public static ShaderInstance blitScreenNoBlendShader;

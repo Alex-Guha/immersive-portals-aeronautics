@@ -159,6 +159,15 @@ dependencies {
 
 tasks.named('build').configure { dependsOn('jarJar') }
 
+// build/libs keeps only the jars of the version being built: a version bump leaves no old jar behind
+def removeOldJars = tasks.register('removeOldJars', Delete) {
+    delete fileTree(layout.buildDirectory.dir('libs')) {
+        include "${archives_base_name}-*.jar"
+        exclude "${archives_base_name}-${version}.jar", "${archives_base_name}-${version}-*.jar"
+    }
+}
+tasks.named('jar').configure { dependsOn(removeOldJars) }
+
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.
 // When "copyIdeResources" is enabled, this will also run before the game launches in IDE environments.

@@ -1,6 +1,6 @@
 #version 150
 
-// What was behind a fading global portal, blended back over its view (IPGlobalPortalFade)
+// What was behind a fading portal, blended back over its view (IPPortalDrawDistance)
 
 uniform sampler2D DiffuseSampler;
 uniform float FadeAlpha;

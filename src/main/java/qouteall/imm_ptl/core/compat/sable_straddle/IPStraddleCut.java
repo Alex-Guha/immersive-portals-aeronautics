@@ -266,6 +266,52 @@ public final class IPStraddleCut {
     }
 
     /**
+     * Ships behind the portals an entity touches, mapped into the entity's world (docs/lessons/straddle-entities.md,
+     * "Ships behind a portal"): the part of the entity past a portal's plane is in the destination, and stands on that
+     * world's ships as IP's own collision lets it stand on that world's blocks. A player whose eye has crossed a
+     * dimension stack's ceiling has the feet behind it, on a deck still below. Kept: blocks behind the portal's plane.
+     *
+     * @param portals the portals the entity touches (its portal collision entries)
+     * @param bounds  the region of {@code level} to look in
+     */
+    public static List<Projection> behindPortals(final Level level, final List<qouteall.imm_ptl.core.portal.Portal> portals,
+                                                 final net.minecraft.world.phys.AABB bounds) {
+        List<Projection> projections = List.of();
+        for (final qouteall.imm_ptl.core.portal.Portal portal : portals) {
+            if (portal.getScale() != 1.0 || portal.getDestDim() == level.dimension()) {
+                continue;
+            }
+            final Level dest = portal.getDestWorld();
+            if (dest == null) {
+                continue;
+            }
+            final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
+            double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
+            double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < 8; i++) {
+                final Vec3 corner = isometry.mapPoint(new Vec3(
+                        (i & 1) == 0 ? bounds.minX : bounds.maxX,
+                        (i & 2) == 0 ? bounds.minY : bounds.maxY,
+                        (i & 4) == 0 ? bounds.minZ : bounds.maxZ));
+                minX = Math.min(minX, corner.x); minY = Math.min(minY, corner.y); minZ = Math.min(minZ, corner.z);
+                maxX = Math.max(maxX, corner.x); maxY = Math.max(maxY, corner.y); maxZ = Math.max(maxZ, corner.z);
+            }
+            final dev.ryanhcode.sable.companion.math.BoundingBox3d mapped =
+                    new dev.ryanhcode.sable.companion.math.BoundingBox3d(minX, minY, minZ, maxX, maxY, maxZ);
+            for (final SubLevel ship : dev.ryanhcode.sable.Sable.HELPER.getAllIntersecting(dest, mapped)) {
+                if (ship.isRemoved()) {
+                    continue;
+                }
+                if (projections.isEmpty()) {
+                    projections = new ArrayList<>(1);
+                }
+                projections.add(new Projection(ship, isometry.inverse(), portal.getOriginPos(), portal.getNormal().scale(-1.0), portal.getUUID()));
+            }
+        }
+        return projections;
+    }
+
+    /**
      * @return the projection of {@code ship} into {@code level}, or null when it has none there
      */
     @org.jetbrains.annotations.Nullable

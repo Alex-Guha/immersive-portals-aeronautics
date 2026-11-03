@@ -85,6 +85,8 @@ public class IPModMainClient {
             qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalDrawnChunks.init();
             // Immersive Aeronautics: portals behind DH's LODs hidden (dimension stack floors and ceilings)
             qouteall.imm_ptl.core.compat.dh_integration.IPDhLodOcclusionCapture.init();
+            // Immersive Aeronautics: the LOD fog of a distant portal's view, without a shader pack
+            qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalFog.init();
         }
         ClientWorldLoader.init();
         

@@ -37,6 +37,7 @@ import qouteall.imm_ptl.core.IPPerServerInfo;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.ScaleUtils;
 import qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking;
+import qouteall.imm_ptl.core.chunk_loading.WorldInfoSender;
 import qouteall.imm_ptl.core.collision.PortalCollisionHandler;
 import qouteall.imm_ptl.core.compat.GravityChangerInterface;
 import qouteall.imm_ptl.core.ducks.IEEntity;
@@ -498,13 +499,17 @@ public class ServerTeleportationManager {
             fromWorld,
             toWorld
         );
-        
+
+        // Immersive Aeronautics: the client keeps its world of toWorld, with the weather it had when the player left
+        WorldInfoSender.sendWeather(player, toWorld);
+
         //update advancements
         ((IEServerPlayerEntity) player).portal_worldChanged(fromWorld, oldPos);
     }
     
     private void manageGlobalPortalTeleportation() {
         for (ServerLevel world : MiscHelper.getServer().getAllLevels()) {
+            List<Portal> globalPortals = GlobalPortalStorage.getGlobalPortals(world);
             for (Entity entity : world.getAllEntities()) {
                 if (!(entity instanceof ServerPlayer)) {
                     Portal collidingPortal = ((IEEntity) entity).ip_getCollidingPortal();
@@ -512,6 +517,15 @@ public class ServerTeleportationManager {
                     if (collidingPortal != null && collidingPortal.getIsGlobal()) {
                         if (shouldEntityTeleport(collidingPortal, entity)) {
                             startTeleportingRegularEntity(collidingPortal, entity);
+                        }
+                    } else if (!globalPortals.isEmpty() && !qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper.isPlotSpacePosition(entity.getX(), entity.getZ())) {
+                        // Immersive Aeronautics: an entity whose eye passed a global portal within one move never
+                        // touched it (a mob carried by a fast ship through a dimension stack's plane): test the move
+                        for (Portal global : globalPortals) {
+                            if (shouldEntityTeleport(global, entity)) {
+                                startTeleportingRegularEntity(global, entity);
+                                break;
+                            }
                         }
                     }
                 }

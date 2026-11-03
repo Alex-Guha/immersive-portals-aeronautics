@@ -40,10 +40,14 @@ import qouteall.imm_ptl.core.render.context_management.RenderStates;
  * and then, with Distant Horizons, the LOD fog distance out to DH's own (both eased), so the view through the portal
  * already looks like the world the player steps into and there is no pop when crossing. The ramp starts farther out
  * the faster the camera moves, so Sodium has time to mesh what comes into view.
-
+ * <p>
+ * A distant portal, whose reach lies past the render distance (a portal near the render distance, or a large option),
+ * has no cut: the far world's terrain ends at the render distance by itself, and its terrain fog (clamped as with a
+ * cut) and LODs end in fog at the reach instead (Iris's {@code dhRenderDistance}, or DH's own fog without a pack:
+ * {@code IPDhPortalFog}), which the approach ramp moves out to the pass's own.
  * <p>
  * Not for fuse-view portals (no fog there), global portals (a dimension stack's floor and ceiling:
- * {@link IPGlobalPortalFade}) or mirrors. Plan and stages: {@code docs/lessons/portal-view-distance.md}.
+ * {@link IPPortalDrawDistance} draws them out to their own range) or mirrors. Plan and stages: {@code docs/lessons/portal-view-distance.md}.
  */
 public final class IPPortalViewDistance {
     private static final double DH_FOG_PER_CUT = 0.8;
@@ -69,6 +73,12 @@ public final class IPPortalViewDistance {
      * distance has moved from the full render distance to Distant Horizons' own, 0 to 1; NaN otherwise.
      */
     private static final DoubleArrayList lodFogs = new DoubleArrayList();
+    /**
+     * Per portal pass in progress, innermost last: where the LOD fog lies (blocks from the pass camera) when the
+     * option's reach past the portal lies past the render distance (a distant portal), the start of that pass's
+     * {@link #lodFogs} progress; NaN where it is the full render distance.
+     */
+    private static final DoubleArrayList lodReaches = new DoubleArrayList();
 
     /** The mode of the {@code FogRenderer.setupFog} last run; null after {@code setupNoFog}. */
     private static @Nullable FogRenderer.FogMode fogMode = null;
@@ -140,6 +150,7 @@ public final class IPPortalViewDistance {
     public static void endPass() {
         cuts.removeDouble(cuts.size() - 1);
         lodFogs.removeDouble(lodFogs.size() - 1);
+        lodReaches.removeDouble(lodReaches.size() - 1);
     }
 
     private static double computeCut(Portal portal) {
@@ -148,29 +159,43 @@ public final class IPPortalViewDistance {
         double outerLodFog = currentLodFog();
         double cut = Double.isNaN(outer) ? Double.NaN : outer * portal.getScale();
         double lodFog = Double.isNaN(outerLodFog) ? 1 : outerLodFog;
+        double outerLodReach = currentLodReach();
+        double lodReach = Double.isNaN(outerLodReach) ? Double.NaN : outerLodReach * portal.getScale();
         int chunks = IPConfig.getConfig().portalViewDistance;
         if (chunks > 0 && applies(portal)) {
-            // past the full render distance the reach goes on as the LOD fog's progress towards DH's distance; only
-            // the approach ramp takes it there, so walking away from a portal never thins the fog
-            double own = Math.min(full, farthestPortalPoint(portal) + chunks * 16.0);
+            double reach = farthestPortalPoint(portal) + chunks * 16.0;
             double distance = distanceToPortal(portal);
-            double lodFogSpan = full * LOD_FOG_SPAN;
             double ramp = rampProgress(distance);
-            if (ramp > 0) {
-                own += Math.max(0, full + lodFogSpan - own) * smoothstep(ramp);
-            }
-            if (own < full) {
-                cut = Double.isNaN(cut) ? own : Math.min(cut, own);
+            if (reach < full) {
+                // past the full render distance the reach goes on as the LOD fog's progress towards DH's distance;
+                // only the approach ramp takes it there, so walking away from a portal never thins the fog
+                double own = reach;
+                double lodFogSpan = full * LOD_FOG_SPAN;
+                if (ramp > 0) {
+                    own += Math.max(0, full + lodFogSpan - own) * smoothstep(ramp);
+                }
+                if (own < full) {
+                    cut = Double.isNaN(cut) ? own : Math.min(cut, own);
+                }
+                else {
+                    lodFog = Math.min(lodFog, (own - full) / lodFogSpan);
+                }
             }
             else {
-                lodFog = Math.min(lodFog, (own - full) / lodFogSpan);
+                // a distant portal, whose reach lies past the render distance: the far
+                // world's terrain ends there by itself and its LODs end in fog at the reach, which moves out to DH's
+                // own distance along the approach ramp. Dropping the cut alone left the view without its fog.
+                lodReach = Double.isNaN(lodReach) ? reach : Math.min(lodReach, reach);
+                lodFog = Math.min(lodFog, ramp);
             }
         }
         // a cut at or past the render distance would change nothing but still turn the LODs off
         if (cut >= full - 1e-3) {
             cut = Double.NaN;
         }
-        lodFogs.add(Double.isNaN(cut) && lodFog < 1 ? lodFog : Double.NaN);
+        boolean lodFogged = Double.isNaN(cut) && lodFog < 1;
+        lodFogs.add(lodFogged ? lodFog : Double.NaN);
+        lodReaches.add(lodFogged ? lodReach : Double.NaN);
         return cut;
     }
 
@@ -187,7 +212,7 @@ public final class IPPortalViewDistance {
         return Mth.clamp((end + length - distance) / length, 0, 1);
     }
 
-    private static double smoothstep(double t) {
+    public static double smoothstep(double t) {
         return t * t * (3 - 2 * t);
     }
 
@@ -262,11 +287,25 @@ public final class IPPortalViewDistance {
             return cut;
         }
         double lodFog = currentLodFog();
-        return Double.isNaN(lodFog) ? Double.NaN : -1 - lodFog;
+        return Double.isNaN(lodFog) ? Double.NaN : -1 - lodFog - 2 * lodFogAnchor();
     }
 
-    private static double currentLodFog() {
+    /**
+     * In a pass without a cut whose LODs end in fog: how far that fog has moved from {@link #lodFogAnchor} to the LOD
+     * distance's own, 0 to 1 (eased by the callers); NaN otherwise.
+     */
+    public static double currentLodFog() {
         return lodFogs.isEmpty() ? Double.NaN : lodFogs.getDouble(lodFogs.size() - 1);
+    }
+
+    private static double currentLodReach() {
+        return lodReaches.isEmpty() ? Double.NaN : lodReaches.getDouble(lodReaches.size() - 1);
+    }
+
+    /** Where the LOD fog of the pass in progress lies before its {@link #currentLodFog} progress (blocks). */
+    public static double lodFogAnchor() {
+        double reach = currentLodReach();
+        return Double.isNaN(reach) ? Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0 : reach;
     }
 
     public static boolean hasCut() {
@@ -291,7 +330,7 @@ public final class IPPortalViewDistance {
     }
 
     /** The patched pack fog's band: as wide as the option past the portal, at least 16 blocks. */
-    private static double packFogBand() {
+    public static double packFogBand() {
         return Math.max(16, IPConfig.getConfig().portalViewDistance * 8.0);
     }
 
@@ -310,8 +349,8 @@ public final class IPPortalViewDistance {
         if (Double.isNaN(lodFog)) {
             return 0;
         }
-        double full = Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
-        return Math.max(0, full - packFogBand()) * (1 - smoothstep(lodFog));
+        double anchor = lodFogAnchor();
+        return Math.max(0, anchor - packFogBand()) * (1 - smoothstep(lodFog));
     }
 
     /** Where the patched pack fog is opaque, 0 when the pack's fog is its own ({@link #packFogStart}). */
@@ -324,8 +363,8 @@ public final class IPPortalViewDistance {
         if (Double.isNaN(lodFog)) {
             return 0;
         }
-        double full = Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
-        return full + (1.25 * packFogDistance - full) * smoothstep(lodFog);
+        double anchor = lodFogAnchor();
+        return anchor + (1.25 * packFogDistance - anchor) * smoothstep(lodFog);
     }
 
     /**
@@ -342,8 +381,11 @@ public final class IPPortalViewDistance {
             return Math.min(blocks, (int) Math.ceil(cut * DH_FOG_PER_CUT));
         }
         double lodFog = currentLodFog();
-        double from = Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0 * DH_FOG_PER_CUT;
-        if (Double.isNaN(lodFog) || blocks <= from) {
+        if (Double.isNaN(lodFog)) {
+            return blocks;
+        }
+        double from = lodFogAnchor() * DH_FOG_PER_CUT;
+        if (blocks <= from) {
             return blocks;
         }
         // geometric: packs' fog follows distance over the fog distance, so each step looks alike
@@ -358,27 +400,45 @@ public final class IPPortalViewDistance {
         fogMode = null;
     }
 
-    private static boolean clampsFog() {
-        return fogMode == FogRenderer.FogMode.FOG_TERRAIN && hasCut();
+    /**
+     * Where the terrain fog of the pass in progress ends: the cut, or the reach of a distant portal's view
+     * ({@link #lodReaches}); NaN where it is not clamped. Past the render distance the terrain ends there by itself,
+     * but Distant Horizons turns vanilla's fog off wherever it draws LODs, so without the clamp the far world's terrain
+     * showed unfogged up to its end (user, 2.8.8.2 and 2.8.8.3, render distance 12: from 166 blocks).
+     */
+    private static double fogReach() {
+        if (fogMode != FogRenderer.FogMode.FOG_TERRAIN) {
+            return Double.NaN;
+        }
+        double cut = currentCut();
+        return Double.isNaN(cut) ? currentLodReach() : cut;
+    }
+
+    /** How far a distant portal's terrain fog has moved to the pass's own along the approach ramp, 0 with a cut. */
+    private static float fogRelease() {
+        return hasCut() ? 0 : (float) smoothstep(currentLodFog());
     }
 
     /** The fog fades over a quarter of the distance past the portal, at least 8 blocks. */
-    private static double fadeBand() {
+    public static double fadeBand() {
         return Math.max(8, IPConfig.getConfig().portalViewDistance * 4.0);
     }
 
     public static float clampFogStart(float start) {
-        if (!clampsFog()) {
+        double reach = fogReach();
+        if (Double.isNaN(reach)) {
             return start;
         }
-        double cut = currentCut();
-        return (float) Math.min(start, Math.max(0, cut - fadeBand()));
+        float ours = (float) Math.max(0, reach - fadeBand());
+        return Math.min(start, ours + (start - ours) * fogRelease());
     }
 
     public static float clampFogEnd(float end) {
-        if (!clampsFog()) {
+        double reach = fogReach();
+        if (Double.isNaN(reach)) {
             return end;
         }
-        return (float) Math.min(end, currentCut());
+        float ours = (float) reach;
+        return Math.min(end, ours + (end - ours) * fogRelease());
     }
 }

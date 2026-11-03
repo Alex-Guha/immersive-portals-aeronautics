@@ -14,7 +14,8 @@ import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut;
 /**
  * A player standing on the far half of a ship straddling a portal into their dimension is not "floating" (vanilla
  * kicks floating players after 80 ticks where flight is not allowed): the server does not track them on that ship
- * (see {@link MixinSableEntityCollision_StraddleCut}), so it would see them hover.
+ * (see {@link MixinSableEntityCollision_StraddleCut}), so it would see them hover. Nor is one standing, through a portal
+ * they touch, on a ship behind it (feet below a dimension stack's ceiling, eyes above).
  */
 @Mixin(ServerGamePacketListenerImpl.class)
 public class MixinServerGamePacketListener_StraddleFloating {
@@ -28,6 +29,12 @@ public class MixinServerGamePacketListener_StraddleFloating {
                 cir.setReturnValue(false);
                 return;
             }
+        }
+        final qouteall.imm_ptl.core.collision.PortalCollisionHandler portalCollision =
+            ((qouteall.imm_ptl.core.ducks.IEEntity) entity).ip_getPortalCollisionHandler();
+        if (portalCollision != null && portalCollision.hasCollisionEntry()
+                && !IPStraddleCut.behindPortals(entity.level(), portalCollision.getCollidingPortals(), entity.getBoundingBox().inflate(1.0)).isEmpty()) {
+            cir.setReturnValue(false);
         }
     }
 }

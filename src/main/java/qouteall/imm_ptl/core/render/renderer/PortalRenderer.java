@@ -32,7 +32,7 @@ import qouteall.imm_ptl.core.compat.iris_compatibility.IrisPortalRenderer;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
-import qouteall.imm_ptl.core.render.IPGlobalPortalFade;
+import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
 import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
@@ -163,8 +163,8 @@ public abstract class PortalRenderer {
         }
         
         double distance = portal.getDistanceToNearestPointInPortal(cameraPos);
-        // Immersive Aeronautics: a dimension stack's floor/ceiling may reach further, and fades out before its limit
-        if (distance > IPGlobalPortalFade.viewRange(portal)) {
+        // Immersive Aeronautics: the portal draw distance (a portal fades out before it)
+        if (distance > IPPortalDrawDistance.viewRange(portal)) {
             return true;
         }
         // Immersive Aeronautics: inside a portal view with a portal view distance, a portal wholly past it is in fog

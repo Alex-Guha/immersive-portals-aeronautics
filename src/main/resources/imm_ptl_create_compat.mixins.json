@@ -58,7 +58,12 @@
     "IPBeltInventoryAccessor",
     "MixinBeltInventory_PortalBelts",
     "MixinBeltMovementHandler_PortalRiders",
-    "MixinBeltBlockEntity_PortalRiders"
+    "MixinBeltBlockEntity_PortalRiders",
+    "MixinEntity_SeatSyncTrace",
+    "MixinServerEntity_SeatSyncTrace",
+    "MixinControlsInputPacket_DriveTrace",
+    "MixinCarriageContraptionEntity_DriveTrace",
+    "MixinCarriageDimensionalEntity_ShipLookahead"
   ],
   "injectors": {
     "defaultRequire": 0
@@ -123,6 +128,7 @@
     "IPBeltRendererInvoker",
     "MixinBeltRenderer_PortalBelts",
     "MixinSafeBlockEntityRenderer_PortalBelts",
-    "MixinBeltVisual_PortalBelts"
+    "MixinBeltVisual_PortalBelts",
+    "MixinClientPacketListener_SeatSyncTrace"
   ]
 }

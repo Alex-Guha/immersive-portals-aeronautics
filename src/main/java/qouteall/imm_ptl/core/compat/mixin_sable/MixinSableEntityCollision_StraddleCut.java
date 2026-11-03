@@ -44,6 +44,9 @@ import java.util.List;
  *     <li>in the destination world, the ship is a candidate when its bounds mapped through the portal meet the
  *     entity, its poses read as mapped, and its blocks come from its own level (plot coordinates repeat between
  *     levels), only those with a part past the destination plane;</li>
+ *     <li>for the part of an entity past a portal it touches, the destination's ships behind that portal are candidates
+ *     too, mapped back through it, only their blocks behind its plane and in its opening (as IP's collision takes the
+ *     destination's blocks there);</li>
  *     <li>an entity never keeps "tracking" (standing on, being networked relative to) a ship of another level: Sable's
  *     plot-local position packets, {@code getOnPos} and carry all assume the ship is in the entity's level. On the far
  *     half the entity collides and stands, and is moved along within the tick, but is not carried across ticks.</li>
@@ -56,10 +59,23 @@ public class MixinSableEntityCollision_StraddleCut {
     @Unique
     private static final ThreadLocal<FarHalf> ip_current = new ThreadLocal<>();
 
+    /**
+     * @param behind the touched portal the ship is seen through (its part behind that portal collides), or null for
+     *               a far half
+     */
     @Unique
     private record FarHalf(IPStraddleCut.Projection projection, Pose3d mappedPose, LevelAccelerator accelerator,
-                           List<double[]> localPlanes) {
+                           List<double[]> localPlanes, qouteall.imm_ptl.core.portal.@org.jetbrains.annotations.Nullable Portal behind) {
     }
+
+    @Unique
+    private record Behind(IPStraddleCut.Projection projection, qouteall.imm_ptl.core.portal.Portal portal) {
+    }
+
+    /** Ships behind the portals the colliding entity touches, per collide call ({@link IPStraddleCut#behindPortals}). */
+    @Unique
+    private static final ThreadLocal<java.util.IdentityHashMap<SubLevel, Behind>> ip_behind =
+        ThreadLocal.withInitial(java.util.IdentityHashMap::new);
 
     /** A block that crosses a plane, read last: its collision boxes are trimmed to the kept side. */
     @Unique
@@ -82,6 +98,7 @@ public class MixinSableEntityCollision_StraddleCut {
         ip_current.remove();
         ip_crossing.remove();
         ip_sourcePlanes.get().clear();
+        ip_behind.get().clear();
         final qouteall.imm_ptl.core.collision.PortalCollisionHandler portalCollision =
             ((qouteall.imm_ptl.core.ducks.IEEntity) entity).ip_getPortalCollisionHandler();
         ip_portals.set(portalCollision != null && portalCollision.hasCollisionEntry() ? List.copyOf(portalCollision.getCollidingPortals()) : List.of());
@@ -98,6 +115,7 @@ public class MixinSableEntityCollision_StraddleCut {
         ip_current.remove();
         ip_crossing.remove();
         ip_sourcePlanes.get().clear();
+        ip_behind.get().clear();
         ip_portals.remove();
         final SubLevelEntityCollision.CollisionInfo info = cir.getReturnValue();
         if (info != null && info.trackingSubLevel != null && info.trackingSubLevel.getLevel() != entity.level()) {
@@ -114,7 +132,8 @@ public class MixinSableEntityCollision_StraddleCut {
                                                       final Operation<Iterable<SubLevel>> original) {
         final Iterable<SubLevel> own = original.call(helper, level, bounds);
         final List<IPStraddleCut.Projection> projections = IPStraddleCut.projectionsInto(level);
-        if (projections.isEmpty()) {
+        final List<qouteall.imm_ptl.core.portal.Portal> portals = ip_portals.get();
+        if (projections.isEmpty() && portals.isEmpty()) {
             return own;
         }
         final AABB box = new AABB(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ());
@@ -123,6 +142,23 @@ public class MixinSableEntityCollision_StraddleCut {
         for (final IPStraddleCut.Projection projection : projections) {
             if (!all.contains(projection.ship()) && projection.mappedBounds().intersects(box)) {
                 all.add(projection.ship());
+            }
+        }
+        if (!portals.isEmpty()) {
+            final java.util.IdentityHashMap<SubLevel, Behind> behind = ip_behind.get();
+            for (final IPStraddleCut.Projection projection : IPStraddleCut.behindPortals(level, portals, box)) {
+                if (behind.containsKey(projection.ship())) {
+                    continue;
+                }
+                for (final qouteall.imm_ptl.core.portal.Portal portal : portals) {
+                    if (portal.getUUID().equals(projection.portal())) {
+                        behind.put(projection.ship(), new Behind(projection, portal));
+                        break;
+                    }
+                }
+                if (!all.contains(projection.ship())) {
+                    all.add(projection.ship());
+                }
             }
         }
         return all;
@@ -137,13 +173,37 @@ public class MixinSableEntityCollision_StraddleCut {
                                             @Local(argsOnly = true) final Entity entity) {
         final Pose3d pose = original.call(ship);
         final IPStraddleCut.Projection projection = ship.getLevel() == entity.level() ? null : IPStraddleCut.projectionOf(entity.level(), ship);
+        final Behind behind = ship.getLevel() == entity.level() ? null : ip_behind.get().get(ship);
+        if (behind != null) {
+            final Pose3d mapped = behind.projection().isometry().mapPose(pose);
+            final List<double[]> planes;
+            if (projection != null && ip_samePlane(projection, behind.projection())) {
+                // straddling into this world through that plane: its far half in front of it, the rest behind
+                planes = List.of();
+            } else {
+                planes = new ArrayList<>(IPStraddleCut.sourceLocalPlanes(ship.getLevel(), ship, pose));
+                planes.add(behind.projection().localPlane(mapped));
+            }
+            ip_current.set(new FarHalf(behind.projection(), mapped, new LevelAccelerator(ship.getLevel()), planes, behind.portal()));
+            return mapped;
+        }
         if (projection == null) {
             ip_current.remove();
             return pose;
         }
         final Pose3d mapped = projection.isometry().mapPose(pose);
-        ip_current.set(new FarHalf(projection, mapped, new LevelAccelerator(ship.getLevel()), List.of(projection.localPlane(mapped))));
+        ip_current.set(new FarHalf(projection, mapped, new LevelAccelerator(ship.getLevel()), List.of(projection.localPlane(mapped)), null));
         return mapped;
+    }
+
+    /**
+     * @return whether a far half's keep plane and a ship behind a portal's keep plane are one plane, kept on opposite
+     * sides
+     */
+    @Unique
+    private static boolean ip_samePlane(final IPStraddleCut.Projection farHalf, final IPStraddleCut.Projection behind) {
+        return farHalf.keepNormal().dot(behind.keepNormal()) < -0.99999
+                && Math.abs(behind.keepNormal().dot(farHalf.keepPoint().subtract(behind.keepPoint()))) < 1.0e-3;
     }
 
     @WrapOperation(
@@ -177,11 +237,14 @@ public class MixinSableEntityCollision_StraddleCut {
         if (state.isAir()) {
             return state;
         }
+        if (far != null && far.behind() != null && ip_besideOpening(far.behind(), far.mappedPose(), pos)) {
+            return Blocks.AIR.defaultBlockState();
+        }
         final List<qouteall.imm_ptl.core.portal.Portal> portals = ip_portals.get();
         if (!portals.isEmpty()) {
             final Pose3dc pose = far != null ? far.mappedPose() : ip_shipPose(((IPLevelAcceleratorAccessor) accelerator).ip_getLevel(), pos);
             if (pose != null) {
-                planes = ip_withPortalPlanes(planes, portals, pose, pos);
+                planes = ip_withPortalPlanes(planes, portals, pose, pos, far != null ? far.behind() : null);
             }
         }
         if (planes.isEmpty()) {
@@ -195,6 +258,19 @@ public class MixinSableEntityCollision_StraddleCut {
             ip_crossing.set(new Crossing(pos.immutable(), crossing));
         }
         return state;
+    }
+
+    /**
+     * @return whether the block at plot position {@code pos} of a ship seen through {@code portal} lies behind the
+     * portal's plane but beside its opening (more than half a block out): IP's collision takes the destination's blocks
+     * only through the opening
+     */
+    @Unique
+    private static boolean ip_besideOpening(final qouteall.imm_ptl.core.portal.Portal portal, final Pose3dc pose, final BlockPos pos) {
+        final Vec3 rel = pose.transformPosition(Vec3.atCenterOf(pos)).subtract(portal.getOriginPos());
+        return rel.dot(portal.getNormal()) < 0.0
+                && (Math.abs(rel.dot(portal.getAxisW())) > portal.getWidth() * 0.5 + 0.5
+                || Math.abs(rel.dot(portal.getAxisH())) > portal.getHeight() * 0.5 + 0.5);
     }
 
     /**
@@ -231,14 +307,19 @@ public class MixinSableEntityCollision_StraddleCut {
      * Like IP's own collision of an entity touching a portal (which leaves out this world's blocks behind the portal,
      * in its opening: that space belongs to the other side), ship blocks behind a touched portal and in its opening
      * (plus half a block, at most 10 blocks deep) do not collide: an entity walking into a portal is not stopped by a
-     * ship sitting in the opening on the other side of the plane (one straddling it from the other face, say).
+     * ship sitting in the opening on the other side of the plane (one straddling it from the other face, say). A ship
+     * seen through one of those portals ({@code seenThrough}) is not cut at its plane: its part behind it is what collides.
      */
     @Unique
     private static List<double[]> ip_withPortalPlanes(final List<double[]> planes, final List<qouteall.imm_ptl.core.portal.Portal> portals,
-                                                      final Pose3dc pose, final BlockPos pos) {
+                                                      final Pose3dc pose, final BlockPos pos,
+                                                      final qouteall.imm_ptl.core.portal.@org.jetbrains.annotations.Nullable Portal seenThrough) {
         List<double[]> result = planes;
         final Vec3 center = pose.transformPosition(Vec3.atCenterOf(pos));
         for (final qouteall.imm_ptl.core.portal.Portal portal : portals) {
+            if (portal == seenThrough) {
+                continue;
+            }
             final Vec3 rel = center.subtract(portal.getOriginPos());
             final double depth = rel.dot(portal.getNormal());
             if (depth > 1.0 || depth < -10.0

@@ -128,6 +128,8 @@ public class IPModMain {
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEdges.init();
             // portal blocks in framed plain portals (Create Teleporters'), so tracks, shafts and pipes bridge them
             qouteall.imm_ptl.core.compat.IPFramedPortalBlocks.init();
+            // test jars: riders' seats on carriages on both sides ([IPSeatSync])
+            qouteall.imm_ptl.core.compat.create_integration.IPSeatSyncTrace.init();
             // pipes through portals under Pipes 'n Physics' engine (portal blocks as relay endpoints)
             if (net.neoforged.fml.ModList.get().isLoaded("pipesnphysics")) {
                 qouteall.imm_ptl.core.compat.create_integration.IPPnpPortalRelay.init(eventBus);

@@ -117,7 +117,7 @@ targets and file headers: `docs/testing.md`. `runClient`/`runServer` do not work
 
 Every jar handed out for testing gets its own version: bump `mod_version` in `gradle.properties` (patch for fixes,
 minor for features), move the "Unreleased" notes in `changelog.md` under a `[x.y.z] - date` heading, rebuild, commit,
-tag `v<ver>`, and delete stale jars from `build/libs`. The version line continues from the fork (1.1.4 -> 1.2.0).
+and tag `v<ver>`. The version line continues from the fork (1.1.4 -> 1.2.0).
 Before a public release: the checks in `docs/licensing.md`, and `scripts/native-licenses.py` if `natives/Cargo.lock`
 changed since the last one.
 

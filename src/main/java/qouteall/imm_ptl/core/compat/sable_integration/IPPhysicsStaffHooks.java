@@ -10,6 +10,7 @@ import net.minecraft.world.level.Level;
 import net.neoforged.fml.ModList;
 import qouteall.imm_ptl.core.portal.Portal;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -45,7 +46,14 @@ public final class IPPhysicsStaffHooks {
     }
 
     public static void onShipMoved(ServerLevel src, ServerLevel dst, UUID ship, Portal portal, IPSableBridge.Moved moved) {
+        // players carried through with the ship went through its portal too, without IP's teleport and its hooks: a
+        // drag kept in the old frame pulled the dragged ship a whole portal's offset away (into the void, under a stack)
+        final List<ServerPlayer> carried = IPShipRiderCarry.takeCarriedPlayers();
         if (ACTIVE) {
+            for (final ServerPlayer player : carried) {
+                onServerPlayerTeleported(player, src.dimension(), portal);
+                IPPhysicsStaffPortals.tellCarried(player, portal);
+            }
             IPPhysicsStaffPortals.onShipMoved(src, dst, ship, portal, moved);
             IPHandlePortals.onShipMoved(src, dst, ship, portal, moved);
         }

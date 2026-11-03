@@ -43,6 +43,16 @@ public final class IPCreateTrainPortal {
         return IPCreatePortalEnds.SABLE ? IPCreateShaftShips.frameAt(level, BlockPos.containing(position)) : null;
     }
 
+    /**
+     * {@code pos}, given in the track's coordinates of a carriage copy at {@code copy}, in the world: through the pose of
+     * the ship whose plot holds the copy, unchanged off ships. The ship comes from the copy, which always stands in its
+     * plot, as {@code pos} may lie past the plot's chunks.
+     */
+    public static BlockPos inWorld(final Level level, final Vec3 copy, final BlockPos pos) {
+        final IPCreatePortalShafts.Frame frame = frameAt(level, copy);
+        return frame == null ? pos : BlockPos.containing(frame.toWorld(Vec3.atCenterOf(pos)));
+    }
+
     /** @return {@code portal} seen from a track in {@code near}, or null when its far ship is not loaded here */
     static @Nullable IPCreateTrainPortal of(final Portal portal, final IPCreatePortalShafts.@Nullable Frame near) {
         final UUID farShip = IPShipPortals.farSideCarrier(portal);
@@ -114,15 +124,17 @@ public final class IPCreateTrainPortal {
     }
 
     /**
-     * Where a rider at {@code seat} comes out. A rider stands in the ship's plot while seated on a carriage there, and
-     * in the world everywhere else, whichever side the track is on.
+     * Where a rider at {@code seat} comes out, in the world, whichever side the track is on. A player seated on a
+     * carriage on a ship stands in the world: Sable moves them out of the plot within the tick. Sent into the plot, the
+     * player had the chunks around that point tracked and ticketed by IP's teleport, the ship's plot chunks, and when
+     * those went a few seconds later the client unloaded the ship (its carriage, and so its rider, stopped ticking: no
+     * sneak, no controls) and the server dropped Sable's plot chunks into vanilla's unload queue, which they never
+     * leave (2.8.8.2).
      */
     public Vec3 riderThrough(final Vec3 seat) {
-        if (near != null && IPCreatePortalEnds.SABLE && IPCreateShaftShips.frameAt(portal.level(), net.minecraft.core.BlockPos.containing(seat)) != null) {
-            return through(seat);
-        }
-        final Vec3 mapped = portal.transformPoint(seat);
-        return far == null ? mapped : far.toLocal(mapped);
+        final boolean inPlot = near != null && IPCreatePortalEnds.SABLE
+            && IPCreateShaftShips.frameAt(portal.level(), net.minecraft.core.BlockPos.containing(seat)) != null;
+        return portal.transformPoint(inPlot ? toWorld(seat) : seat);
     }
 
     /** The reverse of {@link #through}. */

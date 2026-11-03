@@ -4,6 +4,9 @@
   "package": "qouteall.imm_ptl.core.compat.mixin_voxy",
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "MixinVoxySableParentChunkLightSync_IPChunkTracking"
+  ],
   "client": [
     "IPVoxyIrisPipelineManagerAccessor",
     "IPVoxyIrisRenderPipelineAccessor",
@@ -12,6 +15,11 @@
     "MixinSodiumDefaultChunkRenderer_VoxyStencil",
     "MixinVoxyAbstractRenderPipeline_PortalStencil",
     "MixinVoxyCommon_ShutdownAllRenderers",
+    "MixinVoxyDistantExtras_PlayerWorldOnly",
+    "MixinVoxyDistantLaserRenderer_PlayerWorldOnly",
+    "MixinVoxyDistantTrackRenderer_PortalEdges",
+    "MixinVoxyKineticSnapshots_PlayerWorldOnly",
+    "MixinVoxyMDICSectionRenderer_OwnLevel",
     "MixinVoxyMipGen_OneAtATime",
     "MixinVoxyRenderGenerationService_PortalSideResults",
     "MixinVoxyRenderPipelineFactory_OwnDimension",

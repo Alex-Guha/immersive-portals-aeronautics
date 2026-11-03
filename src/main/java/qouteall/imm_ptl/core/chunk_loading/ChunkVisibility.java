@@ -190,6 +190,11 @@ public class ChunkVisibility {
     ) {
         PerformanceLevel perfLevel = ImmPtlChunkTracking.getPlayerInfo(player).performanceLevel;
         int visiblePortalRangeChunks = PerformanceLevel.getVisiblePortalRangeChunks(perfLevel);
+        // Immersive Aeronautics: the far side of every portal within the player's view distance, not just 8 chunks:
+        // the client draws portals out to the render distance, and one past 8 chunks showed only sky
+        if (perfLevel == PerformanceLevel.good) {
+            visiblePortalRangeChunks = Math.max(visiblePortalRangeChunks, McHelper.getPlayerLoadDistance(player));
+        }
         int indirectVisiblePortalRangeChunks = PerformanceLevel.getIndirectVisiblePortalRangeChunks(perfLevel);
         
         ChunkLoader playerDirectLoader = playerDirectLoader(player);

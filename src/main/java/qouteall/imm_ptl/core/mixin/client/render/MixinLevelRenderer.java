@@ -63,6 +63,7 @@ import qouteall.imm_ptl.core.render.IPPortalPassDepthClear;
 import qouteall.imm_ptl.core.render.ImmPtlViewArea;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
+import qouteall.imm_ptl.core.render.OverlayRendering;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
@@ -156,6 +157,9 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
 //        IPCGlobal.renderer.onBeforeTranslucentRendering(matrices);
         
         CrossPortalEntityRenderer.onBeginRenderingEntitiesAndBlockEntities(modelView);
+        
+        // Immersive Aeronautics
+        OverlayRendering.onBeginRenderingEntities();
     }
     
     @Inject(
@@ -168,6 +172,9 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
     private void onMyBeforeTranslucentRendering(
         DeltaTracker deltaTracker, boolean bl, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f modelView, Matrix4f matrix4f2, CallbackInfo ci
     ) {
+        // Immersive Aeronautics: nether portal overlays go over the portals, whatever flushed the buffers before
+        var overlays = OverlayRendering.takePendingOverlays();
+        
         IPCGlobal.renderer.onBeforeTranslucentRendering(modelView);
         
         MyGameRenderer.updateFogColor();
@@ -176,6 +183,8 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
         MyGameRenderer.resetDiffuseLighting();
         
         FrontClipping.disableClipping();
+        
+        OverlayRendering.drawPendingOverlays(overlays);
     }
     
     @IPVanillaCopy

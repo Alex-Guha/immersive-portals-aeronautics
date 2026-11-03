@@ -33,8 +33,12 @@ public final class IPStallRecorder {
     }
 
     private static boolean isOn() {
-        return Boolean.getBoolean("ip_aeronautics.debug.stalls")
-            || ModList.get().getModContainerById("ip_aeronautics").map(mod -> mod.getModInfo().getVersion().toString().contains("-")).orElse(false);
+        return Boolean.getBoolean("ip_aeronautics.debug.stalls") || isTestJar();
+    }
+
+    /** A branch test jar: a version with a suffix ({@code 2.8.8.1-seat-sync}). */
+    public static boolean isTestJar() {
+        return ModList.get().getModContainerById("ip_aeronautics").map(mod -> mod.getModInfo().getVersion().toString().contains("-")).orElse(false);
     }
 
     public static void init() {

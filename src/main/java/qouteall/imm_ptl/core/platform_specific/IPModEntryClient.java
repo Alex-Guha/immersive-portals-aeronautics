@@ -92,6 +92,8 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
             );
+            // test jars: the client's seat on carriages against the server's ([IPSeatSync])
+            qouteall.imm_ptl.core.compat.create_integration.IPSeatSyncTraceClient.init();
             // Immersive Aeronautics: the one walk over the portal blocks for what Create parts draw at portals
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PostClientTickEvent.class,

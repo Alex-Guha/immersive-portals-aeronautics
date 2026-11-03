@@ -31,21 +31,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Voxy draws its LODs from Sodium's cutout pass with the render system of {@code Minecraft.levelRenderer}, which IP
- * swaps to the viewed dimension's renderer in a portal pass, so a portal pass runs the viewed dimension's Voxy
- * pipeline from the portal camera ({@link IPVoxyPortalView}).
+ * Voxy (through Roxy, or Neo Voxy, a NeoForge port with the same classes) draws its LODs from Sodium's cutout pass
+ * with the render system of {@code Minecraft.levelRenderer}, which IP swaps to the viewed dimension's renderer in a
+ * portal pass, so a portal pass runs the viewed dimension's Voxy pipeline from the portal camera
+ * ({@link IPVoxyPortalView}).
  * <p>
  * Voxy's occlusion is temporal (each viewport's HiZ comes from its own last frame), so every portal gets a viewport
  * of its own, made by Voxy's own factory (as for Vivecraft's eyes) and keyed by the portal and its nesting depth;
  * the default viewport stays the player's view. One left unused for {@link #IP_VIEWPORT_IDLE_FRAMES} frames is
  * freed. Voxy's distance tracker recentres on the camera of every draw; only a render system's first draw of a frame
- * moves it (the main pass comes first, as portals are drawn before its translucent layer), so a portal into the
- * player's own dimension or a second portal into one dimension leaves the centre where it was (Voxy's distance of
- * thousands of blocks still covers the far side unless the portal leads farther than that). With a shader pack Roxy
- * sets the viewport up at {@code renderLevel}'s start (Voxy's original {@code setupViewport}, from Iris's captured
- * matrices) and fetches it with {@code getViewport()}; the portal's viewport is chosen in both {@code setupViewport}s
- * and returned by {@code getViewport()} for the rest of the pass. Skipping Voxy in a shader-pack portal pass left the
- * pack compositing Voxy's depth from that dimension's last draw: a frozen image of LODs on screen.
+ * ({@code renderOpaque}; Neo Voxy with a pack sets a viewport up twice in a pass) moves it (the main pass comes first,
+ * as portals are drawn before its translucent layer), so a portal into the player's own dimension or a second portal
+ * into one dimension leaves the centre where it was (Voxy's distance of thousands of blocks still covers the far side
+ * unless the portal leads farther than that). With a shader pack Roxy sets the viewport up at {@code renderLevel}'s
+ * start (Voxy's original {@code setupViewport}, from Iris's captured matrices) and fetches it with
+ * {@code getViewport()}; the portal's viewport is chosen in both {@code setupViewport}s and returned by
+ * {@code getViewport()} for the rest of the pass. Skipping Voxy in a shader-pack portal pass left the pack compositing
+ * Voxy's depth from that dimension's last draw: a frozen image of LODs on screen. Neo Voxy has one
+ * {@code setupViewport} (Iris's captured matrices or Sodium's) and recentres the tracker in {@code renderOpaqueNow}.
+ * Voxy draws nothing in Iris's shadow pass ({@code getViewport()} is null there), so none of this runs in it.
  * <p>
  * With Iris installed, every draw first checks that the render system's pipeline matches its dimension's Iris
  * pipeline ({@link IPVoxyIrisPipelines}).
@@ -78,18 +82,16 @@ public class MixinVoxyRenderSystem_PortalView {
     @Inject(
         method = {
             "setupViewport(Lnet/caffeinemc/mods/sodium/client/render/chunk/ChunkRenderMatrices;DDD)Lme/cortex/voxy/client/core/rendering/Viewport;",
-            "setupViewport(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;Lnet/rasanovum/roxy/fog/RoxyFogParameters;DDD)Lme/cortex/voxy/client/core/rendering/Viewport;"
+            "setupViewport(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;Lnet/rasanovum/roxy/fog/RoxyFogParameters;DDD)Lme/cortex/voxy/client/core/rendering/Viewport;",
+            "setupViewport(Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;DDD)Lme/cortex/voxy/client/core/rendering/Viewport;"
         },
         at = @At("HEAD"), cancellable = true, require = 0
     )
     private void ip_choosePortalViewport(CallbackInfoReturnable<Viewport<?>> cir) {
-        int frame = RenderStates.frameIndex;
-        boolean firstDrawThisFrame = ip_drawnFrame != frame;
-        ip_drawnFrame = frame;
-        ip_passViewport = null;
-        if (firstDrawThisFrame) {
-            ip_freeIdleViewports(frame);
+        if (IrisInterface.invoker.isRenderingShadowMap()) {
+            return;
         }
+        ip_passViewport = null;
         if (!PortalRendering.isRendering()) {
             return;
         }
@@ -97,8 +99,7 @@ public class MixinVoxyRenderSystem_PortalView {
             cir.setReturnValue(null);
             return;
         }
-        ip_passViewport = ip_viewportFor(PortalRendering.getRenderingPortal(), frame);
-        ip_keepTrackerCentre = !firstDrawThisFrame;
+        ip_passViewport = ip_viewportFor(PortalRendering.getRenderingPortal(), RenderStates.frameIndex);
         ip_portalPassApproved = true;
     }
 
@@ -109,13 +110,23 @@ public class MixinVoxyRenderSystem_PortalView {
     @Inject(method = "getViewport", at = @At("HEAD"), cancellable = true, require = 0)
     private void ip_usePortalViewport(CallbackInfoReturnable<Viewport<?>> cir) {
         Viewport<?> viewport = ip_passViewport;
-        if (viewport != null && PortalRendering.isRendering()) {
+        if (viewport != null && PortalRendering.isRendering() && !IrisInterface.invoker.isRenderingShadowMap()) {
             cir.setReturnValue(viewport);
         }
     }
 
     @Inject(method = "renderOpaque", at = @At("HEAD"), cancellable = true, require = 0)
     private void ip_beginPortalPass(CallbackInfo ci) {
+        if (IrisInterface.invoker.isRenderingShadowMap()) {
+            return;
+        }
+        int frame = RenderStates.frameIndex;
+        boolean firstDrawThisFrame = ip_drawnFrame != frame;
+        ip_drawnFrame = frame;
+        if (firstDrawThisFrame) {
+            ip_freeIdleViewports(frame);
+        }
+        ip_keepTrackerCentre = !firstDrawThisFrame;
         boolean approved = ip_portalPassApproved;
         ip_portalPassApproved = false;
         if (IrisInterface.invoker.isIrisPresent() && !IPVoxyIrisPipelines.checkBeforeDraw(pipeline)) {
@@ -136,7 +147,7 @@ public class MixinVoxyRenderSystem_PortalView {
     }
 
     @WrapOperation(
-        method = "renderOpaque",
+        method = {"renderOpaque", "renderOpaqueNow"},
         at = @At(
             value = "INVOKE",
             target = "Lme/cortex/voxy/client/core/rendering/RenderDistanceTracker;setCenterAndProcess(DD)Z"
@@ -154,6 +165,9 @@ public class MixinVoxyRenderSystem_PortalView {
 
     @Inject(method = "renderOpaque", at = @At("RETURN"), require = 0)
     private void ip_endPortalPass(CallbackInfo ci) {
+        if (IrisInterface.invoker.isRenderingShadowMap()) {
+            return;
+        }
         IPVoxyPortalView.endPortalPass();
         ip_passViewport = null;
     }

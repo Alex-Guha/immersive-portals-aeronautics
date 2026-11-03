@@ -61,6 +61,17 @@ public class WorldInfoSender {
                 )
         );
 
+        sendWeather(player, world);
+    }
+
+    /**
+     * Immersive Aeronautics: the weather of a world, to the player's client world of it. Vanilla sends weather only to
+     * the players in a world, and on arrival only while it rains, since a client gets a new world on every dimension
+     * change. IP keeps the client's worlds: rain that ended while the player was elsewhere stayed on in theirs (it is
+     * synced from outside the overworld only every 100 ticks), and later {@code /weather clear} changed nothing on the
+     * server, so nothing was sent. The rain and thunder levels are sent whatever they are.
+     */
+    public static void sendWeather(ServerPlayer player, ServerLevel world) {
         /**{@link net.minecraft.client.network.ClientPlayNetworkHandler#onGameStateChange(GameStateChangeS2CPacket)}*/
 
         if (world.isRaining()) {
@@ -72,9 +83,6 @@ public class WorldInfoSender {
                             0.0F
                     )
             );
-        } else {
-            //if the weather is already not raining when the player logs in then no need to sync
-            //if the weather turned to not raining then elsewhere syncs it
         }
 
         PacketRedirection.sendRedirectedMessage(

@@ -34,9 +34,12 @@ public class IPConfig {
     public boolean renderYourselfInPortal = true;
     public boolean correctCrossPortalEntityRendering = true;
     public boolean reducedPortalRendering = false;
-    // Immersive Aeronautics: how far away a dimension stack's floor or ceiling is drawn, in chunks (0: the render
-    // distance; more needs Distant Horizons); it fades out over the last quarter (IPGlobalPortalFade)
-    public int dimensionStackViewDistance = 0;
+    // Immersive Aeronautics: how far away portals are drawn, in chunks (0: the render distance, 100 blocks with a
+    // shader pack; past the render distance only a dimension stack's floor or ceiling, with Distant Horizons); a portal
+    // fades out over the last quarter (IPPortalDrawDistance)
+    public int portalDrawDistance = 0;
+    // Immersive Aeronautics: replaced by portalDrawDistance (read once, then left out of the file)
+    public Integer dimensionStackViewDistance = null;
     // Immersive Aeronautics: how far past a portal its view shows the other side, in chunks, ending in fog
     // (0: the render distance; IPPortalViewDistance)
     public int portalViewDistance = 0;
@@ -131,6 +134,13 @@ public class IPConfig {
         scaleLimit = Mth.clamp(scaleLimit, 8, 128);
         // Immersive Aeronautics
         portalViewDistance = Mth.clamp(portalViewDistance, 0, 32);
+        if (dimensionStackViewDistance != null) {
+            if (portalDrawDistance == 0) {
+                portalDrawDistance = dimensionStackViewDistance;
+            }
+            dimensionStackViewDistance = null;
+        }
+        portalDrawDistance = Mth.clamp(portalDrawDistance, 0, 64);
         shipPortalRangeChunks = Mth.clamp(shipPortalRangeChunks, SHIP_PORTAL_RANGE_MIN, SHIP_PORTAL_RANGE_MAX);
         if (shipPortalMode == null) {
             shipPortalMode = shipMountedPortals == null ? IPGlobal.ShipPortalMode.limited

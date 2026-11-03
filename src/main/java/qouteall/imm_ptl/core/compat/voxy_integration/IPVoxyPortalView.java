@@ -18,7 +18,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 
 /**
- * Voxy (through Roxy) inside portal views.
+ * Voxy (through Roxy, or Neo Voxy) inside portal views.
  * <p>
  * Voxy keeps one render system per {@code LevelRenderer}, and IP one level renderer per dimension, so a portal pass
  * into another dimension draws that dimension's own LODs from the portal camera (the {@code mixin_voxy} mixins let it
@@ -40,8 +40,9 @@ import java.util.ArrayDeque;
  * player's: Roxy defers only the player's renderer), so it binds to that dimension's Iris pipeline
  * ({@code IPVoxyIrisPipelines}).</li>
  * </ul>
- * No Voxy or Roxy types here: Roxy's classes live in NeoForge's service layer, out of Mixin's reach, and are read by
- * reflection.
+ * Neo Voxy has no Roxy: it composites straight into Minecraft's framebuffer, which has the stencil, and keeps every
+ * render system's meshes. No Voxy or Roxy types here: Roxy's classes live in NeoForge's service layer, out of Mixin's
+ * reach, and are read by reflection.
  */
 public final class IPVoxyPortalView {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -83,6 +84,16 @@ public final class IPVoxyPortalView {
 
     public static int creationScopeDepth() {
         return CREATION_LEVELS.size();
+    }
+
+    /**
+     * True while {@code Minecraft.level} is not the player's world: a portal pass into another dimension, or a packet
+     * of another world being handled. Neo Voxy's distant extras (tracks, kinetics, beacons, lasers) are single global
+     * renderers holding the player's world only, so they stand aside then.
+     */
+    public static boolean isOtherWorld() {
+        Minecraft minecraft = Minecraft.getInstance();
+        return minecraft.level != null && minecraft.player != null && minecraft.level != minecraft.player.level();
     }
 
     /** The level a Voxy render system is being made for. */

@@ -233,6 +233,20 @@ public final class IPPhysicsStaffPortals {
     }
 
     /**
+     * {@code player} was carried through {@code portal} with a ship: their client's drag or held handle turns as for
+     * their own teleport.
+     */
+    static void tellCarried(final ServerPlayer player, final Portal portal) {
+        if (!isRigid(portal)) {
+            return;
+        }
+        final IPPortalIsometry through = IPPortalIsometry.of(portal);
+        final Quaterniondc q = through.rotation();
+        McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "onCarriedThrough", portal.getDestDim(),
+            through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+    }
+
+    /**
      * {@code shipId} went from {@code src} through {@code portal} and is now {@code moved}: drags of it move to the
      * destination's staff handler, with the anchor in the new plot and the frame extended by the portal.
      */

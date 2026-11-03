@@ -27,6 +27,7 @@ import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
 import qouteall.imm_ptl.core.compat.sable_integration.IPLaserIrisPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
+import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
 import qouteall.imm_ptl.core.render.SecondaryFrameBuffer;
@@ -308,6 +309,11 @@ public class IrisPortalRenderer extends PortalRenderer {
         //reset projection matrix
 //        client.gameRenderer.loadProjectionMatrix(RenderStates.basicProjectionMatrix);
         
+        // Immersive Aeronautics: a portal fades out towards its draw distance (IPPortalDrawDistance); what is behind
+        // it is this layer's deferred buffer, where the outer view is composited
+        float visibility = IPPortalDrawDistance.visibility(portal);
+        boolean fading = IPPortalDrawDistance.beginFade(visibility, deferredFbs[PortalRendering.getPortalLayer()].fb);
+        
         //write to deferred buffer
         if (!tryRenderViewAreaInDeferredBufferAndIncreaseStencil(portal, modelView)) {
             return;
@@ -341,6 +347,11 @@ public class IrisPortalRenderer extends PortalRenderer {
             true,
             false
         );
+        
+        // Immersive Aeronautics: see above
+        if (fading) {
+            IPPortalDrawDistance.endFade(visibility, innerLayer, deferredFbs[outerLayer].fb);
+        }
         
         glDisable(GL_STENCIL_TEST);
         

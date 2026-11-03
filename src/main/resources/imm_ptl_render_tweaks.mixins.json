@@ -8,7 +8,6 @@
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "MixinPortalRenderer_ShaderDistanceCull",
     "MixinIrisBufferedSource_PortalClip",
     "MixinLodestonePostProcess_PortalPassSkip",
     "MixinDatabankPostShaders_PortalPassSkip",

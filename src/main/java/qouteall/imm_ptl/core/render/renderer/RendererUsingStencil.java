@@ -16,7 +16,7 @@ import org.lwjgl.opengl.GL11;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
 import qouteall.imm_ptl.core.compat.dh_integration.IPDhTextureGuard;
-import qouteall.imm_ptl.core.render.IPGlobalPortalFade;
+import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
 import qouteall.imm_ptl.core.render.FrontClipping;
@@ -158,9 +158,9 @@ public class RendererUsingStencil extends PortalRenderer {
         
         int outerPortalStencilValue = PortalRendering.getPortalLayer();
 
-        // Immersive Aeronautics: a dimension stack's floor/ceiling fades out towards its view range
-        float visibility = IPGlobalPortalFade.visibility(portal);
-        boolean fading = IPGlobalPortalFade.beginFade(visibility);
+        // Immersive Aeronautics: a portal fades out towards its draw distance (IPPortalDrawDistance)
+        float visibility = IPPortalDrawDistance.visibility(portal);
+        boolean fading = IPPortalDrawDistance.beginFade(visibility, client.getMainRenderTarget());
 
         client.getProfiler().push("render_view_area");
         
@@ -190,7 +190,7 @@ public class RendererUsingStencil extends PortalRenderer {
         renderPortalContent(portal);
 
         if (fading) {
-            IPGlobalPortalFade.endFade(visibility, thisPortalStencilValue);
+            IPPortalDrawDistance.endFade(visibility, thisPortalStencilValue, client.getMainRenderTarget());
         }
 
         PortalRendering.popPortalLayer();

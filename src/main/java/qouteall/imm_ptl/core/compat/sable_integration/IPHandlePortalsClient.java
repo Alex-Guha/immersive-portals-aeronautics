@@ -334,8 +334,19 @@ public final class IPHandlePortalsClient {
             current.lost = true;
             return;
         }
-        current.frame = IPPortalIsometry.of(portal).inverse().then(current.frame);
-        current.playerDim = portal.getDestDim();
+        onPlayerTeleported(IPPortalIsometry.of(portal), portal.getDestDim());
+    }
+
+    /**
+     * As {@link #onPlayerTeleported(Portal)}, for a rigid portal's map {@code through} into {@code dim}.
+     */
+    static void onPlayerTeleported(final IPPortalIsometry through, final ResourceKey<Level> dim) {
+        final Hold current = hold;
+        if (current == null) {
+            return;
+        }
+        current.frame = through.inverse().then(current.frame);
+        current.playerDim = dim;
     }
 
     @Nullable

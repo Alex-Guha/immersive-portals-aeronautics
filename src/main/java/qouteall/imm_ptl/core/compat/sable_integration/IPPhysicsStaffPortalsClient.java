@@ -399,9 +399,19 @@ public final class IPPhysicsStaffPortalsClient {
             current.lost = true;
             return;
         }
-        final IPPortalIsometry through = IPPortalIsometry.of(portal);
+        onPlayerTeleported(IPPortalIsometry.of(portal), portal.getDestDim());
+    }
+
+    /**
+     * As {@link #onPlayerTeleported(Portal)}, for a rigid portal's map {@code through} into {@code dim}.
+     */
+    static void onPlayerTeleported(final IPPortalIsometry through, final ResourceKey<Level> dim) {
+        final Drag current = drag;
+        if (current == null) {
+            return;
+        }
         current.frame = through.inverse().then(current.frame);
-        current.playerDim = portal.getDestDim();
+        current.playerDim = dim;
         current.session.dragOrientation().premul(through.rotation());
     }
 
@@ -608,6 +618,17 @@ public final class IPPhysicsStaffPortalsClient {
 
     public static final class RemoteCallables {
         private RemoteCallables() {
+        }
+
+        /**
+         * The server carried the local player through a portal ({@code origin}, {@code dest}, {@code rotation}) into
+         * {@code dim} with the ship they were on: a drag or a held handle turns as for the player's own teleport.
+         */
+        public static void onCarriedThrough(final ResourceKey<Level> dim, final Vec3 origin, final Vec3 dest, final DQuaternion rotation) {
+            final IPPortalIsometry through = new IPPortalIsometry(origin, dest,
+                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
+            IPPhysicsStaffPortalsClient.onPlayerTeleported(through, dim);
+            IPHandlePortalsClient.onPlayerTeleported(through, dim);
         }
 
         /**

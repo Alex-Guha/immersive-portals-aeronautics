@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -57,12 +64,58 @@ public class OverlayRendering {
             return;
         }
         
-        if (portal instanceof BreakablePortalEntity) {
+        // Immersive Aeronautics: drawn after the portal pass (drawPendingOverlays), not into the entity buffers.
+        // The overlay writes depth in front of the portal plane, so a flush of every buffer before the portal pass
+        // (Coasters Simulated at AFTER_BLOCK_ENTITIES, IP's own around entities crossing a portal) hid the portal.
+        if (portal instanceof BreakablePortalEntity breakablePortalEntity) {
+            pendingOverlays.add(new PendingOverlay(breakablePortalEntity, matrixStack.last().copy()));
+        }
+    }
+    
+    // Immersive Aeronautics
+    public record PendingOverlay(BreakablePortalEntity portal, PoseStack.Pose pose) {}
+    
+    private static final List<PendingOverlay> pendingOverlays = new ArrayList<>();
+    
+    /**
+     * Immersive Aeronautics: called before each pass's entities; anything left from a pass that never reached its
+     * portal pass is dropped.
+     */
+    public static void onBeginRenderingEntities() {
+        pendingOverlays.clear();
+    }
+    
+    /**
+     * Immersive Aeronautics: called before the pass renders its portals. The nested passes inside record and draw
+     * their own overlays, so this pass's are taken out first.
+     */
+    public static List<PendingOverlay> takePendingOverlays() {
+        if (pendingOverlays.isEmpty()) {
+            return List.of();
+        }
+        List<PendingOverlay> result = new ArrayList<>(pendingOverlays);
+        pendingOverlays.clear();
+        return result;
+    }
+    
+    /**
+     * Immersive Aeronautics: called after the portal pass, right before vanilla flushes
+     * {@link Sheets#translucentCullBlockSheet()}, where the overlay was drawn before something flushed it early.
+     */
+    public static void drawPendingOverlays(List<PendingOverlay> overlays) {
+        if (overlays.isEmpty()) {
+            return;
+        }
+        MultiBufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
+        for (PendingOverlay overlay : overlays) {
+            PoseStack poseStack = new PoseStack();
+            poseStack.last().pose().set(overlay.pose().pose());
+            poseStack.last().normal().set(overlay.pose().normal());
             renderBreakablePortalOverlay(
-                ((BreakablePortalEntity) portal),
+                overlay.portal(),
                 RenderStates.getPartialTick(),
-                matrixStack,
-                vertexConsumerProvider
+                poseStack,
+                bufferSource
             );
         }
     }

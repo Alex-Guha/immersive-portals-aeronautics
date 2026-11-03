@@ -197,13 +197,15 @@ public class DimStackManagement {
         
         McRemoteProcedureCall.tellClientToInvoke(
             player,
-            "qouteall.imm_ptl.peripheral.dim_stack.DimStackManagement.RemoteCallables.clientOpenScreen",
+            "qouteall.imm_ptl.peripheral.dim_stack.DimStackManagement.ClientRemoteCallables.clientOpenScreen",
             dimIdList
         );
     }
     
-    public static class RemoteCallables {
-        //@OnlyIn(Dist.CLIENT)
+    // Immersive Aeronautics: the client's half of the RPCs in a class of its own. A dedicated server loads
+    // RemoteCallables to find serverSetupDimStack, and verifying clientOpenScreen there loaded the client's Screen class,
+    // which NeoForge refuses on a dedicated server: the packet failed to parse and the player was kicked.
+    public static class ClientRemoteCallables {
         public static void clientOpenScreen(List<String> dimensions) {
             List<ResourceKey<Level>> dimensionList =
                 dimensions.stream().map(Helper::dimIdToKey).collect(Collectors.toList());
@@ -229,7 +231,9 @@ public class DimStackManagement {
             controller.initializeAsDefault();
             Minecraft.getInstance().setScreen(controller.view);
         }
-        
+    }
+    
+    public static class RemoteCallables {
         public static void serverSetupDimStack(
             ServerPlayer player, DimStackInfo dimStackInfo
         ) {

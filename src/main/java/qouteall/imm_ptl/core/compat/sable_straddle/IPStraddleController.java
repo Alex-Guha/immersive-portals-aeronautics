@@ -911,7 +911,7 @@ final class IPStraddleController {
         IPShipThroughPortalSync.resendLastPose(handoff.level(), ship);
         final dev.ryanhcode.sable.companion.math.Pose3d sentPose = new dev.ryanhcode.sable.companion.math.Pose3d(ship.lastNetworkedPose());
         final dev.ryanhcode.sable.companion.math.Pose3d handoffPose = new dev.ryanhcode.sable.companion.math.Pose3d(ship.logicalPose());
-        final IPSableBridge.Moved moved = IPSableBridge.moveThroughPortal(ship, handoff.level(), dest, destPos, rotation, carried, travelling);
+        final IPSableBridge.Moved moved = IPSableBridge.moveThroughPortal(ship, handoff.level(), dest, destPos, rotation, carried, travelling, true);
         if (IPStraddleDebugTrace.ENABLED && moved != null) {
             final dev.ryanhcode.sable.companion.math.Pose3d mapped = isometry.mapPose(handoffPose);
             final dev.ryanhcode.sable.companion.math.Pose3dc arrived = moved.sub().logicalPose();

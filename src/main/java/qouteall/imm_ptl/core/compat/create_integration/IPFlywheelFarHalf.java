@@ -72,6 +72,17 @@ public final class IPFlywheelFarHalf {
         return drawing;
     }
 
+    /**
+     * @return whether an entity of a straddling ship drawn now, in its far half ({@code MixinLevelRenderer_StraddleFarHalf}),
+     * is visualized by Flywheel: this class draws the ship's Flywheel parts there, its contraptions included. Flywheel
+     * serves a level only while it is {@code Minecraft.level}, so Create's contraption renderer would otherwise draw
+     * the contraption's blocks a second time on top.
+     */
+    public static boolean visualizesFarHalfEntities() {
+        return SABLE && !failed && dev.engine_room.flywheel.api.backend.BackendManager.isBackendOn()
+            && IPStraddleRender.isProjecting();
+    }
+
     public static void onStartLevelRender(final RenderContext context) {
         STARTED.put(context.level(), RenderStates.frameIndex);
         IPCreateCarriageCrossingClient.onFrameStart();

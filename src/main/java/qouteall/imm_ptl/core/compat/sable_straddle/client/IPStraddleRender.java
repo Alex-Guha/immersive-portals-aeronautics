@@ -276,26 +276,65 @@ public final class IPStraddleRender {
     }
 
     /**
-     * Whether an entity placed on a ship (in its plot: Contraption Diagrams, item frames, paintings) is hidden in the
-     * current pass: its centre is past the cut of a straddling ship (or the ship is not drawn in this portal view).
-     * Their far half is not drawn in the destination.
+     * How an entity placed on a ship (in its plot: Create contraptions, Contraption Diagrams, item frames, paintings) is
+     * drawn in the current pass, by its bounding box against the cut of a straddling ship: {@code WHOLE} on the kept
+     * side (or no cut), {@code SKIP} past it (or the ship is not drawn in this portal view), {@code CLIP} across it, its
+     * quads clipped at the cut ({@link #entityClippingSource}). By its box, not its position: a bearing contraption's
+     * position is its bearing, so placed by that it crossed whole when the bearing did. In the destination the far half
+     * goes through the same test against the destination plane ({@code MixinLevelRenderer_StraddleFarHalf}).
      */
-    public static boolean cutsShipEntity(final net.minecraft.world.entity.Entity entity, final float partialTick) {
+    public static BlockEntityCut shipEntityCut(final net.minecraft.world.entity.Entity entity, final float partialTick) {
         if (IPStraddleClientSessions.isEmpty()) {
-            return false;
+            return BlockEntityCut.WHOLE;
         }
         if (!(dev.ryanhcode.sable.Sable.HELPER.getContaining(entity) instanceof final ClientSubLevel ship)) {
-            return false;
+            return BlockEntityCut.WHOLE;
         }
         final KeepPlane plane = planeFor(ship);
         if (plane == null) {
-            return false;
+            return BlockEntityCut.WHOLE;
         }
         if (facesPortalClipAway(plane)) {
-            return true;
+            return BlockEntityCut.SKIP;
         }
-        final Vec3 center = entity.getPosition(partialTick).add(0.0, entity.getBbHeight() * 0.5, 0.0);
-        return !plane.keeps(ship.renderPose().transformPosition(center));
+        // where the entity is drawn this frame (a bearing contraption's box covers every angle it turns to: Create
+        // expands its bounds around the axis)
+        final net.minecraft.world.phys.AABB box = entity.getBoundingBox()
+                .move(entity.getPosition(partialTick).subtract(entity.position()))
+                .inflate(ENTITY_CLIP_MARGIN);
+        final double[] range = distanceRange(ship.renderPose(), box, plane.point(), plane.normal());
+        return range[0] >= 0.0 ? BlockEntityCut.WHOLE : range[1] < 0.0 ? BlockEntityCut.SKIP : BlockEntityCut.CLIP;
+    }
+
+    /** Added around an entity's box when placing it against a cut [blocks]: what it draws a little outside the box. */
+    private static final double ENTITY_CLIP_MARGIN = 0.5;
+
+    /**
+     * A buffer source clipping what an entity on a straddling ship draws at the ship's cut in this pass (for
+     * {@link #shipEntityCut} {@code CLIP}); {@link IPPlaneClippingBufferSource#flush} it after the draw. Sable draws a
+     * plot entity at its world position relative to the camera through the pose stack {@code LevelRenderer.renderEntity}
+     * is given ({@code poseStack}), so the plane is placed through that.
+     *
+     * @return the source, or null when the entity has no cut in this pass
+     */
+    @Nullable
+    public static IPPlaneClippingBufferSource entityClippingSource(final net.minecraft.world.entity.Entity entity,
+                                                                   final double cameraX, final double cameraY, final double cameraZ,
+                                                                   final com.mojang.blaze3d.vertex.PoseStack poseStack,
+                                                                   final net.minecraft.client.renderer.MultiBufferSource source) {
+        if (!(dev.ryanhcode.sable.Sable.HELPER.getContaining(entity) instanceof final ClientSubLevel ship)) {
+            return null;
+        }
+        final KeepPlane plane = planeFor(ship);
+        if (plane == null) {
+            return null;
+        }
+        final Vec3 point = plane.point().subtract(plane.normal().scale(seamReach())).subtract(cameraX, cameraY, cameraZ);
+        final org.joml.Matrix4f matrix = poseStack.last().pose();
+        final org.joml.Vector3f anchor = matrix.transformPosition(new org.joml.Vector3f((float) point.x, (float) point.y, (float) point.z));
+        final org.joml.Vector3f normal = matrix.transformDirection(new org.joml.Vector3f(
+                (float) plane.normal().x, (float) plane.normal().y, (float) plane.normal().z)).normalize();
+        return new IPPlaneClippingBufferSource(source, normal, anchor);
     }
 
     /** Block entities whose centre is this far [blocks] from a ship's cut are drawn whole or not at all. */

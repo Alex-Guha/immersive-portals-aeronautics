@@ -80,21 +80,32 @@ public final class IPSableBridge {
     public static IPSableBridge.Moved moveThroughPortal(
         ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation, @Nullable Velocity carried
     ) {
-        IPSableBridge.Moved moved = moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, Set.of(sub.getUniqueId()));
+        IPSableBridge.Moved moved = moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, Set.of(sub.getUniqueId()), false);
         if (moved != null) {
             IPShipJoints.shiftLoadedJoints(dstLevel, Map.of(moved.sub().getUniqueId(), moved.shift()));
         }
         return moved;
     }
 
+    /** As the overload below, for a ship that did not straddle the portal. */
+    public static IPSableBridge.Moved moveThroughPortal(
+        ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation, @Nullable Velocity carried,
+        Set<UUID> travelling
+    ) {
+        return moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, travelling, false);
+    }
+
     /**
      * As {@link #moveThroughPortal(ServerSubLevel, ServerLevel, ServerLevel, Vec3, Quaterniond, Velocity)}, for a ship
      * crossing together with the ships in {@code travelling} (which includes it): ropes between them are kept and travel
      * with the ships ({@link IPShipRopeCompat}); the caller moves the others too and then fixes up their anchors.
+     *
+     * @param straddled the ship went through the portal straddling it (a hand-off): players standing next to it are
+     *                  not carried along ({@link IPShipRiderCarry#capture})
      */
     public static IPSableBridge.Moved moveThroughPortal(
         ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation, @Nullable Velocity carried,
-        Set<UUID> travelling
+        Set<UUID> travelling, boolean straddled
     ) {
         ServerSubLevelContainer srcContainer = SubLevelContainer.getContainer(srcLevel);
         ServerSubLevelContainer dstContainer = SubLevelContainer.getContainer(dstLevel);
@@ -110,9 +121,9 @@ public final class IPSableBridge {
             IPShipRopeCompat.breakAttachedRopes(srcLevel, sub, travelling);
             IPShipJoints.prepareSpringsForMove(srcLevel, sub, travelling);
             List<BlockPos> disassembled = IPShipCreateCompat.disassembleAssemblies(srcLevel, sub);
-            List<AABB> glueBoxes = IPShipCreateCompat.captureGlue(srcLevel, sub);
+            IPShipCreateCompat.Glue glue = IPShipCreateCompat.captureGlue(srcLevel, sub);
             IPShipCreateCompat.KineticSnapshot kinetics = IPShipCreateCompat.collectKinetics(srcLevel, sub);
-            IPShipRiderCarry.Captured riders = IPShipRiderCarry.capture(srcLevel, sub);
+            IPShipRiderCarry.Captured riders = IPShipRiderCarry.capture(srcLevel, sub, straddled);
             IPShipBalloonCompat.Captured balloons = IPShipBalloonCompat.capture(srcLevel, sub);
             SubLevelData data = SubLevelSerializer.toData(sub, List.of());
             CompoundTag fullTag = data.fullTag();
@@ -135,14 +146,15 @@ public final class IPSableBridge {
 
             IPSableBridge.Loaded loaded;
             try {
-                loaded = reloadInDestination(srcLevel.getMinBuildHeight(), dstLevel, dstContainer, data);
+                // within one level, never the plot it left (see reloadInDestination)
+                loaded = reloadInDestination(srcLevel.getMinBuildHeight(), dstLevel, dstContainer, data, dstLevel == srcLevel);
             } catch (RuntimeException e) {
                 LOGGER.warn("[IPShipPortal] destination load threw for ship {}; restoring to source: {}", data.uuid(), e.toString());
                 loaded = null;
             }
 
             if (loaded != null) {
-                IPShipCreateCompat.replayGlue(dstLevel, glueBoxes, loaded.shift());
+                IPShipCreateCompat.replayGlue(dstLevel, glue, loaded.shift());
                 IPShipCreateCompat.reassemble(dstLevel, disassembled, loaded.shift());
                 IPShipCreateCompat.reactivateGenerators(dstLevel, kinetics.generatorPositions(), loaded.shift());
                 IPShipBalloonCompat.restore(dstLevel, loaded.sub(), balloons, loaded.shift());
@@ -158,7 +170,7 @@ public final class IPSableBridge {
                 IPShipTeleportJournal.delete(srcLevel.getServer(), data.uuid());
                 return new IPSableBridge.Moved(loaded.sub(), loaded.shift());
             } else {
-                if (restoreToSource(srcLevel, srcContainer, preEditCopy, data.uuid(), disassembled, glueBoxes, kinetics, riders, balloons)) {
+                if (restoreToSource(srcLevel, srcContainer, preEditCopy, data.uuid(), disassembled, glue, kinetics, riders, balloons)) {
                     IPShipTeleportJournal.delete(srcLevel.getServer(), data.uuid());
                 } else {
                     LOGGER.warn(
@@ -287,7 +299,7 @@ public final class IPSableBridge {
         CompoundTag preEditCopy,
         UUID shipId,
         List<BlockPos> disassembled,
-        List<AABB> glueBoxes,
+        IPShipCreateCompat.Glue glue,
         IPShipCreateCompat.KineticSnapshot kinetics,
         IPShipRiderCarry.Captured riders,
         IPShipBalloonCompat.Captured balloons
@@ -307,7 +319,7 @@ public final class IPSableBridge {
             if (loaded == null) {
                 return false;
             } else {
-                IPShipCreateCompat.replayGlue(srcLevel, glueBoxes, loaded.shift());
+                IPShipCreateCompat.replayGlue(srcLevel, glue, loaded.shift());
                 IPShipCreateCompat.reassemble(srcLevel, disassembled, loaded.shift());
                 IPShipCreateCompat.reactivateGenerators(srcLevel, kinetics.generatorPositions(), loaded.shift());
                 IPShipBalloonCompat.restore(srcLevel, loaded.sub(), balloons, loaded.shift());
@@ -319,7 +331,20 @@ public final class IPSableBridge {
     }
 
     public static IPSableBridge.Loaded reloadInDestination(int srcMinBuildHeight, ServerLevel dstLevel, ServerSubLevelContainer dstContainer, SubLevelData data) {
-        IPSableBridge.Loaded loaded = tryLoad(srcMinBuildHeight, dstLevel, dstContainer, data);
+        return reloadInDestination(srcMinBuildHeight, dstLevel, dstContainer, data, false);
+    }
+
+    /**
+     * @param otherPlot load the ship into a plot other than the one it was saved from: for a move within one level.
+     *                  Sable names a ship by its plot in what clients send and receive (a player's position while
+     *                  standing on it, pose snapshots), so in the old plot the arrived copy took over what was meant for
+     *                  the copy that left: a move packet the rider's client sent from the old copy put the player a
+     *                  portal's distance on, their own crossing was refused as too far, and a drag or held handle was
+     *                  left a portal off and pulled the ship there (user, 2026-11-04)
+     */
+    public static IPSableBridge.Loaded reloadInDestination(int srcMinBuildHeight, ServerLevel dstLevel, ServerSubLevelContainer dstContainer, SubLevelData data,
+                                                           boolean otherPlot) {
+        IPSableBridge.Loaded loaded = tryLoad(srcMinBuildHeight, dstLevel, dstContainer, data, otherPlot);
         if (loaded != null) {
             logLoadedPhysics(dstLevel, loaded.sub());
         }
@@ -375,7 +400,8 @@ public final class IPSableBridge {
      * applied to the pose's rotation point; otherwise the ship appears displaced by exactly that
      * shift (a whole plot sideways, or 64 blocks underground).
      */
-    private static IPSableBridge.Loaded tryLoad(int srcMinBuildHeight, ServerLevel dstLevel, ServerSubLevelContainer dstContainer, SubLevelData data) {
+    private static IPSableBridge.Loaded tryLoad(int srcMinBuildHeight, ServerLevel dstLevel, ServerSubLevelContainer dstContainer, SubLevelData data,
+                                                boolean otherPlot) {
         CompoundTag fullTag = data.fullTag();
         CompoundTag plotTag = fullTag.getCompound("plot");
         int oldPlotX = plotTag.getInt("plot_x");
@@ -388,7 +414,7 @@ public final class IPSableBridge {
             return null;
         }
 
-        int[] freePlot = findFreePlot(dstContainer, oldPlotX, oldPlotZ);
+        int[] freePlot = otherPlot ? findFreePlotOtherThan(dstContainer, oldPlotX, oldPlotZ) : findFreePlot(dstContainer, oldPlotX, oldPlotZ);
         if (freePlot == null) {
             LOGGER.warn("[IPShipPortal] destination container has no free plot; aborting move for {}", data.uuid());
             return null;
@@ -418,6 +444,7 @@ public final class IPSableBridge {
         if (sectionShift != 0) {
             rekeySections(plotTag, sectionShift);
         }
+        keySectionsForDestination(plotTag, dstLevel);
         if (shiftX != 0 || shiftY != 0 || shiftZ != 0) {
             offsetPlotCoordinates(plotTag, shiftX, shiftY, shiftZ);
             IPShipRopeCompat.shiftSavedAnchors(plotTag, data.uuid(), new BlockPos(shiftX, shiftY, shiftZ), dstLevel);
@@ -440,7 +467,15 @@ public final class IPSableBridge {
             data.uuid(), dstLevel.dimension().location(), oldPlotX, oldPlotZ, freePlot[0], freePlot[1], sectionShift, shiftX, shiftY, shiftZ
         );
         ServerSubLevel loaded = SubLevelSerializer.fullyLoad(dstLevel, edited);
-        return loaded == null ? null : new IPSableBridge.Loaded(loaded, new BlockPos(shiftX, shiftY, shiftZ));
+        if (loaded == null) {
+            return null;
+        }
+        if (!IPShipLoadGuard.landedWhole(loaded, plotTag)) {
+            // the callers restore the ship from its unedited copy, or keep it in the teleport journal
+            dstContainer.removeSubLevel(loaded, SubLevelRemovalReason.REMOVED);
+            return null;
+        }
+        return new IPSableBridge.Loaded(loaded, new BlockPos(shiftX, shiftY, shiftZ));
     }
 
     /** Lowest and highest section array index used by any chunk of the plot, or null if the plot is empty. */
@@ -482,6 +517,31 @@ public final class IPSableBridge {
             }
             chunk.put("sections", rekeyed);
         }
+    }
+
+    /**
+     * Test switch: {@code -Dip_aeronautics.debug.keepMinSectionY=true} leaves Dimensional Sable's {@code min_section_y}
+     * as saved, so a move between levels of different heights loses its blocks and {@link IPShipLoadGuard} must undo it.
+     */
+    private static final boolean DEBUG_KEEP_MIN_SECTION = Boolean.getBoolean("ip_aeronautics.debug.keepMinSectionY");
+
+    /**
+     * Dimensional Sable writes the saving level's lowest section into every plot it saves ({@code min_section_y}), and
+     * on load adds {@code min_section_y - level.getMinSection()} to every section key ({@code ServerLevelPlotMixin},
+     * 1.1.0): the re-keying {@link #rekeySections} has already done. Applied twice, an overworld ship loaded in the
+     * nether or the End came back 64 blocks below its pose: its block entities found air and were dropped, and the
+     * ship sat in the ground under the portal (player report via the user, 2026-11-05). The tag now says its sections
+     * are keyed for the destination, so that mod adds nothing; Sable ignores the key.
+     */
+    private static void keySectionsForDestination(CompoundTag plotTag, ServerLevel dstLevel) {
+        if (!plotTag.contains("min_section_y", Tag.TAG_INT)) {
+            return;
+        }
+        if (DEBUG_KEEP_MIN_SECTION) {
+            LOGGER.info("[IPShipPortal] test switch: min_section_y left as saved ({})", plotTag.getInt("min_section_y"));
+            return;
+        }
+        plotTag.putInt("min_section_y", dstLevel.getMinSection());
     }
 
     /**
@@ -594,6 +654,20 @@ public final class IPSableBridge {
 
             return null;
         }
+    }
+
+    /** A free plot other than ({@code avoidX}, {@code avoidZ}), or null. */
+    private static int @Nullable [] findFreePlotOtherThan(ServerSubLevelContainer container, int avoidX, int avoidZ) {
+        BitSet occupancy = container.getOccupancy();
+        int sideLength = 1 << container.getLogSideLength();
+        for (int z = 0; z < sideLength; z++) {
+            for (int x = 0; x < sideLength; x++) {
+                if ((x != avoidX || z != avoidZ) && isPlotFree(container, occupancy, sideLength, x, z)) {
+                    return new int[]{x, z};
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean isPlotFree(ServerSubLevelContainer container, BitSet occupancy, int sideLength, int x, int z) {

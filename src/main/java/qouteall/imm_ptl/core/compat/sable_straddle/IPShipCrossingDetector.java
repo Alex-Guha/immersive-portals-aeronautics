@@ -43,6 +43,7 @@ import java.util.UUID;
  */
 final class IPShipCrossingDetector {
     private static final double EPSILON = 1.0e-8;
+    private static final boolean CREATE_LOADED = net.neoforged.fml.ModList.get().isLoaded("create");
     /** Distance from the plane at which a ship counts as touching it (entry) or clear of it (crossed). */
     static final double HYSTERESIS = 0.1;
     /** Ticks a ship's block list is reused before it is read again from the plot. */
@@ -183,13 +184,34 @@ final class IPShipCrossingDetector {
      * {@value #VOLUME_REFRESH_TICKS} ticks
      */
     static List<BlockPos> blocks(final ServerSubLevel ship, final long tick) {
+        final List<BlockPos> blocks;
         final Volume volume = VOLUMES.get(ship.getUniqueId());
         if (volume != null && volume.owner() == ship && tick - volume.tick() < VOLUME_REFRESH_TICKS) {
-            return volume.blocks();
+            blocks = volume.blocks();
+        } else {
+            blocks = readBlocks(ship);
+            VOLUMES.put(ship.getUniqueId(), new Volume(ship, tick, blocks));
         }
-        final List<BlockPos> blocks = readBlocks(ship);
-        VOLUMES.put(ship.getUniqueId(), new Volume(ship, tick, blocks));
-        return blocks;
+        return withContraptions(ship, blocks);
+    }
+
+    /**
+     * {@code blocks} plus the blocks of the ship's Create contraptions where they are now (read every call: a bearing
+     * turns them), which are not in its plot: a drill head below its bearing must open the session when it reaches the
+     * portal, not when the hull does, and the ship is through only once they are.
+     */
+    private static List<BlockPos> withContraptions(final ServerSubLevel ship, final List<BlockPos> blocks) {
+        if (!CREATE_LOADED) {
+            return blocks;
+        }
+        final List<BlockPos> extra = new ArrayList<>();
+        if (!qouteall.imm_ptl.core.compat.create_integration.IPCreateShipContraptions.addBlocks(ship, extra)) {
+            return blocks;
+        }
+        final List<BlockPos> all = new ArrayList<>(blocks.size() + extra.size());
+        all.addAll(blocks);
+        all.addAll(extra);
+        return all;
     }
 
     private static List<BlockPos> readBlocks(final ServerSubLevel ship) {
@@ -475,13 +497,20 @@ final class IPShipCrossingDetector {
 
     private static void includePlotBounds(final Bounds out, final ServerSubLevel ship, final Pose3dc pose) {
         final var box = ship.getPlot().getBoundingBox();
+        AABB plot = new AABB(box.minX(), box.minY(), box.minZ(), box.maxX() + 1.0, box.maxY() + 1.0, box.maxZ() + 1.0);
+        // Create contraptions on the ship reach past its plot's blocks
+        final AABB contraptions = CREATE_LOADED
+                ? qouteall.imm_ptl.core.compat.create_integration.IPCreateShipContraptions.extent(ship) : null;
+        if (contraptions != null) {
+            plot = plot.minmax(contraptions);
+        }
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 2; y++) {
                 for (int z = 0; z < 2; z++) {
                     out.include(pose.transformPosition(new Vec3(
-                            x == 0 ? box.minX() : box.maxX() + 1.0,
-                            y == 0 ? box.minY() : box.maxY() + 1.0,
-                            z == 0 ? box.minZ() : box.maxZ() + 1.0)));
+                            x == 0 ? plot.minX : plot.maxX,
+                            y == 0 ? plot.minY : plot.maxY,
+                            z == 0 ? plot.minZ : plot.maxZ)));
                 }
             }
         }

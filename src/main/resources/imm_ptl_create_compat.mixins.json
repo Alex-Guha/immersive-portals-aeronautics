@@ -118,6 +118,7 @@
     "MixinAbstractLaserRenderer_Portals",
     "MixinLaserPointerRenderer_PortalClip",
     "MixinOutliner_StaffSelection",
+    "MixinOutliner_PortalClip",
     "MixinHotAirBurnerRenderer_StraddleClip",
     "MixinControlsHandler_FollowCarriage",
     "MixinPipeAttachmentModel_PortalPipes",

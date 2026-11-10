@@ -366,7 +366,12 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
         int int_1,
         LevelRenderer worldRenderer_1
     ) {
-        if (IPCGlobal.useHackedChunkRenderDispatcher) {
+        // Immersive Aeronautics: not with Sodium. Sodium builds this ViewArea with a render distance of 0 and
+        // never repositions it, and nothing of IP's reads it there; ImmPtlViewArea fills its sections only in
+        // repositionCamera, so its array stayed all null, where vanilla's is full. LittleTiles looks up the section
+        // of every compile in it (ViewAreaExtender.getSection on Minecraft.levelRenderer's view area) and crashed on
+        // the first sub-level section built.
+        if (IPCGlobal.useHackedChunkRenderDispatcher && !SodiumInterface.invoker.isSodiumPresent()) {
             return new ImmPtlViewArea(
                 chunkBuilder_1, world_1, int_1, worldRenderer_1
             );
@@ -461,7 +466,10 @@ public abstract class MixinLevelRenderer implements IEWorldRenderer {
     // sometimes we change renderDistance but we don't want to reload it
     @Inject(method = "allChanged", at = @At("HEAD"), cancellable = true)
     private void onReloadStarted(CallbackInfo ci) {
-        if (WorldRenderInfo.isRendering()) {
+        // Immersive Aeronautics: not for the level renderer of a client world being created. Its setLevel runs
+        // allChanged, which is what creates its section render dispatcher and view area; a world created during a
+        // portal pass kept none, and earlyRemoteUpload crashed on the null dispatcher the next frame.
+        if (WorldRenderInfo.isRendering() && !ClientWorldLoader.getIsCreatingClientWorld()) {
             Helper.log("world renderer reloading cancelled during portal rendering");
             ci.cancel();
         }

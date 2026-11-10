@@ -79,6 +79,11 @@ public final class IPMixinReport {
     private IPMixinReport() {
     }
 
+    /** Whether {@code annotationDesc} is a Mixin or MixinExtras injector annotation (one that names its target methods). */
+    public static boolean isInjector(String annotationDesc) {
+        return INJECTORS.contains(annotationDesc);
+    }
+
     static synchronized void applied(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo info) {
         try {
             List<String> handlers = handlers(info.getClassNode(ClassReader.SKIP_CODE));

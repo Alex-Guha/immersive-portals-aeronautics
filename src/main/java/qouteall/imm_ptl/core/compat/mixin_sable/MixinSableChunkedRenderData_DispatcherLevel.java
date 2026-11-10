@@ -3,6 +3,8 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_sable;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData;
 import net.minecraft.client.Camera;
@@ -16,13 +18,10 @@ import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.mixin.client.render.IESectionRenderDispatcher;
 
 /**
- * Compiles a ship's sections from the ship's own level.
+ * Compiles a ship's sections from the ship's own level, and gives the dispatcher its level back afterwards.
  * <p>
  * Sable's reach-around render dispatcher (the Sodium path) is a singleton holding one vanilla
  * {@link SectionRenderDispatcher}, whose {@code level} is set only when a ship's render data is created.
@@ -32,6 +31,15 @@ import qouteall.imm_ptl.core.mixin.client.render.IESectionRenderDispatcher;
  * complete, parts of ships invisible after a crossing) or filled with the other dimension's ship at the
  * same plot ("illusions" of other sub-levels attached). Setting the level right before each compile
  * makes the region snapshot come from the ship's own level.
+ * <p>
+ * On the vanilla renderer (no Sodium) Sable instead hands a ship {@code Minecraft.levelRenderer}'s own
+ * terrain dispatcher ({@code VanillaSubLevelRenderDispatcher.createRenderData}), which is the player's world's
+ * when a ship of a portal-side world gets its render data in a container tick. Left pointed at the ship's
+ * level, that renderer then built every changed or newly loaded terrain section of the player's world from
+ * the other world at the same coordinates (player report, 2026-11-04, 2.8.15: the overworld drawn in the
+ * nether, chunks vanishing where blocks were placed, until a respawn reset the renderer). The level is put
+ * back when the compile returns: {@code RenderSection.createCompileTask} snapshots the region from
+ * {@code level} on the render thread, so tasks already scheduled keep the ship's level.
  * <p>
  * The dispatcher's {@code fixedBuffers} (used for nearby sections compiled synchronously) are the
  * {@code fixedBufferPack} of whatever {@link RenderBuffers} were current when the dispatcher was created.
@@ -49,21 +57,36 @@ public class MixinSableChunkedRenderData_DispatcherLevel {
     @Final
     private SectionRenderDispatcher sectionRenderDispatcher;
 
-    @Inject(
-        method = "compileSections",
-        at = @At("HEAD"),
-        require = 0
-    )
-    private void ip_compileFromOwnLevel(PrioritizeChunkUpdates chunkUpdates, RenderRegionCache renderRegionCache, Camera camera, CallbackInfo ci) {
+    @WrapMethod(method = "compileSections", require = 0)
+    private void ip_compileFromOwnLevel(
+        PrioritizeChunkUpdates chunkUpdates, RenderRegionCache renderRegionCache, Camera camera, Operation<Void> original
+    ) {
+        SectionRenderDispatcher dispatcher = this.sectionRenderDispatcher;
         ClientLevel level = this.subLevel.getLevel();
-        if (level != null && this.sectionRenderDispatcher != null) {
-            this.sectionRenderDispatcher.setLevel(level);
+        ClientLevel previousLevel = null;
+        boolean switched = false;
+
+        if (level != null && dispatcher instanceof IESectionRenderDispatcher accessor) {
+            previousLevel = accessor.ip_getLevel();
+            if (previousLevel != level) {
+                dispatcher.setLevel(level);
+                switched = true;
+            }
+
+            RenderBuffers renderBuffers = Minecraft.getInstance().renderBuffers();
+            if (renderBuffers != null) {
+                SectionBufferBuilderPack pack = renderBuffers.fixedBufferPack();
+                if (accessor.ip_getFixedBuffers() != pack) {
+                    accessor.ip_setFixedBuffers(pack);
+                }
+            }
         }
-        RenderBuffers renderBuffers = Minecraft.getInstance().renderBuffers();
-        if (this.sectionRenderDispatcher instanceof IESectionRenderDispatcher dispatcher && renderBuffers != null) {
-            SectionBufferBuilderPack pack = renderBuffers.fixedBufferPack();
-            if (dispatcher.ip_getFixedBuffers() != pack) {
-                dispatcher.ip_setFixedBuffers(pack);
+
+        try {
+            original.call(chunkUpdates, renderRegionCache, camera);
+        } finally {
+            if (switched && previousLevel != null) {
+                dispatcher.setLevel(previousLevel);
             }
         }
     }

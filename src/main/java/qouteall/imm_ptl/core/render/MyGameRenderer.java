@@ -237,6 +237,8 @@ public class MyGameRenderer {
         
         // Immersive Aeronautics: the portal pass must not leave its view matrix in Databank's post effects
         Object databankViewMatrix = qouteall.imm_ptl.core.compat.IPDatabankCompat.beforePortalPass();
+        // Immersive Aeronautics: the pass gets the viewed world's current sky colour, not BadOptimizations' cached one
+        Object boSkyColor = qouteall.imm_ptl.core.compat.IPBadOptimizationsCompat.beforePortalPass(newWorld);
         
         //invoke rendering
         invokeWrapper.accept(() -> {
@@ -247,6 +249,7 @@ public class MyGameRenderer {
             client.getProfiler().pop();
         });
         
+        qouteall.imm_ptl.core.compat.IPBadOptimizationsCompat.afterPortalPass(newWorld, boSkyColor);
         qouteall.imm_ptl.core.compat.IPDatabankCompat.afterPortalPass(databankViewMatrix);
         
         SodiumInterface.invoker.switchContextWithCurrentWorldRenderer(newSodiumContext);

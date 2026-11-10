@@ -334,8 +334,12 @@ public final class IPPhysicsStaffPortalsClient {
             return;
         }
         final ClientLevel level = ClientWorldLoader.getOptionalWorld(current.movedTo);
-        final SubLevelContainer container = level == null ? null : SubLevelContainer.getContainer(level);
-        final SubLevel moved = container == null ? null : container.getSubLevel(current.ship);
+        // the copy holding the anchor's new plot position: within one world the old copy has the same UUID and may
+        // still be here (the ship moves to another plot, IPSableBridge.reloadInDestination)
+        final Vector3d shiftedAnchor = new Vector3d(current.session.dragLocalAnchor())
+            .add(current.shift.getX(), current.shift.getY(), current.shift.getZ());
+        final SubLevel atAnchor = level == null ? null : dev.ryanhcode.sable.Sable.HELPER.getContaining(level, shiftedAnchor);
+        final SubLevel moved = atAnchor != null && atAnchor.getUniqueId().equals(current.ship) ? atAnchor : null;
         if (moved == null || moved.isRemoved()) {
             if (++current.waited > MOVED_SHIP_TIMEOUT_TICKS) {
                 LOGGER.info("[IPStaff] ship {} never showed up in {}; drag ended", current.ship, current.movedTo.location());

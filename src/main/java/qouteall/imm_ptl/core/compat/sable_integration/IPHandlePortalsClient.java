@@ -256,7 +256,12 @@ public final class IPHandlePortalsClient {
             return TickAction.STOP;
         }
         if (current.movedTo != null) {
-            final SubLevel moved = shipIn(current.movedTo, current.ship);
+            // the copy holding the handle's new plot position: within one world the old copy has the same UUID and may
+            // still be here (the ship moves to another plot, IPSableBridge.reloadInDestination)
+            final ClientLevel movedLevel = ClientWorldLoader.getOptionalWorld(current.movedTo);
+            final SubLevel atHandle = movedLevel == null ? null
+                : dev.ryanhcode.sable.Sable.HELPER.getContaining(movedLevel, pos.offset(current.shift));
+            final SubLevel moved = atHandle != null && !atHandle.isRemoved() && atHandle.getUniqueId().equals(current.ship) ? atHandle : null;
             if (moved == null) {
                 if (++current.waited > MOVED_SHIP_TIMEOUT_TICKS) {
                     LOGGER.info("[IPHandle] ship {} never showed up in {}; let go", current.ship, current.movedTo.location());

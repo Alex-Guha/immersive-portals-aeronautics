@@ -81,6 +81,18 @@ public final class IPShipRiderCarry {
     }
 
     public static Captured capture(ServerLevel level, ServerSubLevel sub) {
+        return capture(level, sub, false);
+    }
+
+    /**
+     * @param straddled the ship went through straddling the portal (a hand-off), so it is wholly past the plane: a
+     *                  player standing next to it is not carried. One in front of the portal has not gone through and
+     *                  walks through on their own; the carry moved them by the ship's displacement to just short of the
+     *                  far portal's plane, and through a portal with two faces its back face then took them straight back
+     *                  (user, 2026-11-04). One behind the plane in this world got there some other way (round the
+     *                  frame, or out of the far end of a portal into the same world). Seated players are still carried.
+     */
+    public static Captured capture(ServerLevel level, ServerSubLevel sub, boolean straddled) {
         ArrayList<Binding> bindings = new ArrayList<>();
         ArrayList<MountLink> mounts = new ArrayList<>();
         ArrayList<SeatBinding> seats = new ArrayList<>();
@@ -118,6 +130,7 @@ public final class IPShipRiderCarry {
         // (b) everything inside the hull in world space, except a train the ship rests on and its passengers
         AABB hull = IPSableBridge.worldAabb(sub).inflate(1.0);
         int leftOnTrain = 0;
+        int leftStanding = 0;
 
         for (Entity entity : level.getEntities((Entity) null, hull, e -> true)) {
             if (seen.contains(entity.getUUID()) || isPortalInfrastructure(entity)) {
@@ -126,12 +139,18 @@ public final class IPShipRiderCarry {
 
             if (IPShipCreateCompat.isOnTrain(entity)) {
                 leftOnTrain++;
+            } else if (straddled && entity instanceof Player && entity.getVehicle() == null) {
+                leftStanding++;
             } else {
                 Vec3 offset = entity.position().subtract(subPos);
                 if (!(offset.lengthSqr() > MAX_RIDER_OFFSET_SQR) && seen.add(entity.getUUID())) {
                     bindings.add(new Binding(entity.getUUID(), entity.position(), entity.getYRot(), entity.getXRot(), false));
                 }
             }
+        }
+
+        if (leftStanding > 0) {
+            LOGGER.info("[IPShipPortal] ship {} leaves {} player(s) standing next to it to go through on their own", sub.getUniqueId(), leftStanding);
         }
 
         if (leftOnTrain > 0) {

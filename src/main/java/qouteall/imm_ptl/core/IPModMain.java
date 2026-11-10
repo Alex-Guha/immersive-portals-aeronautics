@@ -118,6 +118,8 @@ public class IPModMain {
             qouteall.imm_ptl.core.compat.sable_integration.IPShipPortalTraversal.init();
             NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
                 event -> qouteall.imm_ptl.core.compat.IPMixinReport.report());
+            NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
+                event -> qouteall.imm_ptl.core.compat.sable_integration.IPShipLoadGuard.audit());
         }
 
         // Immersive Aeronautics: Create shafts through portals

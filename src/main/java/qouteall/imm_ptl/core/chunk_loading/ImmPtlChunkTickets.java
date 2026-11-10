@@ -70,9 +70,15 @@ import java.util.concurrent.Executor;
 public class ImmPtlChunkTickets {
     private static final Logger LOGGER = LogUtils.getLogger();
     
-    // Immersive Aeronautics: use the vanilla FORCED ticket type instead of a custom one
-    // (originally TicketType.create("imm_ptl", Comparator.comparingLong(ChunkPos::toLong)))
-    public static final TicketType<ChunkPos> TICKET_TYPE = TicketType.FORCED;
+    // Immersive Aeronautics: IP's own ticket type again, not the vanilla FORCED type the fork used. With active loading
+    // (radius 2) a FORCED region ticket here is level 31, equal to a /forceload ticket (ChunkMap.FORCED_TICKET_LEVEL,
+    // the chunk as key), and ticket sets keep one copy of equal tickets. So un-forcing chunks (/forceload remove, a
+    // Create Teleporters base broken) removed the tickets that load the player's chunks (vanilla's player tickets are
+    // off under IP); the middle chunk dropped to level 33, not ticking, and ServerChunkCache.tickChunks sends block
+    // changes only for ticking chunks: placing and breaking there reverted on the client. And our purge removed other
+    // mods' forced tickets.
+    public static final TicketType<ChunkPos> TICKET_TYPE =
+        TicketType.create("imm_ptl", Comparator.comparingLong(ChunkPos::toLong));
     
     // for debugging
     @SuppressWarnings("FieldMayBeFinal")

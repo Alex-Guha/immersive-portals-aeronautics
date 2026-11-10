@@ -465,7 +465,18 @@ public class ClientTeleportationManager {
         RenderStates.updatePreRenderInfo(RenderStates.getPartialTick());
         MyGameRenderer.vanillaTerrainSetupOverride = 1;
     }
-    
+
+    /**
+     * Immersive Aeronautics: the server set the player's position in their own world (a position packet, applied right
+     * after this). The crossing check traces the eye from the last frame to this one, so a jump across a portal's
+     * opening counted as a walk through it: a player the server carried with a ship through a portal into the same
+     * world was teleported through the portal a second time, a portal's distance past where they belong. As
+     * {@link #forceTeleportPlayer} does for another world, the next frame starts a new trace.
+     */
+    public static void onServerSetPosition() {
+        lastPlayerEyePos = null;
+    }
+
     /**
      * {@link ClientPacketListener#handleRespawn(ClientboundRespawnPacket)}
      */

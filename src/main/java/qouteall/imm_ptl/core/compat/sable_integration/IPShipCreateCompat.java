@@ -19,6 +19,8 @@ import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.trains.entity.CarriageContraptionEntity;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
+import dev.simulated_team.simulated.content.entities.honey_glue.HoneyGlueEntity;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -26,6 +28,7 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
@@ -35,12 +38,13 @@ import org.slf4j.Logger;
 /**
  * Create-side helpers for ship moves, gated by {@code ModList.isLoaded("create")} with the inner {@code Impl}
  * isolating Create class loading: disassembles running bearings / linear actuators (recording bearing
- * positions to reassemble), captures and re-adds super glue boxes, snapshots kinetic block entity positions
+ * positions to reassemble), captures and re-adds super glue and honey glue boxes, snapshots kinetic block entity positions
  * (generators get {@code reActivateSource} after the move) and re-seats riders on Create seats.
  */
 public final class IPShipCreateCompat {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final boolean CREATE_LOADED = ModList.get().isLoaded("create");
+    private static final boolean SIMULATED_LOADED = ModList.get().isLoaded("simulated");
 
     private IPShipCreateCompat() {
     }
@@ -58,23 +62,36 @@ public final class IPShipCreateCompat {
         }
     }
 
-    public static List<AABB> captureGlue(ServerLevel level, ServerSubLevel sub) {
+    /**
+     * Glue boxes taken off a ship before its sub-level is removed, in its old plot's coordinates: Create's super glue
+     * and Simulated's honey glue. Sable kills both with the sub-level ({@code ServerLevelPlot.kickAllEntities}: tagged
+     * {@code sable:destroy_with_sub_level}), so they are added again at the shifted plot.
+     */
+    public record Glue(List<AABB> superGlue, List<AABB> honeyGlue) {
+        public static final Glue NONE = new Glue(List.of(), List.of());
+
+        public boolean isEmpty() {
+            return superGlue.isEmpty() && honeyGlue.isEmpty();
+        }
+    }
+
+    public static Glue captureGlue(ServerLevel level, ServerSubLevel sub) {
         if (!CREATE_LOADED) {
-            return List.of();
+            return Glue.NONE;
         } else {
             try {
                 return IPShipCreateCompat.Impl.captureGlue(level, sub);
             } catch (Throwable e) {
                 LOGGER.warn("[IPShipPortal] create: glue capture failed: {}", e.toString());
-                return List.of();
+                return Glue.NONE;
             }
         }
     }
 
-    public static void replayGlue(ServerLevel level, List<AABB> glueBoxes, BlockPos shift) {
-        if (CREATE_LOADED && !glueBoxes.isEmpty()) {
+    public static void replayGlue(ServerLevel level, Glue glue, BlockPos shift) {
+        if (CREATE_LOADED && !glue.isEmpty()) {
             try {
-                IPShipCreateCompat.Impl.replayGlue(level, glueBoxes, shift);
+                IPShipCreateCompat.Impl.replayGlue(level, glue, shift);
             } catch (Throwable e) {
                 LOGGER.warn("[IPShipPortal] create: glue replay failed: {}", e.toString());
             }
@@ -194,33 +211,60 @@ public final class IPShipCreateCompat {
             return toReassemble;
         }
 
-        static List<AABB> captureGlue(ServerLevel level, ServerSubLevel sub) {
-            AABB plotBox = IPSableBridge.plotAabb(sub);
-            if (plotBox == null) {
-                return List.of();
-            } else {
-                ArrayList<AABB> glueBoxes = new ArrayList<>();
-
-                for (SuperGlueEntity glue : level.getEntitiesOfClass(SuperGlueEntity.class, plotBox.inflate(2.0))) {
-                    glueBoxes.add(glue.getBoundingBox());
-                    glue.discard();
-                }
-
-                if (!glueBoxes.isEmpty()) {
-                    LOGGER.debug("[IPShipPortal] create: captured {} super glue box(es)", glueBoxes.size());
-                }
-
-                return glueBoxes;
+        static Glue captureGlue(ServerLevel level, ServerSubLevel sub) {
+            ArrayList<AABB> superGlue = new ArrayList<>();
+            for (SuperGlueEntity glue : inPlotChunks(level, sub, SuperGlueEntity.class)) {
+                superGlue.add(glue.getBoundingBox());
+                glue.discard();
             }
+
+            List<AABB> honeyGlue = SIMULATED_LOADED ? HoneyGlue.capture(level, sub) : List.of();
+            return superGlue.isEmpty() && honeyGlue.isEmpty() ? Glue.NONE : new Glue(superGlue, honeyGlue);
         }
 
-        static void replayGlue(ServerLevel level, List<AABB> glueBoxes, BlockPos shift) {
-            for (AABB box : glueBoxes) {
-                AABB shifted = box.move(shift.getX(), shift.getY(), shift.getZ());
-                level.addFreshEntity(new SuperGlueEntity(level, shifted));
+        static void replayGlue(ServerLevel level, Glue glue, BlockPos shift) {
+            for (AABB box : glue.superGlue()) {
+                level.addFreshEntity(new SuperGlueEntity(level, box.move(shift.getX(), shift.getY(), shift.getZ())));
             }
 
-            LOGGER.debug("[IPShipPortal] create: replayed {} super glue box(es)", glueBoxes.size());
+            if (!glue.honeyGlue().isEmpty()) {
+                HoneyGlue.replay(level, glue.honeyGlue(), shift);
+            }
+
+            LOGGER.info(
+                "[IPShipPortal] create: carried {} super glue and {} honey glue box(es) to {}",
+                glue.superGlue().size(), glue.honeyGlue().size(), level.dimension().location()
+            );
+        }
+
+        /**
+         * Entities of {@code type} in the ship's loaded plot chunks: the ones Sable's {@code kickAllEntities} visits.
+         * Not a box around the plot's blocks: a honey glue box may reach {@code honeyGlueRange} (48) blocks past them,
+         * and an entity is filed by its position, a honey glue's at the bottom centre of its box.
+         */
+        static <T extends Entity> List<T> inPlotChunks(ServerLevel level, ServerSubLevel sub, Class<T> type) {
+            LongOpenHashSet chunks = new LongOpenHashSet();
+            int minX = Integer.MAX_VALUE;
+            int minZ = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE;
+            int maxZ = Integer.MIN_VALUE;
+            for (PlotChunkHolder holder : sub.getPlot().getLoadedChunks()) {
+                ChunkPos pos = holder.getPos();
+                chunks.add(pos.toLong());
+                minX = Math.min(minX, pos.x);
+                minZ = Math.min(minZ, pos.z);
+                maxX = Math.max(maxX, pos.x);
+                maxZ = Math.max(maxZ, pos.z);
+            }
+
+            if (chunks.isEmpty()) {
+                return List.of();
+            }
+
+            AABB columns = new AABB(
+                minX * 16.0, level.getMinBuildHeight(), minZ * 16.0, (maxX + 1) * 16.0, level.getMaxBuildHeight(), (maxZ + 1) * 16.0
+            );
+            return level.getEntitiesOfClass(type, columns, entity -> chunks.contains(entity.chunkPosition().toLong()));
         }
 
         static IPShipCreateCompat.KineticSnapshot collectKinetics(ServerLevel level, ServerSubLevel sub) {
@@ -292,6 +336,28 @@ public final class IPShipCreateCompat {
                 } catch (RuntimeException e) {
                     LOGGER.warn("[IPShipPortal] create: failed to reassemble bearing at {}; blocks are preserved, restart it manually: {}", pos, e.toString());
                 }
+            }
+        }
+    }
+
+    /** Simulated's honey glue, in its own class so that HoneyGlueEntity loads only with Simulated. */
+    private static final class HoneyGlue {
+        static List<AABB> capture(ServerLevel level, ServerSubLevel sub) {
+            ArrayList<AABB> boxes = new ArrayList<>();
+            for (HoneyGlueEntity glue : Impl.inPlotChunks(level, sub, HoneyGlueEntity.class)) {
+                boxes.add(glue.getBoundingBox());
+                glue.discard();
+            }
+            return boxes;
+        }
+
+        /** As Simulated's own assembly ({@code SimAssemblyHelper}): add the entity, then send its bounds. */
+        static void replay(ServerLevel level, List<AABB> boxes, BlockPos shift) {
+            for (AABB box : boxes) {
+                AABB shifted = box.move(shift.getX(), shift.getY(), shift.getZ());
+                HoneyGlueEntity glue = new HoneyGlueEntity(level, shifted);
+                level.addFreshEntity(glue);
+                glue.setBoundsAndSync(shifted);
             }
         }
     }

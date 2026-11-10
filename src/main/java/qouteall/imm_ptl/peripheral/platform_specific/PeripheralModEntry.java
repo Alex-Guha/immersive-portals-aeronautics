@@ -1,9 +1,15 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.peripheral.platform_specific;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.RegisterEvent;
 import qouteall.imm_ptl.peripheral.PeripheralModMain;
@@ -31,7 +37,8 @@ public class PeripheralModEntry {
 
         PeripheralModMain.init();
 
-        if (FMLEnvironment.dist.isClient()) {
+        // Immersive Aeronautics: not in data generation, where there is no Minecraft instance
+        if (qouteall.imm_ptl.core.platform_specific.IPModEntry.isRealClient()) {
             new PeripheralModEntryClient().onInitializeClient();
         }
     }

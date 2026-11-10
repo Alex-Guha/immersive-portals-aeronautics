@@ -35,6 +35,8 @@ public class MixinContraptionEntityRenderer_CarriageActors {
      * which Flywheel decides by {@code level == Minecraft.level}. With Flywheel running, a carriage reaching this path
      * is drawn in a pass of another level and is a duplicate of its Flywheel visual, drawn with Create's own cut
      * (purple glass) and none of the portal cuts. It is skipped and logged ({@link IPCreateCarriageCrossingClient#skipsVanillaStructure}).
+     * Likewise a contraption on a straddling ship drawn in its far half, which the far half of Flywheel parts already
+     * draws ({@link qouteall.imm_ptl.core.compat.create_integration.IPFlywheelFarHalf#visualizesFarHalfEntities}).
      */
     @WrapOperation(
         method = "render(Lcom/simibubi/create/content/contraptions/AbstractContraptionEntity;FFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V",
@@ -48,7 +50,8 @@ public class MixinContraptionEntityRenderer_CarriageActors {
     private boolean ip_noVanillaCarriageStructure(final LevelAccessor level, final Operation<Boolean> original,
                                                   @Local(argsOnly = true) final AbstractContraptionEntity entity) {
         final boolean supported = original.call(level);
-        return supported || IPCreateCarriageCrossingClient.skipsVanillaStructure(entity, "block structure");
+        return supported || IPCreateCarriageCrossingClient.skipsVanillaStructure(entity, "block structure")
+            || qouteall.imm_ptl.core.compat.create_integration.IPFlywheelFarHalf.visualizesFarHalfEntities();
     }
 
     /**

@@ -55,6 +55,7 @@
     "MixinSableChunkedRenderData_ClipSpace",
     "IPVanillaChunkedSubLevelRenderDataAccessor",
     "MixinSableChunkedRenderData_DispatcherLevel",
+    "MixinSableChunkedRenderData_HandoffBuildAtOnce",
     "MixinSableBlockEntityRenderer_CurrentBuffers",
     "MixinRenderSection_ShipNeighbors",
     "MixinSableClientSubLevel_StraddlePose",

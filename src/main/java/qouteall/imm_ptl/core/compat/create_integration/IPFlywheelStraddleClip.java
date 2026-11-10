@@ -7,11 +7,13 @@ package qouteall.imm_ptl.core.compat.create_integration;
 
 import com.mojang.logging.LogUtils;
 import dev.engine_room.flywheel.api.backend.RenderContext;
+import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
 import dev.engine_room.flywheel.backend.engine.EngineImpl;
 import dev.engine_room.flywheel.backend.engine.embed.EmbeddedEnvironment;
 import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.entity.Entity;
 import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
@@ -22,6 +24,7 @@ import org.lwjgl.opengl.GL43;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.mixin_create.IPEmbeddedEnvironmentAccessor;
 
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -32,7 +35,9 @@ import java.util.WeakHashMap;
 /**
  * Cuts Flywheel-drawn parts of straddling Sable ships (Create cogs, shafts, propellers) at the portal plane, like
  * their terrain (docs/lessons/straddle-rendering.md). Sable gives each ship one Flywheel embedding (an
- * {@link EmbeddedEnvironment} whose render origin is in the ship's plot); every Flywheel vertex program writes
+ * {@link EmbeddedEnvironment} whose render origin is in the ship's plot; a Create contraption on the ship has an
+ * embedding of its own at 0,0,0, matched to the ship by its entity, {@link #CONTRAPTIONS}); every Flywheel vertex
+ * program writes
  * {@code gl_ClipDistance[1]} from a per-environment plane {@code ipa_shipClip}:
  * <ul>
  *     <li>indirect backend: all environments draw in one multi-draw, so the planes sit in a shader storage buffer at
@@ -61,6 +66,12 @@ public final class IPFlywheelStraddleClip {
     private static final boolean SABLE = ModList.get().isLoaded("sable");
     /** Embedded environments (weak: Flywheel deletes them). Flywheel's worker threads create them. */
     private static final Set<EmbeddedEnvironment> ENVIRONMENTS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    /**
+     * The entity of each Create contraption embedding (weak both ways). Create makes a contraption's embedding at
+     * {@code Vec3i.ZERO}, as a root of its own and not inside its ship's, so on a ship its render origin is not in the
+     * ship's plot: the entity's position is (Sable keeps a ship's contraption entities in the plot).
+     */
+    private static final Map<EmbeddedEnvironment, WeakReference<Entity>> CONTRAPTIONS = Collections.synchronizedMap(new WeakHashMap<>());
     /** The planes of the current pass, by environment. */
     private static final Map<EmbeddedEnvironment, float[]> PASS_PLANES = new IdentityHashMap<>();
     private static int buffer;
@@ -211,7 +222,7 @@ public final class IPFlywheelStraddleClip {
                     plane = IPCreateCarriageCrossingClient.flywheelPlane(environment, root, renderOrigin);
                     if (plane == null && SABLE) {
                         plane = qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRender
-                            .flywheelPlane(context.level(), root.renderOrigin(), renderOrigin);
+                            .flywheelPlane(context.level(), plotProbe(root), renderOrigin);
                     }
                 }
                 if (plane != null) {
@@ -272,12 +283,26 @@ public final class IPFlywheelStraddleClip {
             return false;
         }
         final dev.ryanhcode.sable.sublevel.plot.LevelPlot plot =
-                container.getPlot(new net.minecraft.world.level.ChunkPos(new net.minecraft.core.BlockPos(rootOrigin(environment))));
+                container.getPlot(new net.minecraft.world.level.ChunkPos(new net.minecraft.core.BlockPos(plotProbe(root(environment)))));
         return plot != null && plot.getSubLevel() == ship;
     }
 
-    private static Vec3i rootOrigin(final EmbeddedEnvironment environment) {
-        return root(environment).renderOrigin();
+    /** Remembers the entity of a Create contraption's embedding ({@link #CONTRAPTIONS}). */
+    public static void registerContraption(@Nullable final VisualEmbedding embedding, @Nullable final Entity entity) {
+        if (embedding instanceof final EmbeddedEnvironment environment && entity != null) {
+            CONTRAPTIONS.put(environment, new WeakReference<>(entity));
+        }
+    }
+
+    /**
+     * @param root a root embedding
+     * @return a position whose plot is that of the ship the embedding belongs to, if any: its contraption entity's
+     * block for a Create contraption, else its render origin (Sable's ship embeddings sit at the plot's centre)
+     */
+    private static Vec3i plotProbe(final EmbeddedEnvironment root) {
+        final WeakReference<Entity> reference = CONTRAPTIONS.isEmpty() ? null : CONTRAPTIONS.get(root);
+        final Entity entity = reference != null ? reference.get() : null;
+        return entity != null && !entity.isRemoved() ? entity.blockPosition() : root.renderOrigin();
     }
 
     private static EmbeddedEnvironment root(final EmbeddedEnvironment environment) {

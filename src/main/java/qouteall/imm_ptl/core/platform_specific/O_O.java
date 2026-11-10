@@ -24,7 +24,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.ChunkEvent;
@@ -195,7 +194,12 @@ public class O_O {
     
     @Nullable
     public static String getModName(String modid) {
-        return FMLLoader.getLoadingModList().getModFileById(modid).getMods().stream().findFirst().get().getDisplayName();
+        // Immersive Aeronautics: a dimension's namespace need not be a mod id (Katters Structures, mod id
+        // mr_katters_structures, adds kattersstructures:deep_blue; datapack dimensions likewise), and a jar with
+        // several mods named whichever came first. Null falls back to the namespace (McHelper.getDimensionName).
+        return ModList.get().getModContainerById(modid)
+            .map(container -> container.getModInfo().getDisplayName())
+            .orElse(null);
     }
     
     // most quilt installations use quilted fabric api

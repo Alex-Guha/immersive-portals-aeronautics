@@ -20,7 +20,8 @@ import qouteall.imm_ptl.core.compat.create_integration.IPCreateCarriageCrossingC
 
 /**
  * Remembers which Flywheel embedding draws which carriage, so a carriage crossing a portal can be cut at the portal
- * plane ({@link IPCreateCarriageCrossingClient}). Also notes what a carriage's model is built for when it is actually
+ * plane ({@link IPCreateCarriageCrossingClient}), and which draws which contraption, so one on a straddling ship is cut
+ * and drawn on the far half with the ship (IPFlywheelStraddleClip; Offroad's borehead on a drill ship). Also notes what a carriage's model is built for when it is actually
  * built ({@code setupStructure}: Create builds lazily, and a recreated visual builds at once), and every frame
  * rebuilds it if that differs from what it should show now (1.24.9: a model built with Create's cut at an unnoticed
  * moment stayed, purple glass and half the carriage hidden).
@@ -39,6 +40,7 @@ public class MixinContraptionVisual_CarriageEmbedding {
                                               final float partialTick, final CallbackInfo ci) {
         ip_entity = entity;
         IPCreateCarriageCrossingClient.registerEmbedding(embedding, entity);
+        qouteall.imm_ptl.core.compat.create_integration.IPFlywheelStraddleClip.registerContraption(embedding, entity);
     }
 
     @Inject(method = "setupStructure", at = @At("HEAD"), require = 0, expect = 0)

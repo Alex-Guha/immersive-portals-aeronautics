@@ -110,6 +110,7 @@
     "client.multiworld_awareness.MixinFogRenderer",
     "client.particle.IEParticle",
     "client.particle.MixinParticleEngine",
+    "client.render.IELightTexture",
     "client.render.IERenderSystem",
     "client.render.IESectionRenderDispatcher",
     "client.render.MixinBlockEntityRenderDispatcher",

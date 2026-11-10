@@ -49,6 +49,7 @@ import java.util.UUID;
 public final class IPStraddleHandoffLatch {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long MAX_MILLIS = 3000L;
+    private static final boolean TRACE = qouteall.imm_ptl.core.compat.IPStallRecorder.isTestJar();
     /** Snapshots of the two copies are one server tick when their positions agree this well [blocks] through the portal. */
     private static final double MATCH_TOLERANCE = 1.0e-3;
 
@@ -56,6 +57,15 @@ public final class IPStraddleHandoffLatch {
     }
 
     private static final Map<ClientSubLevel, Pending> PENDING = new IdentityHashMap<>();
+    /**
+     * Ships whose old copy within one level was just released for the new one, until when their sections are built at
+     * once ({@link #buildAtOnce}). Between levels the latch waits for the new copy's meshes; within one level it cannot
+     * (the copies cannot share Sable's map by UUID), and Sable builds a ship's sections in the background unless they
+     * are near the camera with the "nearby" chunk update option: the new copy was missing for a frame or more, a
+     * flicker as it came out of the far end towards the player (user, 2026-11-04).
+     */
+    private static final Map<UUID, Long> BUILD_AT_ONCE_UNTIL = new java.util.HashMap<>();
+    private static final long BUILD_AT_ONCE_MILLIS = 1000L;
 
     /**
      * A held copy and its replacement in the destination. {@code plotShift} is the replacement's rotation point minus
@@ -105,6 +115,7 @@ public final class IPStraddleHandoffLatch {
 
     static void clear() {
         PENDING.clear();
+        BUILD_AT_ONCE_UNTIL.clear();
         LINKS.clear();
         TIMELINES.clear();
     }
@@ -121,7 +132,10 @@ public final class IPStraddleHandoffLatch {
         if (container == null || !(container.getSubLevel(x, z) instanceof final ClientSubLevel ship)) {
             return false;
         }
-        if (PENDING.containsKey(ship) || !IPStraddleClientSessions.mayBeHandingOff(ship) || handsOffWithinLevel(ship)) {
+        // a copy already replaced in this level (its new copy came first) is not held: releasing it later would unmap the
+        // new copy from Sable's map by UUID
+        if (PENDING.containsKey(ship) || !IPStraddleClientSessions.mayBeHandingOff(ship)
+                || container.getSubLevel(ship.getUniqueId()) != ship) {
             return false;
         }
         PENDING.put(ship, new Pending(clientLevel, x, z, ship, System.currentTimeMillis() + MAX_MILLIS));
@@ -131,29 +145,42 @@ public final class IPStraddleHandoffLatch {
     }
 
     /**
-     * A ship going through a portal into its own dimension cannot be held: Sable's container keys ships by UUID, so
-     * the old and the new copy cannot coexist in one level (and the new copy's start-tracking would release the slot).
-     */
-    private static boolean handsOffWithinLevel(final ClientSubLevel ship) {
-        for (final IPStraddleClientSessions.Session session : IPStraddleClientSessions.renderSessionsOf(ship)) {
-            if (session.destDim().equals(session.shipDim())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Ship {@code id} is about to be tracked in plot slot ({@code x}, {@code z}) of {@code level}: a held copy in that
-     * slot, or of that ship in that level, goes.
+     * slot, or of that ship in that level, goes. A ship handed off through a portal into its own dimension arrives in
+     * another plot of the same level ({@code IPSableBridge.reloadInDestination}): its old copy is held until then and
+     * goes here, before Sable adds the new one, so the two never share Sable's map by UUID. Within one level the old
+     * copy was removed at once and Sable sends the new one at its next tracking pass, 40-60 ms later: the ship
+     * vanished for those frames (user, 2026-11-04). It is not linked ({@link #tryLink}): it holds still meanwhile.
      */
     public static void releaseSlot(final Level level, final int x, final int z, final UUID id) {
         for (final Pending pending : List.copyOf(PENDING.values())) {
             if (pending.level() == level
                     && ((pending.x() == x && pending.z() == z) || pending.ship().getUniqueId().equals(id))) {
+                if (pending.ship().getUniqueId().equals(id) && (pending.x() != x || pending.z() != z)) {
+                    BUILD_AT_ONCE_UNTIL.put(id, System.currentTimeMillis() + BUILD_AT_ONCE_MILLIS);
+                }
                 release(pending);
             }
         }
+    }
+
+    /**
+     * @return whether {@code ship}'s sections are to be built now rather than in the background: the new copy of a ship
+     * handed off within its level, for {@value #BUILD_AT_ONCE_MILLIS} ms
+     */
+    public static boolean buildAtOnce(final SubLevel ship) {
+        if (BUILD_AT_ONCE_UNTIL.isEmpty()) {
+            return false;
+        }
+        final Long until = BUILD_AT_ONCE_UNTIL.get(ship.getUniqueId());
+        if (until == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() > until) {
+            BUILD_AT_ONCE_UNTIL.remove(ship.getUniqueId());
+            return false;
+        }
+        return true;
     }
 
     public static boolean isPending(final UUID ship) {
@@ -191,11 +218,17 @@ public final class IPStraddleHandoffLatch {
     private static void release(final Pending pending) {
         PENDING.remove(pending.ship());
         final Link link = LINKS.remove(pending.ship());
-        LOGGER.debug("[IPStraddle] client: hand-off latch of ship {} released after {} ms ({}){}",
+        final String message = "[IPStraddle] client: hand-off latch of ship {} released after {} ms ({}){}";
+        final Object[] args = {
                 pending.ship().getUniqueId(), System.currentTimeMillis() - (pending.deadline() - MAX_MILLIS),
                 replacementReady(pending.ship()) ? "new copy compiled" : "no compiled new copy",
                 link == null ? ", never linked to the new copy"
-                        : ", linked " + (System.currentTimeMillis() - link.linkedAt) + " ms, followed it for " + link.followedFrames + " pose reads");
+                        : ", linked " + (System.currentTimeMillis() - link.linkedAt) + " ms, followed it for " + link.followedFrames + " pose reads"};
+        if (TRACE) {
+            LOGGER.info(message, args);
+        } else {
+            LOGGER.debug(message, args);
+        }
         final SubLevelContainer container = SubLevelContainer.getContainer(pending.level());
         if (container != null && container.getSubLevel(pending.x(), pending.z()) == pending.ship()) {
             container.removeSubLevel(pending.x(), pending.z(), SubLevelRemovalReason.REMOVED);

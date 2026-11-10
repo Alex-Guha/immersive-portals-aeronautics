@@ -341,12 +341,13 @@ public class ClientDebugCommand {
             .executes(context -> {
                 Minecraft.getInstance().execute(() -> {
                     ClientWorldLoader.getClientWorlds().forEach((world) -> {
-                        ImmPtlViewArea builtChunkStorage = (ImmPtlViewArea) ((IEWorldRenderer)
-                            ClientWorldLoader.getWorldRenderer(world.dimension()))
-                            .ip_getBuiltChunkStorage();
-                        CHelper.printChat(
-                            world.dimension().location().toString() + builtChunkStorage.getDebugString()
-                        );
+                        // Immersive Aeronautics: with Sodium the view area is vanilla's
+                        if (((IEWorldRenderer) ClientWorldLoader.getWorldRenderer(world.dimension()))
+                            .ip_getBuiltChunkStorage() instanceof ImmPtlViewArea builtChunkStorage) {
+                            CHelper.printChat(
+                                world.dimension().location().toString() + builtChunkStorage.getDebugString()
+                            );
+                        }
                     });
                 });
                 
@@ -808,13 +809,15 @@ public class ClientDebugCommand {
             str.append("Chunk Mesh Sections:\n");
             ClientWorldLoader.WORLD_RENDERER_MAP.forEach(
                 (dimension, worldRenderer) -> {
-                    str.append(String.format(
-                        "%s %s\n",
-                        dimension.location(),
-                        ((ImmPtlViewArea) ((IEWorldRenderer) worldRenderer)
-                            .ip_getBuiltChunkStorage()
-                        ).getManagedSectionNum()
-                    ));
+                    // Immersive Aeronautics: with Sodium the view area is vanilla's
+                    if (((IEWorldRenderer) worldRenderer).ip_getBuiltChunkStorage()
+                        instanceof ImmPtlViewArea immPtlViewArea) {
+                        str.append(String.format(
+                            "%s %s\n",
+                            dimension.location(),
+                            immPtlViewArea.getManagedSectionNum()
+                        ));
+                    }
                 }
             );
             

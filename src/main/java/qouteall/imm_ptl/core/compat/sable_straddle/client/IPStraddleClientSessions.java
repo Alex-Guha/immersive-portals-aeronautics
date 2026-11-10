@@ -7,6 +7,7 @@ package qouteall.imm_ptl.core.compat.sable_straddle.client;
 import com.mojang.logging.LogUtils;
 import de.nick1st.imm_ptl.events.ClientCleanupEvent;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
@@ -110,7 +111,9 @@ public final class IPStraddleClientSessions {
 
     private static void addCurrent(final List<Session> out, final Map<Key, Session> sessions) {
         for (final Map.Entry<Key, Session> entry : sessions.entrySet()) {
-            out.add(current(entry.getKey(), entry.getValue()));
+            if (!copyMovedOn(entry.getKey(), entry.getValue())) {
+                out.add(current(entry.getKey(), entry.getValue()));
+            }
         }
     }
 
@@ -129,6 +132,19 @@ public final class IPStraddleClientSessions {
     private static final Map<UUID, Long> HANDED_OFF = new HashMap<>();
     /** For {@link #HANDED_OFF}: the dimension the ship was handed off from. */
     private static final Map<UUID, ResourceKey<Level>> HANDED_OFF_FROM = new HashMap<>();
+    /**
+     * Sessions at a portal into the ship's own dimension: the plot of the copy that straddled, as tracked here. A
+     * hand-off within one level reloads the ship there with the same UUID in another plot
+     * ({@code IPSableBridge.reloadInDestination}); every user of the sessions finds the ship by UUID, so the session
+     * would cut the new copy and draw it as a far half, through the portal once more, a portal's distance from where it
+     * is: for the second a retired session lasts (user, 2026-11-04), and for the moment between the arrival of the new
+     * copy and our end message, which come by separate paths (a flicker as the ship went fully through). Such a session
+     * is drawn only while the ship's copy here is in that plot; Sable tracking the ship again keeps the plot.
+     */
+    private static final Map<Key, ChunkPos> STRADDLING_PLOT = new HashMap<>();
+    private static final boolean TRACE = qouteall.imm_ptl.core.compat.IPStallRecorder.isTestJar();
+    /** Test jars: sessions whose moved-on copy was logged. */
+    private static final java.util.Set<Key> TRACED = new java.util.HashSet<>();
 
     private IPStraddleClientSessions() {
     }
@@ -141,6 +157,8 @@ public final class IPStraddleClientSessions {
             RETIRED_UNTIL.clear();
             HANDED_OFF.clear();
             HANDED_OFF_FROM.clear();
+            STRADDLING_PLOT.clear();
+            TRACED.clear();
             IPStraddleHandoffLatch.clear();
         });
         NeoForge.EVENT_BUS.addListener(IPGlobal.PostClientTickEvent.class, e -> IPStraddleHandoffLatch.tick());
@@ -259,15 +277,53 @@ public final class IPStraddleClientSessions {
         }
         final long now = System.currentTimeMillis();
         RETIRED_UNTIL.entrySet().removeIf(entry -> {
-            if (entry.getValue() > now || IPStraddleHandoffLatch.isPending(entry.getKey().ship())) {
+            final Session retired = RETIRED.get(entry.getKey());
+            if ((retired == null || !copyMovedOn(entry.getKey(), retired))
+                    && (entry.getValue() > now || IPStraddleHandoffLatch.isPending(entry.getKey().ship()))) {
                 return false;
             }
             RETIRED.remove(entry.getKey());
+            if (!SESSIONS.containsKey(entry.getKey())) {
+                STRADDLING_PLOT.remove(entry.getKey());
+            }
             if (!SESSIONS.containsKey(entry.getKey())) {
                 MOUNTS.remove(entry.getKey());
             }
             return true;
         });
+    }
+
+    /**
+     * @return for a session into the ship's own dimension, whether the ship's copy there is in another plot than the one
+     * that straddled (the copy a hand-off brought out of the far end); records the plot the first time a copy is seen
+     */
+    private static boolean copyMovedOn(final Key key, final Session session) {
+        if (!session.shipDim().equals(session.destDim())) {
+            return false;
+        }
+        final net.minecraft.client.multiplayer.ClientLevel level = qouteall.imm_ptl.core.ClientWorldLoader.getOptionalWorld(session.shipDim());
+        final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container =
+                level == null ? null : dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        final dev.ryanhcode.sable.sublevel.SubLevel copy = container == null ? null : container.getSubLevel(key.ship());
+        if (copy == null || copy.isRemoved()) {
+            return false;
+        }
+        final ChunkPos plot = copy.getPlot().plotPos;
+        final ChunkPos straddled = STRADDLING_PLOT.get(key);
+        if (straddled == null) {
+            if (SESSIONS.containsKey(key)) {
+                STRADDLING_PLOT.put(key, plot);
+            }
+            return false;
+        }
+        if (straddled.equals(plot)) {
+            return false;
+        }
+        if (TRACE && TRACED.add(key)) {
+            LOGGER.info("[IPStraddle] client: ship {} is out of portal {} in plot {} (straddled in {}); session {}", key.ship(),
+                    key.portal(), plot, straddled, SESSIONS.containsKey(key) ? "still open: its end has not arrived" : "ended");
+        }
+        return true;
     }
 
     public static Collection<Session> all() {
@@ -323,6 +379,8 @@ public final class IPStraddleClientSessions {
                     new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
             RETIRED.remove(new Key(ship, portal));
             RETIRED_UNTIL.remove(new Key(ship, portal));
+            STRADDLING_PLOT.remove(new Key(ship, portal));
+            TRACED.remove(new Key(ship, portal));
             SESSIONS.put(new Key(ship, portal),
                     new Session(ship, shipDim, portal, destDim, origin, normal, axisW, axisH, halfW, halfH, isometry));
             LOGGER.debug("[IPStraddle] client: ship {} straddles portal {} ({} -> {})", ship, portal, shipDim.location(), destDim.location());
@@ -348,9 +406,11 @@ public final class IPStraddleClientSessions {
                 HANDED_OFF.remove(ship);
                 HANDED_OFF_FROM.remove(ship);
             }
-            if (ended != null) {
+            if (ended != null && !copyMovedOn(key, ended)) {
                 RETIRED.put(key, ended);
                 RETIRED_UNTIL.put(key, System.currentTimeMillis() + RETIRED_MILLIS);
+            } else {
+                STRADDLING_PLOT.remove(key);
             }
             LOGGER.debug("[IPStraddle] client: ship {} left portal {}{}", ship, portal, handedOff ? " (handed off)" : "");
         }

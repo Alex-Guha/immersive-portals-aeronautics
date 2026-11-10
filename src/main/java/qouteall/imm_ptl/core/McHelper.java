@@ -569,8 +569,18 @@ public class McHelper {
         
         EntityTypeTest<Entity, T> typeFilter = EntityTypeTest.forClass(entityClass);
         
+        // Immersive Aeronautics: a level whose entity getter is not vanilla's (Ponder's scene level: catnip's
+        // DummyLevelEntityGetter; other mods' wrapped levels) has no section storage to walk; ask the getter
+        // for the same chunk range instead of crashing on the cast
+        if (!(entityLookup instanceof IELevelEntityGetterAdapter adapter)) {
+            return traverseForeignGetter(
+                typeFilter, entityLookup,
+                chunkXStart, chunkXEnd, chunkYStart, chunkYEnd, chunkZStart, chunkZEnd, function
+            );
+        }
+        
         EntitySectionStorage<Entity> cache =
-            (EntitySectionStorage<Entity>) ((IELevelEntityGetterAdapter) entityLookup).getCache();
+            (EntitySectionStorage<Entity>) adapter.getCache();
         
         return ((IESectionedEntityCache<Entity>) cache).ip_traverseSectionInBox(
             chunkXStart, chunkXEnd,
@@ -582,6 +592,32 @@ public class McHelper {
                 );
             }
         );
+    }
+    
+    // Immersive Aeronautics: the fallback of traverseEntities for an entity getter IP has no access to
+    private static <T extends Entity, R> R traverseForeignGetter(
+        EntityTypeTest<Entity, T> typeFilter, LevelEntityGetter<Entity> entityLookup,
+        int chunkXStart, int chunkXEnd,
+        int chunkYStart, int chunkYEnd,
+        int chunkZStart, int chunkZEnd,
+        Function<T, R> function
+    ) {
+        AABB box = new AABB(
+            chunkXStart * 16.0, chunkYStart * 16.0, chunkZStart * 16.0,
+            (chunkXEnd + 1) * 16.0, (chunkYEnd + 1) * 16.0, (chunkZEnd + 1) * 16.0
+        );
+        Object[] result = new Object[1];
+        entityLookup.get(typeFilter, box, entity -> {
+            R r = function.apply(entity);
+            if (r != null) {
+                result[0] = r;
+                return AbortableIterationConsumer.Continuation.ABORT;
+            }
+            return AbortableIterationConsumer.Continuation.CONTINUE;
+        });
+        @SuppressWarnings("unchecked")
+        R r = (R) result[0];
+        return r;
     }
     
     public static <E extends Entity, R> R traverseEntitiesByBox(

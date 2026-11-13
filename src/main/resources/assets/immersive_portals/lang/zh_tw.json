@@ -28,7 +28,6 @@
   "imm_ptl.start_clearing_border": "開始清除邊界",
   "imm_ptl.finished": "已完成",
   "imm_ptl.finished_clearing_border": "已完成邊界清除。方塊更新未同步到用戶端。重新進入世界以檢查。",
-  "imm_ptl.needs_pehkui": "你的比例沒有改變，因為沒有安裝 Pehkui。",
   "imm_ptl.dim_stack_initialized": "[Immersive Portals] 維度堆疊世界已初始化",
   "imm_ptl.inform_wiki": "[Immersive Portals] 關於如何自訂傳送門，請查看 wiki",
   "imm_ptl.portal_helper_tooltip": "建造兩個框架，使用打火石點燃它",

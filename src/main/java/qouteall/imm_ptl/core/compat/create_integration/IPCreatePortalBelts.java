@@ -32,9 +32,6 @@ import qouteall.imm_ptl.core.compat.mixin_create.IPBeltInventoryAccessor;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
 import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
@@ -48,7 +45,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * <p>
  * Both sides look the far side up, so the client's items also run on to the plane rather than stopping at the belt's
  * end until the server hands them over. A belt on a ship goes through a portal mounted on that same ship, to the
- * fixed far side, and back (2.6.12.8), as shafts and pipes do. Portals at scale 1 and on the block grid. Mixin: {@code MixinBeltInventory_PortalBelts}. Plan and next steps:
+ * fixed far side, and back, as shafts and pipes do. Portals at scale 1 and on the block grid. Mixin: {@code MixinBeltInventory_PortalBelts}. Plan and next steps:
  * docs/lessons/create-belts.md.
  */
 public final class IPCreatePortalBelts {
@@ -145,21 +142,18 @@ public final class IPCreatePortalBelts {
             near.onPlane(), plane, near.frame(), farFrame, nearToFar);
     }
 
-    /** A frame's coordinates to the world's (the identity for the world). */
+    /** A frame's coordinates to the world's (the identity for the world), a scaled ship's scale included. */
     private static Matrix4d frameMatrix(final IPCreatePortalShafts.@Nullable Frame frame) {
-        if (frame == null) {
-            return new Matrix4d();
-        }
-        final Vec3 origin = frame.toWorld(Vec3.ZERO);
-        return new Matrix4d().translation(origin.x, origin.y, origin.z).rotate(new Quaterniond(frame.rotation()));
+        return frame == null ? new Matrix4d() : frame.matrix();
     }
 
-    /** A portal's map of points from its side to the other, as {@link Portal#transformPoint} (scale 1). */
+    /** A portal's map of points from its side to the other, as {@link Portal#transformPoint}. */
     private static Matrix4d portalMatrix(final Portal portal) {
         final Vec3 origin = portal.getOriginPos();
         final Vec3 dest = portal.getDestPos();
         return new Matrix4d().translation(dest.x, dest.y, dest.z)
             .rotate(new Quaterniond(portal.getRotationD().toMcQuaternion()))
+            .scale(portal.getScale())
             .translate(-origin.x, -origin.y, -origin.z);
     }
 

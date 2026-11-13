@@ -8,8 +8,7 @@ package qouteall.imm_ptl.core.compat.create_integration;
 import com.mojang.logging.LogUtils;
 import dev.engine_room.flywheel.api.backend.RenderContext;
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
-import dev.engine_room.flywheel.backend.engine.EngineImpl;
-import dev.engine_room.flywheel.backend.engine.embed.EmbeddedEnvironment;
+import dev.engine_room.flywheel.api.backend.Engine;
 import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
 import net.minecraft.core.Vec3i;
@@ -22,7 +21,6 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL43;
 import org.slf4j.Logger;
-import qouteall.imm_ptl.core.compat.mixin_create.IPEmbeddedEnvironmentAccessor;
 
 import java.lang.ref.WeakReference;
 import java.util.Collections;
@@ -35,7 +33,7 @@ import java.util.WeakHashMap;
 /**
  * Cuts Flywheel-drawn parts of straddling Sable ships (Create cogs, shafts, propellers) at the portal plane, like
  * their terrain (docs/lessons/straddle-rendering.md). Sable gives each ship one Flywheel embedding (an
- * {@link EmbeddedEnvironment} whose render origin is in the ship's plot; a Create contraption on the ship has an
+ * embedded environment whose render origin is in the ship's plot; a Create contraption on the ship has an
  * embedding of its own at 0,0,0, matched to the ship by its entity, {@link #CONTRAPTIONS}); every Flywheel vertex
  * program writes
  * {@code gl_ClipDistance[1]} from a per-environment plane {@code ipa_shipClip}:
@@ -52,6 +50,10 @@ import java.util.WeakHashMap;
  * <p>
  * Create carriages crossing a portal are cut the same way, by their own and their bogeys' embeddings
  * ({@link IPCreateCarriageCrossingClient}); that needs no Sable.
+ * <p>
+ * The embeddings are Flywheel's own or, with Colorwheel (Flywheel under an Iris shader pack), Colorwheel's, which
+ * work the same way ({@link IPFlywheelEmbeddings}); Colorwheel's programs take the indirect planes from another
+ * binding ({@link IPColorwheelPortalClip#shipClipBinding}), as Colorwheel uses 8 itself.
  */
 public final class IPFlywheelStraddleClip {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -65,15 +67,15 @@ public final class IPFlywheelStraddleClip {
 
     private static final boolean SABLE = ModList.get().isLoaded("sable");
     /** Embedded environments (weak: Flywheel deletes them). Flywheel's worker threads create them. */
-    private static final Set<EmbeddedEnvironment> ENVIRONMENTS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<VisualEmbedding> ENVIRONMENTS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     /**
      * The entity of each Create contraption embedding (weak both ways). Create makes a contraption's embedding at
      * {@code Vec3i.ZERO}, as a root of its own and not inside its ship's, so on a ship its render origin is not in the
      * ship's plot: the entity's position is (Sable keeps a ship's contraption entities in the plot).
      */
-    private static final Map<EmbeddedEnvironment, WeakReference<Entity>> CONTRAPTIONS = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<VisualEmbedding, WeakReference<Entity>> CONTRAPTIONS = Collections.synchronizedMap(new WeakHashMap<>());
     /** The planes of the current pass, by environment. */
-    private static final Map<EmbeddedEnvironment, float[]> PASS_PLANES = new IdentityHashMap<>();
+    private static final Map<VisualEmbedding, float[]> PASS_PLANES = new IdentityHashMap<>();
     private static int buffer;
     private static boolean enabled;
     /**
@@ -89,8 +91,8 @@ public final class IPFlywheelStraddleClip {
          * @return the cut of an environment in this far-half draw (keeping the part past the portal plane), relative to
          * the engine's render origin, or null if the environment is not part of the far half (rejected)
          */
-        float @Nullable [] plane(net.minecraft.client.multiplayer.ClientLevel level, EmbeddedEnvironment environment,
-                                 EmbeddedEnvironment root, Vec3i renderOrigin);
+        float @Nullable [] plane(net.minecraft.client.multiplayer.ClientLevel level, VisualEmbedding environment,
+                                 VisualEmbedding root, Vec3i renderOrigin);
     }
 
     /**
@@ -100,8 +102,8 @@ public final class IPFlywheelStraddleClip {
     record ShipFarHalf(dev.ryanhcode.sable.sublevel.ClientSubLevel ship,
                        qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleClientSessions.Session session) implements FarHalf {
         @Override
-        public float @Nullable [] plane(final net.minecraft.client.multiplayer.ClientLevel level, final EmbeddedEnvironment environment,
-                                        final EmbeddedEnvironment root, final Vec3i renderOrigin) {
+        public float @Nullable [] plane(final net.minecraft.client.multiplayer.ClientLevel level, final VisualEmbedding environment,
+                                        final VisualEmbedding root, final Vec3i renderOrigin) {
             return isOfShip(level, environment, ship)
                 ? qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRender.flywheelFarHalfPlane(session, renderOrigin)
                 : null;
@@ -154,11 +156,11 @@ public final class IPFlywheelStraddleClip {
         return source;
     }
 
-    public static void onFlush(final EmbeddedEnvironment environment) {
+    public static void onFlush(final VisualEmbedding environment) {
         ENVIRONMENTS.add(environment);
     }
 
-    public static void onSetupDraw(final EmbeddedEnvironment environment, final GlProgram program) {
+    public static void onSetupDraw(final VisualEmbedding environment, final GlProgram program) {
         ENVIRONMENTS.add(environment);
         if (enabled) {
             upload(program, PASS_PLANES.getOrDefault(environment, farHalf != null ? REJECT : NEUTRAL));
@@ -199,21 +201,23 @@ public final class IPFlywheelStraddleClip {
             if (manager == null) {
                 return;
             }
-            final EngineImpl engine = manager.getEngineImpl();
+            final Engine engine = IPFlywheelEmbeddings.engineOf(manager);
+            if (engine == null) {
+                return;
+            }
             final Vec3i renderOrigin = engine.renderOrigin();
             int maxIndex = -1;
             final FarHalf far = farHalf;
-            final List<EmbeddedEnvironment> environments;
+            final List<VisualEmbedding> environments;
             synchronized (ENVIRONMENTS) {
                 environments = List.copyOf(ENVIRONMENTS);
             }
-            for (final EmbeddedEnvironment environment : environments) {
-                final IPEmbeddedEnvironmentAccessor access = (IPEmbeddedEnvironmentAccessor) environment;
-                if (environment.isDeleted() || access.ip_getEngine() != engine) {
+            for (final VisualEmbedding environment : environments) {
+                if (IPFlywheelEmbeddings.isDeleted(environment) || IPFlywheelEmbeddings.engine(environment) != engine) {
                     continue;
                 }
-                maxIndex = Math.max(maxIndex, environment.matrixIndex);
-                final EmbeddedEnvironment root = root(environment);
+                maxIndex = Math.max(maxIndex, IPFlywheelEmbeddings.matrixIndex(environment));
+                final VisualEmbedding root = root(environment);
                 float[] plane;
                 if (far != null) {
                     plane = far.plane(context.level(), environment, root, renderOrigin);
@@ -239,8 +243,8 @@ public final class IPFlywheelStraddleClip {
             for (int i = 0; i < data.length; i += 4) {
                 System.arraycopy(fill, 0, data, i, 4);
             }
-            for (final Map.Entry<EmbeddedEnvironment, float[]> entry : PASS_PLANES.entrySet()) {
-                final int index = entry.getKey().matrixIndex;
+            for (final Map.Entry<VisualEmbedding, float[]> entry : PASS_PLANES.entrySet()) {
+                final int index = IPFlywheelEmbeddings.matrixIndex(entry.getKey());
                 if (index >= 0 && index <= maxIndex) {
                     System.arraycopy(entry.getValue(), 0, data, index * 4, 4);
                 }
@@ -251,7 +255,12 @@ public final class IPFlywheelStraddleClip {
             GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, buffer);
             GL15.glBufferData(GL43.GL_SHADER_STORAGE_BUFFER, data, GL15.GL_STREAM_DRAW);
             GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, 0);
-            GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, BUFFER_BINDING, buffer);
+            // Colorwheel's programs read the planes past the pack's own buffers (-1: no free binding, uniform only)
+            final int binding = IPFlywheelEmbeddings.isColorwheelEngine(engine)
+                ? IPColorwheelPortalClip.shipClipBinding() : BUFFER_BINDING;
+            if (binding >= 0) {
+                GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, buffer);
+            }
             GL11.glEnable(GL30.GL_CLIP_DISTANCE1);
             enabled = true;
             if (!logged) {
@@ -275,7 +284,7 @@ public final class IPFlywheelStraddleClip {
         PASS_PLANES.clear();
     }
 
-    static boolean isOfShip(final net.minecraft.client.multiplayer.ClientLevel level, final EmbeddedEnvironment environment,
+    static boolean isOfShip(final net.minecraft.client.multiplayer.ClientLevel level, final VisualEmbedding environment,
                                     final dev.ryanhcode.sable.sublevel.ClientSubLevel ship) {
         final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container =
                 dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
@@ -289,8 +298,8 @@ public final class IPFlywheelStraddleClip {
 
     /** Remembers the entity of a Create contraption's embedding ({@link #CONTRAPTIONS}). */
     public static void registerContraption(@Nullable final VisualEmbedding embedding, @Nullable final Entity entity) {
-        if (embedding instanceof final EmbeddedEnvironment environment && entity != null) {
-            CONTRAPTIONS.put(environment, new WeakReference<>(entity));
+        if (embedding != null && IPFlywheelEmbeddings.isEnvironment(embedding) && entity != null) {
+            CONTRAPTIONS.put(embedding, new WeakReference<>(entity));
         }
     }
 
@@ -299,16 +308,16 @@ public final class IPFlywheelStraddleClip {
      * @return a position whose plot is that of the ship the embedding belongs to, if any: its contraption entity's
      * block for a Create contraption, else its render origin (Sable's ship embeddings sit at the plot's centre)
      */
-    private static Vec3i plotProbe(final EmbeddedEnvironment root) {
+    private static Vec3i plotProbe(final VisualEmbedding root) {
         final WeakReference<Entity> reference = CONTRAPTIONS.isEmpty() ? null : CONTRAPTIONS.get(root);
         final Entity entity = reference != null ? reference.get() : null;
         return entity != null && !entity.isRemoved() ? entity.blockPosition() : root.renderOrigin();
     }
 
-    private static EmbeddedEnvironment root(final EmbeddedEnvironment environment) {
-        EmbeddedEnvironment root = environment;
+    private static VisualEmbedding root(final VisualEmbedding environment) {
+        VisualEmbedding root = environment;
         for (int depth = 0; depth < 16; depth++) {
-            final @Nullable EmbeddedEnvironment parent = ((IPEmbeddedEnvironmentAccessor) root).ip_getParent();
+            final @Nullable VisualEmbedding parent = IPFlywheelEmbeddings.parent(root);
             if (parent == null) {
                 break;
             }

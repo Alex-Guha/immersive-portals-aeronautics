@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat;
 
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -14,7 +15,12 @@ import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import org.spongepowered.asm.mixin.transformer.meta.MixinMerged;
 
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Tells whether our compat hooks in other mods are alive. Most of them are {@code require = 0}: when a mod update moves
@@ -82,6 +89,96 @@ public final class IPMixinReport {
     /** Whether {@code annotationDesc} is a Mixin or MixinExtras injector annotation (one that names its target methods). */
     public static boolean isInjector(String annotationDesc) {
         return INJECTORS.contains(annotationDesc);
+    }
+
+    /**
+     * Other mods' mixins merged into {@code target}, each with the methods of {@code watched} it hooks (an injector
+     * naming it, or an overwrite); an empty set when it hooks only others, {@code "?"} when its class file cannot be
+     * read. Found by the {@link MixinMerged} annotation Mixin puts on every handler it merges into a target, then read
+     * from the mixin's own bytecode ({@code Mixins.getMixinsForClass} listed none of them on a dedicated server, 2.8.27).
+     * Ours ({@code qouteall.}) are left out. The target need not be initialised.
+     */
+    public static Map<String, Set<String>> otherModsMixins(Class<?> target, Set<String> watched) {
+        Set<String> mixins = new TreeSet<>();
+        for (Method method : target.getDeclaredMethods()) {
+            MixinMerged merged = method.getAnnotation(MixinMerged.class);
+            if (merged != null && !merged.mixin().startsWith("qouteall.")) {
+                mixins.add(merged.mixin());
+            }
+        }
+        Map<String, Set<String>> hooks = new TreeMap<>();
+        for (String mixin : mixins) {
+            ClassNode node = readClass(mixin);
+            hooks.put(mixin, node == null ? Set.of("?") : hookedMethods(node, watched));
+        }
+        return hooks;
+    }
+
+    /**
+     * The mixin class as its jar holds it (ModLauncher's bytecode provider hands out only transformed classes, and a
+     * mixin class cannot be loaded), or null.
+     */
+    private static @Nullable ClassNode readClass(String className) {
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        if (loader == null) {
+            loader = IPMixinReport.class.getClassLoader();
+        }
+        try (InputStream in = loader.getResourceAsStream(className.replace('.', '/') + ".class")) {
+            if (in == null) {
+                return null;
+            }
+            ClassNode node = new ClassNode();
+            new ClassReader(in.readAllBytes()).accept(node, ClassReader.SKIP_CODE);
+            return node;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Which of {@code watched} the mixin's injectors and overwrites name. */
+    private static Set<String> hookedMethods(ClassNode mixin, Set<String> watched) {
+        Set<String> hooked = new TreeSet<>();
+        for (MethodNode method : mixin.methods) {
+            for (List<AnnotationNode> annotations : List.of(
+                method.visibleAnnotations == null ? List.<AnnotationNode>of() : method.visibleAnnotations,
+                method.invisibleAnnotations == null ? List.<AnnotationNode>of() : method.invisibleAnnotations
+            )) {
+                for (AnnotationNode annotation : annotations) {
+                    if ("Lorg/spongepowered/asm/mixin/Overwrite;".equals(annotation.desc)) {
+                        if (watched.contains(method.name)) {
+                            hooked.add(method.name);
+                        }
+                    } else if (IPMixinReport.isInjector(annotation.desc)) {
+                        for (String selector : selectors(annotation)) {
+                            String name = selectorName(selector);
+                            if (watched.contains(name)) {
+                                hooked.add(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return hooked;
+    }
+
+    private static List<String> selectors(AnnotationNode annotation) {
+        if (annotation.values != null) {
+            for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+                if ("method".equals(annotation.values.get(i)) && annotation.values.get(i + 1) instanceof List<?> list) {
+                    return list.stream().map(String::valueOf).toList();
+                }
+            }
+        }
+        return List.of();
+    }
+
+    /** {@code load}, {@code load(Lnet/...;)V} and {@code Ldev/...;load(...)V} all name {@code load}. */
+    private static String selectorName(String selector) {
+        int paren = selector.indexOf('(');
+        String head = paren < 0 ? selector : selector.substring(0, paren);
+        int semicolon = head.lastIndexOf(';');
+        return semicolon < 0 ? head : head.substring(semicolon + 1);
     }
 
     static synchronized void applied(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo info) {

@@ -192,7 +192,8 @@ public final class IPStraddleCut {
         final Vec3 center = pose.transformPosition(Vec3.atCenterOf(pos));
         for (final double[] plane : planes) {
             final Vector3d local = pose.orientation().transformInverse(new Vector3d(plane[3], plane[4], plane[5]));
-            final double support = 0.5 * (Math.abs(local.x) + Math.abs(local.y) + Math.abs(local.z));
+            // a block's half extent along the normal, in world units (a scaled ship's blocks are s wide)
+            final double support = 0.5 * IPShipScale.of(pose) * (Math.abs(local.x) + Math.abs(local.y) + Math.abs(local.z));
             final double distance = plane[3] * (center.x - plane[0]) + plane[4] * (center.y - plane[1]) + plane[5] * (center.z - plane[2]);
             if (distance + support <= TOUCH) {
                 return true;
@@ -208,7 +209,7 @@ public final class IPStraddleCut {
      * @param keepNormal the destination plane's normal towards the side where the far half is (kept side)
      * @param portal     the portal the ship straddles (an entity of the ship's own dimension)
      */
-    public record Projection(SubLevel ship, IPPortalIsometry isometry, Vec3 keepPoint, Vec3 keepNormal, java.util.UUID portal) {
+    public record Projection(SubLevel ship, IPPortalSimilarity map, Vec3 keepPoint, Vec3 keepNormal, java.util.UUID portal) {
         /**
          * @return the ship's world bounds mapped through the portal
          */
@@ -217,7 +218,7 @@ public final class IPStraddleCut {
             double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
             double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < 8; i++) {
-                final Vec3 corner = this.isometry.mapPoint(new Vec3(
+                final Vec3 corner = this.map.mapPoint(new Vec3(
                         (i & 1) == 0 ? box.minX() : box.maxX(),
                         (i & 2) == 0 ? box.minY() : box.maxY(),
                         (i & 4) == 0 ? box.minZ() : box.maxZ()));
@@ -242,7 +243,7 @@ public final class IPStraddleCut {
             final Vec3 center = mappedPose.transformPosition(Vec3.atCenterOf(pos));
             final Vector3d local = mappedPose.orientation().transformInverse(
                     new Vector3d(this.keepNormal.x, this.keepNormal.y, this.keepNormal.z));
-            final double support = 0.5 * (Math.abs(local.x) + Math.abs(local.y) + Math.abs(local.z));
+            final double support = 0.5 * IPShipScale.of(mappedPose) * (Math.abs(local.x) + Math.abs(local.y) + Math.abs(local.z));
             // a block only touching the plane is not past it
             return this.keepNormal.dot(center.subtract(this.keepPoint)) + support > TOUCH;
         }
@@ -258,17 +259,17 @@ public final class IPStraddleCut {
         final List<Projection> projections = new ArrayList<>(1);
         IPStraddleSessions.forEach(session -> {
             if (session.dest == level && session.source != level && !session.ship.isRemoved()) {
-                projections.add(new Projection(session.ship, session.isometry,
-                        session.isometry.mapPoint(session.origin), session.isometry.mapVec(session.normal), session.portal.getUUID()));
+                projections.add(new Projection(session.ship, session.map,
+                        session.map.mapPoint(session.origin), session.map.mapDirection(session.normal), session.portal.getUUID()));
             }
         });
         return projections;
     }
 
     /**
-     * Ships behind the portals an entity touches, mapped into the entity's world (docs/lessons/straddle-entities.md,
-     * "Ships behind a portal"): the part of the entity past a portal's plane is in the destination, and stands on that
-     * world's ships as IP's own collision lets it stand on that world's blocks. A player whose eye has crossed a
+     * Ships behind the portals an entity touches, mapped into the entity's world (docs/lessons/dimension-stack.md,
+     * "Riders on a ship through a floor or ceiling"): the part of the entity past a portal's plane is in the
+     * destination, and stands on that world's ships as IP's own collision lets it stand on that world's blocks. A player whose eye has crossed a
      * dimension stack's ceiling has the feet behind it, on a deck still below. Kept: blocks behind the portal's plane.
      *
      * @param portals the portals the entity touches (its portal collision entries)
@@ -285,7 +286,7 @@ public final class IPStraddleCut {
             if (dest == null) {
                 continue;
             }
-            final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
+            final IPPortalSimilarity isometry = IPPortalSimilarity.of(portal);
             double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
             double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < 8; i++) {
@@ -385,7 +386,7 @@ public final class IPStraddleCut {
             if (!projection.mappedBounds().inflate(0.5).contains(feet)) {
                 continue;
             }
-            final Pose3dc mapped = projection.isometry().mapPose(projection.ship().logicalPose());
+            final Pose3dc mapped = projection.map().mapPose(projection.ship().logicalPose());
             final BlockPos pos = BlockPos.containing(mapped.transformPositionInverse(feet));
             if (!projection.keepsBlock(mapped, pos)) {
                 continue;

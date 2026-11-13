@@ -48,9 +48,6 @@ import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
 import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**

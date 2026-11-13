@@ -26,7 +26,7 @@ import java.util.Set;
  * sampled every 0.4 blocks on the render thread. A portal edge within one dimension ({@link IPCreatePortalEdges}) passes that
  * test: it drew a track from one portal to the other, and with the far portal on a ship (its node in Sable's plot,
  * about 29 million blocks away) the bake took tens of millions of block positions and the client hung until it timed
- * out (2.8.10.1-neo-voxy). Portal edges, ours and Create's, are not track in the world.
+ * out. Portal edges, ours and Create's, are not track in the world.
  * <p>
  * On a server our set of portal edges reaches the client in a packet of its own, which can come a tick after Create's
  * graph: an edge with one node in Sable's plot space and the other outside it is never a track either, whatever the

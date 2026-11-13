@@ -22,7 +22,7 @@ import java.util.List;
  * dimension, and sends it raw. Players viewing the holder through a portal are added here: for a holder on a
  * ship, the players {@link IPShipThroughPortalSync} syncs that ship to; for a holder in the world, players in
  * other dimensions that IP's chunk tracking shows the holder's chunk to. Packets to them are dimension-tagged
- * so the client applies them to the right world (see {@code MixinRopePackets_RedirectedLevel}).
+ * so the client applies them to the right world (see {@link IPRopePacketLevel}).
  */
 public final class IPRopePortalSync {
     private IPRopePortalSync() {

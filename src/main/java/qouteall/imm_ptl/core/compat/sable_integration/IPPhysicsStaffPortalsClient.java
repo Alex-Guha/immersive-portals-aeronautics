@@ -37,6 +37,7 @@ import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPhysicsStaffBeamAccessor;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPhysicsStaffClientHandlerAccessor;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddlePick;
 import qouteall.imm_ptl.core.portal.Portal;
@@ -79,7 +80,7 @@ public final class IPPhysicsStaffPortalsClient {
      * @param frame maps the player's world into the ship's
      * @param chain the portals the ship is seen through, for the server
      */
-    public record Picked(ClientSubLevel ship, BlockHitResult hit, IPPortalIsometry frame, CompoundTag chain) {
+    public record Picked(ClientSubLevel ship, BlockHitResult hit, IPPortalSimilarity frame, CompoundTag chain) {
     }
 
     /**
@@ -94,13 +95,13 @@ public final class IPPhysicsStaffPortalsClient {
         final UUID ship;
         ResourceKey<Level> playerDim;
         /** Maps the player's world ({@link #playerDim}) into the world of {@link #session}'s ship. */
-        IPPortalIsometry frame;
+        IPPortalSimilarity frame;
         /** The dimension the ship was moved to, until it shows up there. */
         @Nullable
         ResourceKey<Level> movedTo;
         /** The portal map of that move, applied to {@link #frame} when the drag goes on with the moved ship. */
         @Nullable
-        IPPortalIsometry pendingMove;
+        IPPortalSimilarity pendingMove;
         BlockPos shift = BlockPos.ZERO;
         int waited;
         int removedFor;
@@ -108,7 +109,7 @@ public final class IPPhysicsStaffPortalsClient {
         boolean lost;
 
         Drag(final PhysicsStaffClientHandler.ClientDragSession session, final UUID ship, final ResourceKey<Level> playerDim,
-             final IPPortalIsometry frame) {
+             final IPPortalSimilarity frame) {
             this.session = session;
             this.ship = ship;
             this.playerDim = playerDim;
@@ -196,14 +197,14 @@ public final class IPPhysicsStaffPortalsClient {
 
         final IPStraddlePick.Hit farHalf = IPStraddlePick.nearest(level, eye, end, partialTick, false);
         if (farHalf != null && farHalf.distance() < limit) {
-            best = picked(farHalf, IPPortalIsometry.IDENTITY, new ListTag());
+            best = picked(farHalf, IPPortalSimilarity.IDENTITY, new ListTag());
             if (best != null) {
                 limit = farHalf.distance();
             }
         }
 
         final Optional<Pair<Portal, RayTraceResult>> through =
-            PortalUtils.raytracePortals(level, eye, end, true, portal -> portal.isVisible() && IPPhysicsStaffPortals.isRigid(portal));
+            PortalUtils.raytracePortals(level, eye, end, true, portal -> portal.isVisible() && IPPhysicsStaffPortals.isMappable(portal));
         if (through.isPresent() && eye.distanceTo(through.get().getSecond().hitPos()) < limit) {
             final Picked behind = pickBehind(player, level, through.get().getFirst(), through.get().getSecond().hitPos(), end, partialTick);
             if (behind != null) {
@@ -254,7 +255,7 @@ public final class IPPhysicsStaffPortalsClient {
         }
         final ListTag chain = new ListTag();
         chain.add(link(portal.getUUID(), level.dimension(), false));
-        return picked(behind, IPPortalIsometry.of(portal), chain);
+        return picked(behind, IPPhysicsStaffPortals.mapOf(portal), chain);
     }
 
     /**
@@ -262,15 +263,15 @@ public final class IPPhysicsStaffPortalsClient {
      * @param chain  the portals that lead there
      */
     @Nullable
-    private static Picked picked(final IPStraddlePick.Hit hit, final IPPortalIsometry before, final ListTag chain) {
+    private static Picked picked(final IPStraddlePick.Hit hit, final IPPortalSimilarity before, final ListTag chain) {
         final ClientLevel shipLevel = ClientWorldLoader.getOptionalWorld(hit.target().dimension());
         final SubLevel ship = shipLevel == null ? null : IPStraddleCut.shipAt(shipLevel, hit.target().hit().getBlockPos());
         if (!(ship instanceof final ClientSubLevel clientShip)) {
             return null;
         }
-        IPPortalIsometry frame = before;
+        IPPortalSimilarity frame = before;
         if (hit.farHalf() != null) {
-            frame = frame.then(hit.farHalf().isometry().inverse());
+            frame = frame.then(hit.farHalf().map().inverse());
             chain.add(link(hit.farHalf().portal(), shipLevel.dimension(), true));
         }
         final CompoundTag tag = new CompoundTag();
@@ -299,7 +300,7 @@ public final class IPPhysicsStaffPortalsClient {
             return;
         }
         final Picked across = picked != null && picked.ship() == ship ? picked : null;
-        final IPPortalIsometry frame = across != null ? across.frame() : IPPortalIsometry.IDENTITY;
+        final IPPortalSimilarity frame = across != null ? across.frame() : IPPortalSimilarity.IDENTITY;
         drag = new Drag(session, ship.getUniqueId(), player.level().dimension(), frame);
         final CompoundTag chain = new CompoundTag();
         if (across != null) {
@@ -399,17 +400,17 @@ public final class IPPhysicsStaffPortalsClient {
         if (current == null) {
             return;
         }
-        if (!IPPhysicsStaffPortals.isRigid(portal)) {
+        if (!IPPhysicsStaffPortals.isMappable(portal)) {
             current.lost = true;
             return;
         }
-        onPlayerTeleported(IPPortalIsometry.of(portal), portal.getDestDim());
+        onPlayerTeleported(IPPhysicsStaffPortals.mapOf(portal), portal.getDestDim());
     }
 
     /**
-     * As {@link #onPlayerTeleported(Portal)}, for a rigid portal's map {@code through} into {@code dim}.
+     * As {@link #onPlayerTeleported(Portal)}, for a portal's map {@code through} into {@code dim}.
      */
-    static void onPlayerTeleported(final IPPortalIsometry through, final ResourceKey<Level> dim) {
+    static void onPlayerTeleported(final IPPortalSimilarity through, final ResourceKey<Level> dim) {
         final Drag current = drag;
         if (current == null) {
             return;
@@ -417,6 +418,10 @@ public final class IPPhysicsStaffPortalsClient {
         current.frame = through.inverse().then(current.frame);
         current.playerDim = dim;
         current.session.dragOrientation().premul(through.rotation());
+        if (through.isScaled()) {
+            // the ship is seen k times as far away
+            current.session.setDistance(Math.clamp(current.session.distance() * through.scale(), 2.0, PhysicsStaffItem.RANGE));
+        }
     }
 
     // ---- drawing
@@ -463,7 +468,7 @@ public final class IPPhysicsStaffPortalsClient {
         if (!isLocalPlayer(owner)) {
             return new Vec3[]{start, end};
         }
-        final IPPortalIsometry frame = beamFrame();
+        final IPPortalSimilarity frame = beamFrame();
         final Vec3 seen = frame == null ? end : frame.unmapPoint(end);
         if (!PortalRendering.isRendering()) {
             beamStart = start;
@@ -482,7 +487,7 @@ public final class IPPhysicsStaffPortalsClient {
     }
 
     @Nullable
-    private static IPPortalIsometry beamFrame() {
+    private static IPPortalSimilarity beamFrame() {
         return drag != null ? drag.frame : lastPicked != null ? lastPicked.frame() : null;
     }
 
@@ -521,7 +526,7 @@ public final class IPPhysicsStaffPortalsClient {
      * @return {@code point} of {@code ship}'s world in the player's world
      */
     public static Vec3 toPlayerWorld(final SubLevel ship, final Vec3 point) {
-        final IPPortalIsometry frame = frameOf(ship);
+        final IPPortalSimilarity frame = frameOf(ship);
         return frame == null ? point : frame.unmapPoint(point);
     }
 
@@ -573,11 +578,15 @@ public final class IPPhysicsStaffPortalsClient {
             return;
         }
         // Sable leaves the outline at (ship-world position - camera); this maps it to (mapped position - camera)
-        final IPPortalIsometry isometry = projection.isometry();
+        final IPPortalSimilarity isometry = projection.map();
         final Vec3 offset = isometry.mapPoint(camera).subtract(camera);
         poseStack.pushPose();
         poseStack.translate(offset.x, offset.y, offset.z);
         poseStack.mulPose(new Quaternionf().set(isometry.rotation()));
+        if (isometry.isScaled()) {
+            final float k = (float) isometry.scale();
+            poseStack.scale(k, k, k);
+        }
         minecraft.level = shipLevel;
         try {
             render.run();
@@ -602,7 +611,7 @@ public final class IPPhysicsStaffPortalsClient {
     }
 
     @Nullable
-    private static IPPortalIsometry frameOf(final SubLevel ship) {
+    private static IPPortalSimilarity frameOf(final SubLevel ship) {
         if (picked != null && picked.ship() == ship) {
             return picked.frame();
         }
@@ -628,9 +637,10 @@ public final class IPPhysicsStaffPortalsClient {
          * The server carried the local player through a portal ({@code origin}, {@code dest}, {@code rotation}) into
          * {@code dim} with the ship they were on: a drag or a held handle turns as for the player's own teleport.
          */
-        public static void onCarriedThrough(final ResourceKey<Level> dim, final Vec3 origin, final Vec3 dest, final DQuaternion rotation) {
-            final IPPortalIsometry through = new IPPortalIsometry(origin, dest,
-                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
+        public static void onCarriedThrough(final ResourceKey<Level> dim, final Vec3 origin, final Vec3 dest, final DQuaternion rotation,
+                                            final double scale) {
+            final IPPortalSimilarity through = new IPPortalSimilarity(new IPPortalIsometry(origin, dest,
+                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize()), scale);
             IPPhysicsStaffPortalsClient.onPlayerTeleported(through, dim);
             IPHandlePortalsClient.onPlayerTeleported(through, dim);
         }
@@ -640,13 +650,13 @@ public final class IPPhysicsStaffPortalsClient {
          * to {@code dim}, its plot by {@code shift}; the drag goes on there.
          */
         public static void onShipMoved(final UUID ship, final ResourceKey<Level> dim, final BlockPos shift, final Vec3 origin,
-                                       final Vec3 dest, final DQuaternion rotation) {
+                                       final Vec3 dest, final DQuaternion rotation, final double scale) {
             final Drag current = drag;
             if (current == null || !current.ship.equals(ship)) {
                 return;
             }
-            final IPPortalIsometry through = new IPPortalIsometry(origin, dest,
-                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
+            final IPPortalSimilarity through = new IPPortalSimilarity(new IPPortalIsometry(origin, dest,
+                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize()), scale);
             // the frame changes with the ship the drag is on (until then: the old one, at its last pose)
             current.pendingMove = current.pendingMove == null ? through : current.pendingMove.then(through);
             current.shift = current.movedTo != null ? current.shift.offset(shift) : shift;

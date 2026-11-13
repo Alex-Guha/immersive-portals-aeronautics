@@ -5,14 +5,12 @@ package qouteall.imm_ptl.core.compat.mixin_sable;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.mojang.logging.LogUtils;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData;
 import net.minecraft.client.Camera;
 import net.minecraft.client.PrioritizeChunkUpdates;
 import net.minecraft.client.renderer.chunk.RenderRegionCache;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
-import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -20,7 +18,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import qouteall.imm_ptl.core.compat.IPStallRecorder;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleHandoffLatch;
 
 /**
@@ -31,10 +28,6 @@ import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleHandoffLatch
  */
 @Mixin(value = VanillaChunkedSubLevelRenderData.class, remap = false)
 public class MixinSableChunkedRenderData_HandoffBuildAtOnce {
-    @Unique
-    private static final Logger IP_LOGGER = LogUtils.getLogger();
-    @Unique
-    private static final boolean IP_TRACE = IPStallRecorder.isTestJar();
     @Unique
     private static final int IP_MAX_PER_COMPILE = 16;
     @Unique
@@ -72,9 +65,5 @@ public class MixinSableChunkedRenderData_HandoffBuildAtOnce {
         this.ip_builtThisCompile++;
         this.sectionRenderDispatcher.rebuildSectionSync(section, cache);
         this.sectionRenderDispatcher.uploadAllPendingUploads();
-        if (IP_TRACE) {
-            IP_LOGGER.info("[IPStraddle] client: built section {} of ship {} at once after its hand-off", section.getOrigin(),
-                this.subLevel.getUniqueId());
-        }
     }
 }

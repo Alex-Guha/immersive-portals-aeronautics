@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.ship_portals;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import com.mojang.logging.LogUtils;
 import de.nick1st.imm_ptl.events.ServerPortalTickEvent;
 import dev.ryanhcode.sable.Sable;
@@ -322,7 +323,8 @@ public final class IPShipPortalAnchors {
         final IPShipPortalDriver driver = new IPShipPortalDriver(thisSide ? holder.level().dimension() : holder.getDestDim(),
                 carrierId, plotState.position(),
                 currentDelta.offset() == null ? Vec3.ZERO : currentDelta.offset(),
-                currentDelta.rotation() == null ? DQuaternion.identity : currentDelta.rotation());
+                currentDelta.rotation() == null ? DQuaternion.identity : currentDelta.rotation(),
+                currentDelta.sizeScaling() == null ? 1.0 : currentDelta.sizeScaling().x);
         final PortalAnimation animation = holder.animation;
         // a side without a driver of its own has no reference state: IP takes it from the portal's current state
         if (thisSide) {
@@ -412,16 +414,6 @@ public final class IPShipPortalAnchors {
                 shatterNow(holder, reason);
             }
         }
-    }
-
-    /** True when portals are mounted on {@code carrierId} (loaded ones, either end). */
-    public static boolean hasCarriedPortals(final UUID carrierId) {
-        for (final Portal holder : HOLDERS.values()) {
-            if (carries(holder, carrierId)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static void scheduleShatter(final Portal holder, final String reason) {
@@ -692,8 +684,12 @@ public final class IPShipPortalAnchors {
                 final UnilateralPortalState fromPlot = from.animation.thisSideReferenceState;
                 final UnilateralPortalState intoWorld = into.getOtherSideState();
                 final DQuaternion toPlot = fromPlot.orientation().hamiltonProduct(fromWorld.orientation().getConjugated());
+                // a scaled carrier's end is larger in the world than in its plot (Create: Pocket Sized)
+                final double toPlotSize = fromWorld.width() == 0 ? 1.0 : fromPlot.width() / fromWorld.width();
                 final UnilateralPortalState plot = new UnilateralPortalState.Builder().from(intoWorld)
-                        .position(fromPlot.position()).orientation(toPlot.hamiltonProduct(intoWorld.orientation())).build();
+                        .position(fromPlot.position()).orientation(toPlot.hamiltonProduct(intoWorld.orientation()))
+                        .width(intoWorld.width() * toPlotSize).height(intoWorld.height() * toPlotSize)
+                        .thickness(intoWorld.thickness() * toPlotSize).build();
                 into.animation.otherSideAnimations.add(moved);
                 into.animation.otherSideReferenceState = plot;
                 LOGGER.info("[IPShipPortal] {} takes the mount of {} on ship {} as its far end", into, from, moved.carrier);
@@ -1130,12 +1126,13 @@ public final class IPShipPortalAnchors {
         return null;
     }
 
-    /** {@code world} (a portal side in the world) in the plot of the ship at {@code pose}. */
+    /** {@code world} (a portal side in the world) in the plot of the ship at {@code pose}, sizes divided by its scale. */
     static UnilateralPortalState toPlot(final UnilateralPortalState world, final Pose3dc pose) {
+        final double scale = IPShipScale.of(pose);
         return new UnilateralPortalState(world.dimension(), pose.transformPositionInverse(world.position()),
                 PortalManipulation.getPortalOrientationQuaternion(pose.transformNormalInverse(world.getAxisW()).normalize(),
                         pose.transformNormalInverse(world.getAxisH()).normalize()),
-                world.width(), world.height(), world.thickness());
+                world.width() / scale, world.height() / scale, world.thickness() / scale);
     }
 
     private enum Coverage { NONE, PARTIAL, WHOLE }
@@ -1252,7 +1249,8 @@ public final class IPShipPortalAnchors {
                     onShip(driverOf(holder, false)), holder.getDestDim().location(),
                     holder.getDestPos().x, holder.getDestPos().y, holder.getDestPos().z,
                     driverOf(holder, false) == null ? back : fromFrame(driverOf(holder, false), holder.getDestPos()) + ", " + back,
-                    IPShipPortals.linkStrain(holder)));
+                    IPShipPortals.linkStrain(holder))
+                    + String.format(", %.4f x %.4f, scale %.4f", holder.getWidth(), holder.getHeight(), holder.getScale()));
         }
         return lines;
     }

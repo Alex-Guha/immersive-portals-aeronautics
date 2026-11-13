@@ -37,8 +37,11 @@ compiler_output/
 
 # whatever
 logs/
+# a log pasted for the current session
+/LOG.txt
+/latest.log
 /deps_unused/
-/deps/
+/deps
 
 /misc/mesh_to_visualize.json
 
@@ -59,3 +62,8 @@ src/main/resources/immersive_portals.timestamp
 /natives/.cargo-cache/
 /src/main/resources/natives/ipa_rapier/ipa_rapier_*
 __pycache__/
+
+# Private: the notes repository (ipa-notes) and its links; only for the public repository, where docs/ is not tracked
+/CLAUDE.md
+/docs
+/reference

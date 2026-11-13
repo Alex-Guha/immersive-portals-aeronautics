@@ -8,7 +8,6 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_dh;
 
-import com.mojang.logging.LogUtils;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
 import com.seibel.distanthorizons.common.render.openGl.glObject.shader.GlShaderProgram;
 import com.seibel.distanthorizons.common.render.openGl.terrain.GlDhTerrainShaderProgram_neoforge;
@@ -16,7 +15,6 @@ import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.util.RenderUtil;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
-import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -45,15 +43,6 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 @Mixin(value = GlDhTerrainShaderProgram_neoforge.class, remap = false)
 public class MixinDhTerrainShader_NearClipGap {
     @Unique
-    private static final Logger ip_LOGGER = LogUtils.getLogger();
-
-    @Unique
-    private static float ip_lastLoggedClip = Float.NaN;
-
-    @Unique
-    private static boolean ip_loggedCut = false;
-
-    @Unique
     private int ip_locationsProgram = -1;
 
     @Unique
@@ -80,20 +69,11 @@ public class MixinDhTerrainShader_NearClipGap {
         }
 
         if (IPDhPortalDrawnChunks.isActive() && ip_resolveCutLocations()) {
-            if (!ip_loggedCut) {
-                ip_loggedCut = true;
-                ip_LOGGER.debug("[IPDhGapFix] DH LODs in portal views cut at the drawn chunks, distance clip off");
-            }
             return -16.0F;
         }
 
         double fadeEnd = Config.Client.Advanced.Graphics.Quality.ditherDhFade.get() ? 1.5 : 1.0;
         float clipDistance = (float) Math.min(dhNearClip + 16.0, IPDhPortalNearClip.coveredDistance() / fadeEnd);
-
-        if (!(Math.abs(clipDistance - ip_lastLoggedClip) < 16)) {
-            ip_lastLoggedClip = clipDistance;
-            ip_LOGGER.debug("[IPDhGapFix] DH LOD clip in portal view {} blocks (DH's own {})", clipDistance, dhNearClip + 16.0);
-        }
 
         // DH adds the 16
         return clipDistance - 16.0F;

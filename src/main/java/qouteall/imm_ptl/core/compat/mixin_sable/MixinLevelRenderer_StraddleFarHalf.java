@@ -140,6 +140,8 @@ public abstract class MixinLevelRenderer_StraddleFarHalf {
                 final PoseStack poseStack = new PoseStack();
                 poseStack.translate(corner.x - cameraPos.x, corner.y - cameraPos.y, corner.z - cameraPos.z);
                 poseStack.mulPose(this.ip_orientation.set(pose.orientation()));
+                final float scale = (float) qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale.of(pose);
+                poseStack.scale(scale, scale, scale);
                 final VertexConsumer consumer = new SheetedDecalTextureGenerator(
                     this.renderBuffers.crumblingBufferSource().getBuffer(ModelBakery.DESTROY_TYPES.get(stages.last().getProgress())),
                     poseStack.last(), 1.0F);

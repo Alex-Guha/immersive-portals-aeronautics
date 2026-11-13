@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -59,6 +60,16 @@ final class IPCreateShaftShips {
         @Override
         public Quaternionf rotation() {
             return new Quaternionf().set(subLevel.logicalPose().orientation());
+        }
+
+        @Override
+        public double scale() {
+            return IPShipScale.of(subLevel.logicalPose());
+        }
+
+        @Override
+        public org.joml.Matrix4d matrix() {
+            return subLevel.logicalPose().bakeIntoMatrix(new org.joml.Matrix4d());
         }
     }
 

@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.ship_portals;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
@@ -59,16 +60,28 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
     public final Vec3 plotOrigin;
     private Vec3 lastOffset;
     private DQuaternion lastRotation;
+    /** The carrier's scale at the last result (Create: Pocket Sized), 1 for an unscaled carrier. */
+    private double lastScale;
     /** Whether the last result came from the carrier (false: it was missing and the last delta was kept). */
     private boolean carrierSeen;
 
+    /**
+     * Create Teleporters 3.0.2+ calls this constructor by reflection (AeronauticsPortalIntegration): keep it. The last
+     * delta of an unscaled carrier.
+     */
     public IPShipPortalDriver(final ResourceKey<Level> dimension, final UUID carrier, final Vec3 plotOrigin,
                               final Vec3 lastOffset, final DQuaternion lastRotation) {
+        this(dimension, carrier, plotOrigin, lastOffset, lastRotation, 1.0);
+    }
+
+    public IPShipPortalDriver(final ResourceKey<Level> dimension, final UUID carrier, final Vec3 plotOrigin,
+                              final Vec3 lastOffset, final DQuaternion lastRotation, final double lastScale) {
         this.dimension = dimension;
         this.carrier = carrier;
         this.plotOrigin = plotOrigin;
         this.lastOffset = lastOffset;
         this.lastRotation = lastRotation;
+        this.lastScale = lastScale;
     }
 
     private static IPShipPortalDriver fromTag(final CompoundTag tag) {
@@ -77,7 +90,8 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
                 tag.getUUID("carrier"),
                 Helper.getVec3d(tag, "plotOrigin"),
                 Helper.getVec3d(tag, "lastOffset"),
-                DQuaternion.fromTag(tag.getCompound("lastRotation")));
+                DQuaternion.fromTag(tag.getCompound("lastRotation")),
+                tag.contains("lastScale") ? tag.getDouble("lastScale") : 1.0);
     }
 
     @Override
@@ -89,17 +103,38 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
         Helper.putVec3d(tag, "plotOrigin", this.plotOrigin);
         Helper.putVec3d(tag, "lastOffset", this.lastOffset);
         tag.put("lastRotation", this.lastRotation.toTag());
+        if (!isUnscaled(this.lastScale)) {
+            tag.putDouble("lastScale", this.lastScale);
+        }
         return tag;
     }
 
-    /** The delta that puts a plot-space state where the carrier's {@code pose} puts its blocks. */
+    /**
+     * The delta that puts a plot-space state where the carrier's {@code pose} puts its blocks: its centre through the
+     * pose, its orientation turned with the ship, and its size times the ship's scale (Create: Pocket Sized), so a
+     * portal on a scaled ship fills its frame. IP then treats it as a scaled portal (the two ends differ in size).
+     */
     public static DeltaUnilateralPortalState deltaFor(final Pose3dc pose, final Vec3 plotOrigin) {
         final Vector3d world = pose.transformPosition(new Vector3d(plotOrigin.x, plotOrigin.y, plotOrigin.z));
         final Quaterniondc q = pose.orientation();
         return new DeltaUnilateralPortalState(
                 new Vec3(world.x - plotOrigin.x, world.y - plotOrigin.y, world.z - plotOrigin.z),
                 new DQuaternion(q.x(), q.y(), q.z(), q.w()),
-                null);
+                sizeScaling(IPShipScale.of(pose)));
+    }
+
+    @Nullable
+    private static Vec3 sizeScaling(final double scale) {
+        return isUnscaled(scale) ? null : new Vec3(scale, scale, scale);
+    }
+
+    private static boolean isUnscaled(final double scale) {
+        return Math.abs(scale - 1.0) <= 1.0E-6;
+    }
+
+    /** The carrier's scale when this end was last placed (1 unscaled). */
+    public double scale() {
+        return this.lastScale;
     }
 
     @Override
@@ -109,11 +144,13 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
             final DeltaUnilateralPortalState delta = deltaFor(pose, this.plotOrigin);
             this.lastOffset = delta.offset();
             this.lastRotation = delta.rotation();
+            this.lastScale = delta.sizeScaling() == null ? 1.0 : delta.sizeScaling().x;
             this.carrierSeen = true;
             return new AnimationResult(delta, false);
         }
         this.carrierSeen = false;
-        return new AnimationResult(new DeltaUnilateralPortalState(this.lastOffset, this.lastRotation, null), false);
+        return new AnimationResult(new DeltaUnilateralPortalState(this.lastOffset, this.lastRotation,
+                sizeScaling(this.lastScale)), false);
     }
 
     @Nullable

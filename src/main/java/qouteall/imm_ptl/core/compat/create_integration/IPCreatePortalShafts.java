@@ -75,12 +75,12 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * itself ({@link Pair#upstream}), and within one level while both ends are in one network; either would keep the
  * shafts turning with nothing driving them.
  * <p>
- * Belts (2.6.12.7): a belt whose run ends at a portal pairs with a belt ending at the same spot past it, the same way
+ * Belts: a belt whose run ends at a portal pairs with a belt ending at the same spot past it, the same way
  * (its end cell is the end, the side its run ends on the face), turning so that items run into the portal on one side
  * and out of it on the other ({@link #beltSign}). One belt turning drives the other, as one belt would; two belts
  * turning on their own are two belts meeting at the portal and are left alone (no overpowering, nothing broken; they
  * are drawn as two belt ends when their speeds differ, {@code IPCreatePortalBeltLook}). Belts on ships at their own
- * mounted portal pair with the fixed side as shafts do (2.6.12.8; the factor is worked out in each belt's own
+ * mounted portal pair with the fixed side as shafts do (the factor is worked out in each belt's own
  * coordinates). Shafts pair only with shafts, belts only with belts.
  * <p>
  * Pairs are found every second from the portals' side (each portal's opening, one block deep), and sooner after a
@@ -121,6 +121,18 @@ public final class IPCreatePortalShafts {
 
         /** The rotation from frame to world directions. */
         org.joml.Quaternionf rotation();
+
+        /** How many world blocks one of the frame's blocks spans (a ship's Create: Pocket Sized scale). */
+        default double scale() {
+            return 1.0;
+        }
+
+        /** The frame's coordinates to the world's, scale included. */
+        default org.joml.Matrix4d matrix() {
+            final Vec3 origin = toWorld(Vec3.ZERO);
+            return new org.joml.Matrix4d().translation(origin.x, origin.y, origin.z)
+                .rotate(new org.joml.Quaterniond(rotation())).scale(scale());
+        }
     }
 
     /** A shaft face that opens onto a portal. */
@@ -288,22 +300,23 @@ public final class IPCreatePortalShafts {
     }
 
     private static void scanPortal(final ServerLevel level, final Portal portal, final Set<Pair> seen) {
-        if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6) {
+        final double nearScale = IPShipPortals.sideScale(portal, true);
+        if (portal.isRemoved() || !portal.isTeleportable() || !IPCreatePortalEnds.blockForBlock(portal, nearScale)) {
             return;
         }
         final Vec3 normal = portal.getNormal();
         final Direction front = Direction.getNearest(normal.x, normal.y, normal.z);
-        // the blocks whose face towards the portal lies within a block in front of its plane
-        final AABB region = portal.getBoundingBox().expandTowards(normal.scale(1.5));
+        // the blocks whose face towards the portal lies within a block (of the side's own size) in front of its plane
+        final AABB region = portal.getBoundingBox().expandTowards(normal.scale(1.5 * nearScale));
         final UUID ownShip = IPShipPortals.ownSideCarrier(portal);
         if (ownShip == null && Vec3.atLowerCornerOf(front.getNormal()).dot(normal) >= 1 - PLANE_EPSILON) {
             scanCells(level, portal, region.deflate(PLANE_EPSILON), null, front.getOpposite(), seen);
         }
         if (SABLE && ownShip != null) {
             // the shafts of the ship carrying the portal's side
-            for (final Frame ship : IPCreateShaftShips.shipsTouching(level, region.inflate(1))) {
+            for (final Frame ship : IPCreateShaftShips.shipsTouching(level, region.inflate(nearScale))) {
                 if (ship.ship().equals(ownShip)) {
-                    scanCells(level, portal, toLocalBounds(ship, region.inflate(0.5)), ship, null, seen);
+                    scanCells(level, portal, toLocalBounds(ship, region.inflate(0.5 * nearScale)), ship, null, seen);
                 }
             }
         }

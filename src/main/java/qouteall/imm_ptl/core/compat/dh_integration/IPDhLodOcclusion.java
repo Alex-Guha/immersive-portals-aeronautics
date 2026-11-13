@@ -27,7 +27,7 @@ import qouteall.imm_ptl.core.render.context_management.RenderStates;
  * its stencil area covers the LODs in front of it. Small portals stay inside the drawn terrain, but a dimension
  * stack's floor and ceiling ({@code VerticalConnectingPortal}, a 23333-block plane) do not: from the overworld the
  * nether's roof LODs were drawn over the distant overworld LODs, and from the nether the overworld's bottom over the
- * nether's (BUGS #6). The other dimension was also rendered every frame for those pixels alone.
+ * nether's (bugs.md #6). The other dimension was also rendered every frame for those pixels alone.
  * <p>
  * So DH's depth texture is copied in every pass, right before DH applies its LODs ({@link #capture}, one copy per
  * portal layer, since a nested pass reuses DH's textures), and while IP draws a portal's view area into the stencil

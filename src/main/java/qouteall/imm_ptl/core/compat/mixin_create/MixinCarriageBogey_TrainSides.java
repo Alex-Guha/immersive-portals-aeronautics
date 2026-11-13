@@ -68,7 +68,7 @@ public class MixinCarriageBogey_TrainSides {
     /**
      * While a bogey spans a portal its angles come from the updating copy's heading, and once its last wheel point is
      * through, from its wheel points again: on the far side of a rotating portal the two differ by the portal's
-     * rotation, and Create interpolated from one to the other over a tick (user, 2.5.7.6: the bogey turned 90 degrees
+     * rotation, and Create interpolated from one to the other over a tick (the bogey turned 90 degrees
      * for a moment as the rear axle passed). When the source changes, the new angles show at once.
      */
     @Inject(method = "updateAngles", at = @At("TAIL"), require = 0, expect = 0)

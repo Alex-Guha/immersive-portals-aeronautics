@@ -15,8 +15,8 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPSeatedView;
 
 /**
- * Client diagnostics (1.24.13, user: "a brief moment when the player passes through when the screen flashes with the
- * other side of the portal"): one line per frame while a seated player's head is near its carriage's portal plane,
+ * Client diagnostics, for the screen flashing with the other side of the portal as a seated player passes through:
+ * one line per frame while a seated player's head is near its carriage's portal plane,
  * and for a second after the player changed dimension or vehicle near one. Says what each frame showed: the player's
  * level, vehicle, head (and where it was a tick earlier), its depth past the copy's plane, and whether IP's cross-portal
  * view drew it through a portal and from where. Off unless {@code -Dip_aeronautics.debug.riderTrace=true} (1.24.16).

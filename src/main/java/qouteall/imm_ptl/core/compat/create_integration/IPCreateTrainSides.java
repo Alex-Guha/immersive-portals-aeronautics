@@ -216,7 +216,7 @@ public final class IPCreateTrainSides {
      * by their stress ({@code Carriage.travel}: {@code CarriageBogey.getStress}, {@code getAnchorDiff}) before it places
      * the carriage ({@code updateContraptionAnchors}, where {@link #prepare} runs): a carriage saved standing across a
      * portal of ours was first moved with no crossing known, its bogey's wheel points a straight line through the world
-     * apart, which pulled them along the track every tick (user, 2.5.7.4: a train left in a portal slid on its own after
+     * apart, which pulled them along the track every tick (a train left in a portal slid on its own after
      * a reload, its bogey torn across the portal).
      */
     static void ensurePrepared(final Carriage carriage) {
@@ -229,7 +229,7 @@ public final class IPCreateTrainSides {
      * {@code CarriageBogey.getStress} for a bogey whose wheel points are on both sides of a portal edge of ours: its
      * wheel spacing minus their distance along the track through the portal. Create gives no stress for a bogey across a
      * portal (its dimension is null), so nothing kept the two points together there, and wheel points pulled apart
-     * before (a reload with 2.5.7.4 and earlier) stayed apart, or had passed each other (the leading point behind the
+     * before (in a world saved by an older version) stayed apart, or had passed each other (the leading point behind the
      * trailing one: the distance counts negative and they are moved back past each other). Kept below Create's
      * derailing stress (4), so such a bogey is mended over a few ticks. NaN where Create's own stress applies.
      */
@@ -498,7 +498,7 @@ public final class IPCreateTrainSides {
      * real dimension) once that key fits this client's own state: a side of its crossing while it crosses, the real
      * dimension while it does not (the server runs a tick or two ahead; a key that does not fit yet waits). This
      * client's own choices at a crossing's start and end ({@link #start}, {@link #end}) only stand in until then: they
-     * picked the wrong copy at times (2.5.7.2 at the end, 2.5.7.3-2.5.7.4 at the start: a copy drawn for a frame where
+     * picked the wrong copy at times (at the end and at the start: a copy drawn for a frame where
      * the other one belongs).
      */
     private static void followServerKeys(final Carriage carriage, @Nullable final Crossing crossing) {

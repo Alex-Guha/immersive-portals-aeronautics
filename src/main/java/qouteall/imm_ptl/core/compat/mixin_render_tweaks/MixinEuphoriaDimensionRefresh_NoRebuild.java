@@ -18,8 +18,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Euphoria checks {@code Minecraft.level}'s dimension at the head of every {@code PipelineManager.preparePipeline}
  * ({@code beforePreparePipeline}) and, after a {@code Minecraft.setLevel}, on the client tick; on a change
  * {@code applySwap} swaps Iris's current pack, destroys every Iris pipeline and rebuilds (or schedules a full Iris
- * reload). With IP that ran twice a frame with a portal to another dimension in view (1 fps, user report with
- * Complementary Unbound r5.9.3 + Euphoria Patches 1.10.5, 2026-10-27) and on every crossing (a hitch of up to 1.5 s:
+ * reload). With IP that ran twice a frame with a portal to another dimension in view (1 fps with
+ * Complementary Unbound r5.9.3 + Euphoria Patches 1.10.5) and on every crossing (a hitch of up to 1.5 s:
  * both pipelines recompiled and every chunk of every dimension rebuilt). A vanilla dimension change still gets new
  * pipelines: Iris destroys them itself on {@code setLevel}.
  */

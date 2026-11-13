@@ -3,7 +3,7 @@
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
  * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
  * Apache License 2.0. See NOTICE.
  */
@@ -92,8 +92,6 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
             );
-            // test jars: the client's seat on carriages against the server's ([IPSeatSync])
-            qouteall.imm_ptl.core.compat.create_integration.IPSeatSyncTraceClient.init();
             // Immersive Aeronautics: the one walk over the portal blocks for what Create parts draw at portals
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PostClientTickEvent.class,

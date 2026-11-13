@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core.render.context_management;
@@ -19,11 +19,13 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.shape.BoxPortalShape;
+import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.VisibleSectionDiscovery;
 import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
 import qouteall.q_misc_util.my_util.Plane;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
 import java.util.List;
 import java.util.Stack;
 import java.util.function.Function;
@@ -117,6 +119,11 @@ public class PortalRendering {
         return pos;
     }
     
+    // Immersive Aeronautics: the portals being drawn, outermost first (IPFrustumCapture)
+    public static List<Portal> getPortalLayersView() {
+        return Collections.unmodifiableList(portalLayers);
+    }
+    
     public static double getExtraModelViewScaling() {
         double scale = 1.0;
         for (Portal portal : portalLayers) {
@@ -146,7 +153,9 @@ public class PortalRendering {
                 return false;
             }
             
-            Vec3 currentCameraPos = CHelper.getCurrentCameraPos();
+            // Immersive Aeronautics: with a frustum captured (F3+U), the captured camera (IPFrustumCapture)
+            Vec3 currentCameraPos = IPFrustumCapture.isCulling() ?
+                IPFrustumCapture.cullingPos() : CHelper.getCurrentCameraPos();
             Vec3 originalCameraPos = renderingPortal.inverseTransformPoint(currentCameraPos);
             double distance = renderingPortal.getDistanceToNearestPointInPortal(originalCameraPos);
             return distance < 5;

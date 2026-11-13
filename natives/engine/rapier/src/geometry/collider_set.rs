@@ -1,7 +1,8 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
 // frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
-// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
+// the frame velocity of moving portals' images (`portal_frame_*`) and scaled portals (`portal_scale`, 2.9.0),
+// PolyForm Shield License 1.0.0; see NOTICE.
 
 use crate::alloc_prelude::*;
 use crate::data::arena::Arena;
@@ -220,6 +221,7 @@ impl ColliderSet {
                 handle: parent_handle,
                 pos_wrt_parent: coll.pos.0,
                 portal_prefix: None,
+                portal_scale: 1.0,
                 portal_frame_velocity: None,
             });
         }
@@ -296,6 +298,7 @@ impl ColliderSet {
                             handle: new_parent_handle,
                             pos_wrt_parent: Pose::IDENTITY,
                             portal_prefix: None,
+                portal_scale: 1.0,
                 portal_frame_velocity: None,
                         })
                     };

@@ -9,11 +9,11 @@ import dev.ryanhcode.sable.api.physics.object.ArbitraryPhysicsObject;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelObserver;
+import dev.ryanhcode.sable.physics.impl.rapier.RapierPhysicsPipeline;
 import dev.ryanhcode.sable.platform.SableEventPublishPlatform;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
-import ipaeronautics.rapier.RapierPhysicsPipeline;
 import net.minecraft.CrashReport;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
@@ -59,6 +59,13 @@ public final class IPFusedPhysicsStep {
     private record Entry(ServerLevel level, SubLevelPhysicsSystem system, ServerSubLevelContainer container) {
     }
 
+    /**
+     * Every level's pipeline is a chart of one shared native world, stepped once per substep. Cleared for every
+     * pipeline but the last of a substep, whose {@code physicsTick} then does only its chart's upkeep
+     * ({@code MixinSableRapierPipeline_OwnBackend}).
+     */
+    public static boolean stepWorld = true;
+
     private static final List<Entry> COLLECTED = new ArrayList<>();
     private static boolean driving;
     // Weak: singleplayer starts a new server per world in the same JVM, with tick counts restarting at 0.
@@ -76,7 +83,7 @@ public final class IPFusedPhysicsStep {
      * @return true to skip that tick (it ran, or runs now, inside the fused step)
      */
     public static boolean onContainerTick(final ServerSubLevelContainer container) {
-        if (driving || !IPPhysicsPipelineProvider.isOwnBackendActive()) {
+        if (driving || !IPPhysicsBackend.isOwnBackendActive()) {
             return false;
         }
 
@@ -204,11 +211,11 @@ public final class IPFusedPhysicsStep {
                     final Entry entry = entries.get(i);
                     final boolean last = i == armedIndex;
                     guarded(entry, () -> {
-                        RapierPhysicsPipeline.stepWorld = last;
+                        stepWorld = last;
                         try {
                             entry.system().getPipeline().physicsTick(timeStep);
                         } finally {
-                            RapierPhysicsPipeline.stepWorld = true;
+                            stepWorld = true;
                         }
                     });
                 }

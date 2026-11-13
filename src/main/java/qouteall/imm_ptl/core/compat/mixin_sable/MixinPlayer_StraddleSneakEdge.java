@@ -42,7 +42,7 @@ public abstract class MixinPlayer_StraddleSneakEdge {
         if (projection == null) {
             return movement;
         }
-        final double yaw = projection.isometry().mapOrientation(projection.ship().lastPose().orientation())
+        final double yaw = projection.map().mapOrientation(projection.ship().lastPose().orientation())
             .getEulerAnglesYXZ(new Vector3d()).y;
         this.ip_edgeFrame = new Quaterniond().rotateY(yaw);
         final Vector3d local = this.ip_edgeFrame.transformInverse(new Vector3d(movement.x, 0.0, movement.z));

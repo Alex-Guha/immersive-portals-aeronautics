@@ -14,6 +14,10 @@
 //     into the carrier's body frame, and `P = B ∘ k`;
 //   - both sides on carriers (docs/lessons/ship-mounted-portals.md; the source carrier `S` and the destination carrier `D`,
 //     possibly one body): `k` maps the source carrier's body frame into the destination carrier's, and `P = D ∘ k ∘ S⁻¹`.
+// Scaled portals (a carrier Create: Pocket Sized scaled; docs/lessons/scaled-ships.md): `k` is a similarity of scale σ
+// (the portal's scale). The carriers' native body frames stay metric (Pym lays the cells out at the scaled size), so
+// `P` is a similarity of scale σ: the image's prefix plus `portal_scale` σ, its shape σ times its body
+// (`setImageAnchorScaled`, `setImageAnchorBetweenScaled`). At σ = 1 every path is the rigid one.
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JDoubleArray};
@@ -40,6 +44,8 @@ pub struct ImageAnchor {
     pub carrier: RigidBodyHandle,
     pub mode: AnchorMode,
     pub k: Pose3,
+    /// The scale σ of `k` (1 for a portal that keeps sizes).
+    pub scale: Real,
 }
 
 /// The anchoring of one portal rim (its kinematic body) to a carrier body: the rim's pose is `B ∘ k`.
@@ -106,8 +112,55 @@ fn apply_image_anchor(sim: &mut SimulationSceneData, handle: ColliderHandle, anc
     let linvel = carrier.linvel();
     let angvel = carrier.angvel();
     let com = carrier.center_of_mass();
+    let s = anchor.scale;
 
-    let (prefix, frame) = match anchor.mode {
+    let (prefix, frame) = if s != 1.0 {
+        // Immersive Portals: Aeronautics, scaled portals: P(x) = s R_P x + t_P, the fields as below with the source
+        // side's linear part times s (a point fixed in the source world moves through the image s times as fast)
+        match anchor.mode {
+            AnchorMode::CarrierIsSource => {
+                let inverse = body.inverse();
+                let prefix = Pose3::from_parts(
+                    anchor.k.translation + anchor.k.rotation * (inverse.translation * s),
+                    anchor.k.rotation * inverse.rotation,
+                );
+                let frame = PortalFrameVelocity {
+                    linvel: -(prefix.rotation * linvel) * s,
+                    angvel: -(prefix.rotation * angvel),
+                    center: prefix.rotation * (com * s) + prefix.translation,
+                };
+                (prefix, frame)
+            }
+            AnchorMode::CarrierIsDestination => {
+                let prefix = body * anchor.k;
+                let frame = PortalFrameVelocity { linvel, angvel, center: com };
+                (prefix, frame)
+            }
+            AnchorMode::BetweenCarriers(destination) => {
+                let Some(dest) = sim.rigid_body_set.get(destination) else {
+                    return;
+                };
+                let dest_body = *dest.position();
+                let dest_linvel = dest.linvel();
+                let dest_angvel = dest.angvel();
+                let dest_com = dest.center_of_mass();
+                let inverse = body.inverse();
+                let prefix = Pose3::from_parts(
+                    dest_body.rotation * (anchor.k.translation + anchor.k.rotation * (inverse.translation * s))
+                        + dest_body.translation,
+                    dest_body.rotation * anchor.k.rotation * inverse.rotation,
+                );
+                let source_angvel = prefix.rotation * angvel;
+                let mapped_com = prefix.rotation * (com * s) + prefix.translation;
+                let frame = PortalFrameVelocity {
+                    linvel: dest_linvel - prefix.rotation * linvel * s - source_angvel.cross(dest_com - mapped_com),
+                    angvel: dest_angvel - source_angvel,
+                    center: dest_com,
+                };
+                (prefix, frame)
+            }
+        }
+    } else { match anchor.mode {
         AnchorMode::CarrierIsSource => {
             // q = P x with P = k ∘ B⁻¹: a fixed x moves through the image as the carrier moves,
             // u(q) = −R_P (v + ω × (x − c)) = −R_P v − (R_P ω) × (q − P c)
@@ -145,7 +198,7 @@ fn apply_image_anchor(sim: &mut SimulationSceneData, handle: ColliderHandle, anc
             };
             (prefix, frame)
         }
-    };
+    } };
 
     let Some(collider) = sim.collider_set.get(handle) else {
         return;
@@ -157,6 +210,9 @@ fn apply_image_anchor(sim: &mut SimulationSceneData, handle: ColliderHandle, anc
         return;
     };
     let collider = sim.collider_set.get_mut(handle).unwrap();
+    if s != 1.0 || collider.portal_scale() != 1.0 {
+        collider.set_portal_scale(s);
+    }
     collider.set_portal_prefix(Some(prefix));
     collider.refresh_portal_prefixed_pose(&parent_pose);
     collider.set_portal_frame_velocity(Some(frame));
@@ -213,6 +269,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageAnchor<'local
             Vec3::new(tx as Real, ty as Real, tz as Real),
             Quat::from_xyzw(qx as Real, qy as Real, qz as Real, qw as Real).normalize(),
         ),
+        scale: 1.0,
     };
     apply_image_anchor(sim_data, handle, &anchor);
     sable_data.ipl_image_anchors.insert(handle, anchor);
@@ -261,6 +318,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageAnchorBetween
             Vec3::new(tx as Real, ty as Real, tz as Real),
             Quat::from_xyzw(qx as Real, qy as Real, qz as Real, qw as Real).normalize(),
         ),
+        scale: 1.0,
     };
     apply_image_anchor(sim_data, handle, &anchor);
     sable_data.ipl_image_anchors.insert(handle, anchor);
@@ -374,4 +432,114 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setPortalRimAnchor<'l
 /// Drops the anchoring of a removed rim's body.
 pub fn forget_rim(sable: &mut SableSceneData, rim: RigidBodyHandle) {
     sable.ipl_rim_anchors.remove(&rim);
+}
+
+/// Immersive Portals: Aeronautics, scaled portals: gives an image's shape the scale `s` (the engine's `portal_scale`
+/// follows in `apply_image_anchor`).
+fn set_shape_scale(sim: &mut SimulationSceneData, handle: ColliderHandle, s: Real) {
+    let Some(collider) = sim.collider_set.get_mut(handle) else {
+        return;
+    };
+    let Some(existing) = collider.shape().as_shape::<crate::collider::LevelCollider>().copied() else {
+        return;
+    };
+    if existing.scale != s {
+        collider.set_shape(rapier3d::geometry::SharedShape::new(crate::collider::LevelCollider { scale: s, ..existing }));
+    }
+}
+
+/// `setImageAnchor` through a portal of scale `s` (`k` a similarity of scale `s`). The image's shape takes the scale.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageAnchorScaled<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    scene_handle: jlong,
+    packed_handle: jlong,
+    carrier_id: jint,
+    mode: jint,
+    tx: jdouble,
+    ty: jdouble,
+    tz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    s: jdouble,
+) {
+    if scene_handle == 0 || packed_handle < 0 || !(s.is_finite() && s > 0.0) {
+        return;
+    }
+    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    let mut sable_data = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut sim_data = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let sim_data = &mut *sim_data;
+    let handle = unpack(packed_handle);
+    let carrier = if carrier_id < 0 { None } else { sable_data.rigid_bodies.get(&(carrier_id as LevelColliderID)).copied() };
+    let Some(carrier) = carrier else {
+        sable_data.ipl_image_anchors.remove(&handle);
+        if let Some(collider) = sim_data.collider_set.get_mut(handle) {
+            collider.set_portal_frame_velocity(None);
+        }
+        return;
+    };
+    let anchor = ImageAnchor {
+        carrier,
+        mode: if mode == 1 { AnchorMode::CarrierIsDestination } else { AnchorMode::CarrierIsSource },
+        k: Pose3::from_parts(
+            Vec3::new(tx as Real, ty as Real, tz as Real),
+            Quat::from_xyzw(qx as Real, qy as Real, qz as Real, qw as Real).normalize(),
+        ),
+        scale: s as Real,
+    };
+    set_shape_scale(sim_data, handle, s as Real);
+    apply_image_anchor(sim_data, handle, &anchor);
+    sable_data.ipl_image_anchors.insert(handle, anchor);
+}
+
+/// `setImageAnchorBetween` through a portal of scale `s`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageAnchorBetweenScaled<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    scene_handle: jlong,
+    packed_handle: jlong,
+    source_id: jint,
+    dest_id: jint,
+    tx: jdouble,
+    ty: jdouble,
+    tz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    s: jdouble,
+) {
+    if scene_handle == 0 || packed_handle < 0 || !(s.is_finite() && s > 0.0) {
+        return;
+    }
+    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    let mut sable_data = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut sim_data = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let sim_data = &mut *sim_data;
+    let handle = unpack(packed_handle);
+    let body = |id: jint| if id < 0 { None } else { sable_data.rigid_bodies.get(&(id as LevelColliderID)).copied() };
+    let (Some(source), Some(dest)) = (body(source_id), body(dest_id)) else {
+        sable_data.ipl_image_anchors.remove(&handle);
+        if let Some(collider) = sim_data.collider_set.get_mut(handle) {
+            collider.set_portal_frame_velocity(None);
+        }
+        return;
+    };
+    let anchor = ImageAnchor {
+        carrier: source,
+        mode: AnchorMode::BetweenCarriers(dest),
+        k: Pose3::from_parts(
+            Vec3::new(tx as Real, ty as Real, tz as Real),
+            Quat::from_xyzw(qx as Real, qy as Real, qz as Real, qw as Real).normalize(),
+        ),
+        scale: s as Real,
+    };
+    set_shape_scale(sim_data, handle, s as Real);
+    apply_image_anchor(sim_data, handle, &anchor);
+    sable_data.ipl_image_anchors.insert(handle, anchor);
 }

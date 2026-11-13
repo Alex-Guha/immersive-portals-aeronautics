@@ -29,9 +29,3 @@ crate-type = ["cdylib", "lib"]
 name = "ipa_rapier"
 path = "src/lib.rs"
 
-[[bench]]
-name = "collision_benchmark"
-harness = false
-
-[dev-dependencies]
-criterion = "0.8.2"

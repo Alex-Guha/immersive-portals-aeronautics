@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core;
@@ -17,6 +17,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.LevelRenderer;
+import qouteall.imm_ptl.core.mixin.client.accessor.IELevelRenderer_Ticks;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -50,6 +51,7 @@ import qouteall.q_misc_util.my_util.CountDownInt;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -106,6 +108,44 @@ public class ClientWorldLoader {
         return isCreatingClientWorld;
     }
     
+    // Immersive Aeronautics
+    private static final Map<ResourceKey<Level>, Integer> TICK_ALIGN_LOGGED = new HashMap<>();
+
+    /**
+     * Immersive Aeronautics: gives every dimension's level renderer the tick count of the player's own, once per frame.
+     * A level renderer counts its own ticks from its creation ({@code LevelRenderer.ticks}, advanced by
+     * {@code tick()}: the player's by vanilla, the others by {@link #tick}), so another dimension's renderer, made when
+     * that dimension was first seen, was a constant number of ticks behind. Flywheel and Colorwheel animate with
+     * {@code ticks + partialTick} of the renderer drawing the pass ({@code FrameUniforms.writeTime},
+     * {@code ClrwlGbuffersPassUniforms}), so Create shafts seen through a portal turned out of phase with the ones in
+     * the player's world (Create's own renderer uses the global {@code AnimationTickHolder} and was in phase). Clouds
+     * and weather in portal views run on the same counter.
+     */
+    public static void alignRendererTicks() {
+        final LevelRenderer main = CLIENT.levelRenderer;
+        if (main == null || WORLD_RENDERER_MAP.size() < 2) {
+            return;
+        }
+        final int ticks = ((IELevelRenderer_Ticks) main).ip_getTicks();
+        for (final Map.Entry<ResourceKey<Level>, LevelRenderer> entry : WORLD_RENDERER_MAP.entrySet()) {
+            final LevelRenderer renderer = entry.getValue();
+            if (renderer == main) {
+                continue;
+            }
+            final IELevelRenderer_Ticks other = (IELevelRenderer_Ticks) renderer;
+            final int own = other.ip_getTicks();
+            if (own != ticks) {
+                final Integer logged = TICK_ALIGN_LOGGED.get(entry.getKey());
+                if (logged == null || logged < 3) {
+                    TICK_ALIGN_LOGGED.put(entry.getKey(), logged == null ? 1 : logged + 1);
+                    LOGGER.info("[IPRendererTicks] {} level renderer was {} tick(s) off the player's ({} vs {}); aligned",
+                        entry.getKey().location(), own - ticks, own, ticks);
+                }
+                other.ip_setTicks(ticks);
+            }
+        }
+    }
+
     public static void tick() {
         if (IPCGlobal.isClientRemoteTickingEnabled) {
             isClientRemoteTicking = true;

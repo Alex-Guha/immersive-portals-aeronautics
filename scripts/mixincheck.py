@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+"""Checks that every target class, method and field named by our mixins exists in the jars we build against.
+
+    python3 scripts/mixincheck.py <repo> <classpath> <config.json>...
+
+<repo> is the root of this repository; <classpath> is a colon-separated list of jars (absolute paths), which must include
+the named Minecraft jar (~/.gradle/caches/neoformruntime/intermediate_results/compiledWithNeoForge_*_output.jar after a
+build) and the jars of the mods the configs hook into; each <config.json> is a mixin config under src/main/resources,
+e.g. imm_ptl_sable_compat.mixins.json. JAVAP selects the javap to run (default: javap on the PATH).
+
+Run it after bumping NeoForge or any mod we hook into (Sodium, Iris, Sable, Create, Create Aeronautics, Flywheel, ...):
+a hook whose target was renamed or removed fails only at runtime otherwise. It prints how many member references it
+checked, then one line per problem (config, mixin, kind, detail); nothing after the count means every target was found.
+It reads the mixin sources with regular expressions, so an unusual annotation layout can go unchecked.
+"""
 import re, sys, os, json, subprocess, functools
 ROOT = sys.argv[1]; CP = sys.argv[2]; CONFIGS = sys.argv[3:]
 JAVAP = os.environ.get('JAVAP', 'javap')

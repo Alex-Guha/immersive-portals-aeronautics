@@ -88,7 +88,7 @@ public abstract class MixinEntity_StraddleBlockEffects {
             if (!projection.mappedBounds().intersects(bounds)) {
                 continue;
             }
-            final Pose3d mapped = projection.isometry().mapPose(projection.ship().logicalPose());
+            final Pose3d mapped = projection.map().mapPose(projection.ship().logicalPose());
             // the entity's box in the ship's plot space (bounds of its corners)
             double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
             double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;

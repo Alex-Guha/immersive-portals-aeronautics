@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core.platform_specific;
@@ -51,7 +51,7 @@ public class IPModEntry {
     /**
      * Immersive Aeronautics: whether the client side of IP is set up. Not in data generation (runData), which runs as
      * the client dist with no {@code Minecraft} instance: the client set-up has nothing to give datagen and only
-     * breaks it. Reported by a mod developer (2026-11-07): datagen hung for ever with this mod installed. Our
+     * breaks it. Datagen hung for ever with this mod installed. Our
      * constructor began {@code RenderStateShard}'s static init (through Veil's event platform, for
      * {@code IPBalloonOverlayClip}) while Veil's and Registrate's constructors on other mod-loading threads began its
      * subclasses' ({@code OutputStateShard}, {@code RenderType}), a class-initialization deadlock; in a real client
@@ -64,6 +64,8 @@ public class IPModEntry {
 
     public void onInitialize(IEventBus eventBus) {
         IPModMain.init(eventBus);
+        // Immersive Aeronautics: portal scaling through Pehkui when it is installed
+        qouteall.imm_ptl.core.compat.IPPehkuiScaling.init(eventBus);
         RequiemCompat.init();
 
 // @Nick1st Neo moved

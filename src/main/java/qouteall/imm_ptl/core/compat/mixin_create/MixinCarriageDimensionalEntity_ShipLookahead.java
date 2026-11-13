@@ -16,8 +16,8 @@ import qouteall.imm_ptl.core.compat.create_integration.IPCreateTrainPortal;
  * Server: a carriage carrying a player waits ({@code Train.carriageWaitingForChunks}, the train goes nowhere) while the
  * chunk 16 blocks ahead of it is not entity-ticking ({@code Carriage.DimensionalCarriageEntity.alignEntity}). A copy on a
  * ship stands in the ship's plot, and so did that point: past a small ship's plot chunks it never ticks, and a seated
- * driver could not move the train at all (the user's ship with the far end of a portal within the overworld,
- * 2026-11-02; standing at the controls they could). The point is tested where it is in the world, through the ship's
+ * driver could not move the train at all (seen on a ship with the far end of a portal within the overworld;
+ * standing at the controls a player could). The point is tested where it is in the world, through the ship's
  * pose, which is what Create asks: whether the world ahead is loaded.
  */
 @Mixin(targets = "com.simibubi.create.content.trains.entity.Carriage$DimensionalCarriageEntity", remap = false)

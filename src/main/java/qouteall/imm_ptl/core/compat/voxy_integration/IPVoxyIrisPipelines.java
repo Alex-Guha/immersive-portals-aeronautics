@@ -97,15 +97,6 @@ public final class IPVoxyIrisPipelines {
         }
         WorldRenderingPipeline pipeline = pipelineFor(level);
         IrisVoxyRenderPipelineData data = voxyData(pipeline);
-        String outcome = pipeline == null ? "no Iris pipeline yet"
-            : data == null ? "Iris pipeline without Voxy support"
-            : data.thePipeline != null ? "Iris pipeline bound to another Voxy renderer"
-            : "its Iris pipeline";
-        LOGGER.info(
-            "[IPVoxy] New Voxy renderer for {} ({} level, {} creation scopes open): {}",
-            level.dimension().location(), IPVoxyPortalView.creationLevelSource(),
-            IPVoxyPortalView.creationScopeDepth(), outcome
-        );
         if (data != null && data.thePipeline != null) {
             return null;
         }

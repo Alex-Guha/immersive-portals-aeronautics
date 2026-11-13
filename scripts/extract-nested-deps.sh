@@ -7,17 +7,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p deps
 CACHE=~/.gradle/caches/modules-2/files-2.1/maven.modrinth
+JAR=${JAVA_HOME:+$JAVA_HOME/bin/}jar
 
 extract_nested() {  # $1 = jar to inspect
   local tmp; tmp=$(mktemp -d)
-  if unzip -oq "$1" 'META-INF/jarjar/*.jar' -d "$tmp" 2>/dev/null; then
-    for inner in "$tmp"/META-INF/jarjar/*.jar; do
-      [ -f "$inner" ] || continue
-      cp "$inner" "deps/$(basename "$inner")"
-      echo "extracted $(basename "$inner")"
-      extract_nested "$inner"
-    done
-  fi
+  # the JDK's jar tool (needed for the build anyway): unzip is not on every machine
+  (cd "$tmp" && "$JAR" xf "$1" META-INF/jarjar)
+  for inner in "$tmp"/META-INF/jarjar/*.jar; do
+    [ -f "$inner" ] || continue
+    cp "$inner" "deps/$(basename "$inner")"
+    echo "extracted $(basename "$inner")"
+    extract_nested "$inner"
+  done
   rm -rf "$tmp"
 }
 

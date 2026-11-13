@@ -24,8 +24,8 @@ import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 /**
- * Client diagnostics, written for BUGS #5 (2.3.7; user: watched from the entry side, the front of a carriage flashed
- * ahead of the train as its front wheels reached the portal; it caught the cause, fixed in 2.3.8). One line per frame and carriage
+ * Client diagnostics, written for a flash at a train's crossing (watched from the entry side, the front of a carriage
+ * flashed ahead of the train as its front wheels reached the portal; it caught the cause). One line per frame and carriage
  * while the carriage has copies in two dimensions or a crossing: each copy's state, where Flywheel placed it this
  * frame (per level frame start, with that start's partial tick), what each Flywheel pass did with its embeddings
  * (cut, hidden, drawn whole, far half) and with its vanilla-drawn parts, and how far a copy of another dimension,
@@ -107,7 +107,7 @@ public final class IPCreateCrossingTrace {
         try {
             log();
         } catch (final Throwable t) {
-            // a frame that cannot be described is skipped (2.5.7.4 turned the trace off at the first one)
+            // a frame that cannot be described is skipped, and the trace goes on
             if (failures++ < 3) {
                 LOGGER.warn("[IPTrainTrace] frame {} not traced", frame, t);
             }

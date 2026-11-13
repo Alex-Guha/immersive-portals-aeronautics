@@ -187,6 +187,27 @@ public final class IPShipPortals {
         return sideMount(portal, true);
     }
 
+    /**
+     * Whether either end of {@code portal}'s cluster is on a ship Create: Pocket Sized has scaled. Such a portal is a
+     * scaled portal (it grows with its carrier) and ships do not straddle it: even with both carriers at one scale
+     * (portal scale 1), straddling's anchors are in the carriers' unscaled body frames. Server and client.
+     */
+    public static boolean hasScaledCarrier(final Portal portal) {
+        return isScaled(sideMount(portal, true)) || isScaled(sideMount(portal, false));
+    }
+
+    /**
+     * How many world blocks one block of {@code portal}'s own side ({@code own}) or far side spans: its carrier's
+     * Create: Pocket Sized scale, 1 for a side fixed in the world. Server and client.
+     */
+    public static double sideScale(final Portal portal, final boolean own) {
+        return sideMount(portal, own) instanceof final IPShipPortalDriver driver ? driver.scale() : 1.0;
+    }
+
+    private static boolean isScaled(@Nullable final IPShipMount mount) {
+        return mount instanceof final IPShipPortalDriver driver && Math.abs(driver.scale() - 1.0) > 1.0E-4;
+    }
+
     @Nullable
     private static IPShipMount sideMount(final Portal portal, final boolean own) {
         final Portal holder = portal.getAnimationHolder();

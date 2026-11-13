@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.ship_portals;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.world.phys.Vec3;
@@ -82,6 +83,8 @@ public final class IPShipPortalClip {
         final Vec3 worldPos = pose.transformPosition(snappedPos);
         // normal . p + c > 0 on the kept side, p relative to the camera (as FrontClipping's)
         final double c = -worldNormal.dot(worldPos.subtract(CHelper.getCurrentCameraPos()));
-        return new double[]{snappedNormal.x, snappedNormal.y, snappedNormal.z, c};
+        // the carrier's vertices are s^-1 R^-1 (world - camera) (IPShipScale.clipNormal): the local normal times s
+        final double s = IPShipScale.of(pose);
+        return new double[]{snappedNormal.x * s, snappedNormal.y * s, snappedNormal.z * s, c};
     }
 }

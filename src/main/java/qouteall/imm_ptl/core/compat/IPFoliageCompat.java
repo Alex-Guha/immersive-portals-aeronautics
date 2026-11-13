@@ -26,7 +26,7 @@ import qouteall.imm_ptl.core.mixin.client.accessor.IERenderChunkRegion;
  * Interactive Foliage's GPU renderer (drawn at {@code AFTER_CUTOUT_BLOCKS}) also builds its four Iris programs for one
  * Iris pipeline and, whenever the current pipeline is another ({@code IrisFoliageShaders.ready}), recompiles them and
  * remeshes every foliage section; Iris keeps one pipeline per dimension, so with a shader pack and a portal to another
- * dimension in view that ran several times a frame (6-8 fps, 2026-10-28). Its chunk meshes left foliage out by
+ * dimension in view that ran several times a frame (6-8 fps). Its chunk meshes left foliage out by
  * position in every world, and other worlds' chunk loads, unloads and block changes went into the player's world's
  * tables. Sway recomputed its bends around the player in the portal's world and marked those sections for rebuilds
  * every frame ({@code MixinSwayEngine_OncePerFrame}).

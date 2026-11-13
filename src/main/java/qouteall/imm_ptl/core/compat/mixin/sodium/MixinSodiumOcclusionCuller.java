@@ -3,7 +3,7 @@
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
  * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
  * Apache License 2.0. See NOTICE.
  */
@@ -26,6 +26,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
 @Mixin(OcclusionCuller.class)
@@ -58,10 +59,13 @@ public abstract class MixinSodiumOcclusionCuller {
         ip_modifiedStartPoint = null;
         ip_tolerantInitialFrustumTestFail = false;
         
-        if (PortalRendering.isRendering()) {
-            Portal portal = PortalRendering.getRenderingPortal();
-            
-            Vec3 cameraPos = CHelper.getCurrentCameraPos();
+        // Immersive Aeronautics: with a frustum captured (F3+U), from the captured camera, at the portal it sees this
+        // view through (IPFrustumCapture)
+        boolean capture = IPFrustumCapture.isCulling();
+        Portal portal = capture ? IPFrustumCapture.rimPortal() :
+            PortalRendering.isRendering() ? PortalRendering.getRenderingPortal() : null;
+        if (portal != null) {
+            Vec3 cameraPos = capture ? IPFrustumCapture.cullingPos() : CHelper.getCurrentCameraPos();
             ip_modifiedStartPoint = portal.getPortalShape().getModifiedVisibleSectionIterationOrigin(
                 portal, cameraPos
             );

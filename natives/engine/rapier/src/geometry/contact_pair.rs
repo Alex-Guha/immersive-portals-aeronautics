@@ -1,7 +1,8 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
 // frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
-// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
+// the frame velocity of moving portals' images (`portal_frame_*`) and scaled portals (`portal_scale`, 2.9.0),
+// PolyForm Shield License 1.0.0; see NOTICE.
 
 #[cfg(doc)]
 use super::Collider;
@@ -364,6 +365,12 @@ pub struct ContactManifoldData {
     pub portal_rot1: crate::math::Rotation,
     /// Same as `portal_rot1`, for collider 2.
     pub portal_rot2: crate::math::Rotation,
+    /// Immersive Portals: Aeronautics, scaled portals: the scale k of collider 1's portal map (1 when it is
+    /// not an image or its portal keeps sizes): the imaged body's state maps as com -> k R com + t,
+    /// v -> k R v, w -> R w, inverse mass -> k^2 im, inverse inertia -> R I^-1 R^T.
+    pub portal_scale1: Real,
+    /// Same as `portal_scale1`, for collider 2.
+    pub portal_scale2: Real,
     /// IPL atlas, moving portals: collider 1's frame velocity field (`ColliderParent::portal_frame_velocity`):
     /// velocity at `portal_frame_center1`, and angular velocity. ZERO when the portal is still.
     pub portal_frame_lin1: Vector,
@@ -640,6 +647,8 @@ impl ContactManifoldData {
             portal_shift2: Vector::ZERO,
             portal_rot1: crate::math::Rotation::IDENTITY,
             portal_rot2: crate::math::Rotation::IDENTITY,
+            portal_scale1: 1.0,
+            portal_scale2: 1.0,
             portal_frame_lin1: Vector::ZERO,
             portal_frame_ang1: Vector::ZERO,
             portal_frame_center1: Vector::ZERO,

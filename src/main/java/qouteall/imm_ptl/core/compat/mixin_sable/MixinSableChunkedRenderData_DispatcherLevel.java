@@ -36,7 +36,7 @@ import qouteall.imm_ptl.core.mixin.client.render.IESectionRenderDispatcher;
  * terrain dispatcher ({@code VanillaSubLevelRenderDispatcher.createRenderData}), which is the player's world's
  * when a ship of a portal-side world gets its render data in a container tick. Left pointed at the ship's
  * level, that renderer then built every changed or newly loaded terrain section of the player's world from
- * the other world at the same coordinates (player report, 2026-11-04, 2.8.15: the overworld drawn in the
+ * the other world at the same coordinates (seen as the overworld drawn in the
  * nether, chunks vanishing where blocks were placed, until a respawn reset the renderer). The level is put
  * back when the compile returns: {@code RenderSection.createCompileTask} snapshots the region from
  * {@code level} on the render thread, so tasks already scheduled keep the ship's level.

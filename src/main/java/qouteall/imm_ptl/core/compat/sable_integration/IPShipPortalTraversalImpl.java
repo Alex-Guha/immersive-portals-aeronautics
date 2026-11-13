@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos.MutableBlockPos;
 import net.minecraft.core.SectionPos;
@@ -36,7 +37,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
+import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 import org.joml.Quaterniond;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
@@ -56,7 +57,8 @@ import qouteall.q_misc_util.my_util.DQuaternion;
  * portal normal. Before the move (and the shove) the hull is placed where it overlaps no terrain, portal or other
  * ship ({@link IPShipArrivalClearance}); when there is no such place near the destination portal the crossing is
  * refused and the ship pushed back out of the portal. Also ticks rider remounts, the ragdoll guard and {@link IPShipThroughPortalSync}.
- * While {@link IPStraddle#isAvailable()}, ships straddle portals instead and the scan does not run.
+ * While {@link IPStraddle#isAvailable()}, ships straddle portals instead and the scan runs only for ships Pym is
+ * resizing ({@link IPPymCompat}).
  */
 public final class IPShipPortalTraversalImpl {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -114,7 +116,7 @@ public final class IPShipPortalTraversalImpl {
 
     /** An operator should know when ships fall back to one-step crossings: nothing else shows it in game. */
     static void onPlayerJoined(ServerPlayer player) {
-        String reason = IPPhysicsPipelineProvider.getFallbackReason();
+        String reason = IPPhysicsBackend.getFallbackReason();
         if (reason != null && player.hasPermissions(2)) {
             player.sendSystemMessage(Component.literal(
                 "Immersive Portals: Aeronautics: ships cannot straddle portals here, they cross in one step: " + reason
@@ -151,10 +153,18 @@ public final class IPShipPortalTraversalImpl {
             return;
         }
 
+        java.util.function.Function<ServerSubLevel, Predicate<Portal>> oneStep = ship -> ANY_PORTAL;
         if (IPStraddle.isAvailable()) {
             // ships straddle portals and are handed off once through (docs/lessons/straddling.md); replaces the scan below
             guarded("straddling", tick, () -> IPStraddle.tick(server, tick));
-            return;
+            if (!IPPymCompat.isLoaded()) {
+                return;
+            }
+            // except ships Pym is resizing, whose shape changes under a session (IPPymCompat), at any portal, and every
+            // ship at a scaled portal, which resizes it (docs/lessons/scaled-ships.md)
+            // (a ship resized while it straddles keeps its sessions: IPStraddleController)
+            oneStep = ship -> IPPymCompat.isResizing(ship) && !IPStraddle.straddles(ship) ? ANY_PORTAL
+                    : SCALED_PORTAL;
         }
 
         if (tick % SCAN_INTERVAL_TICKS != 0L) {
@@ -166,7 +176,7 @@ public final class IPShipPortalTraversalImpl {
 
         for (ServerLevel level : server.getAllLevels()) {
             try {
-                scanLevel(server, level, tick, seenShips);
+                scanLevel(server, level, tick, seenShips, oneStep);
             } catch (Throwable e) {
                 scanFailed = true;
                 LOGGER.warn("[IPShipPortal] scan failed in {}: {}", level.dimension().location(), e.toString());
@@ -212,7 +222,13 @@ public final class IPShipPortalTraversalImpl {
         return false;
     }
 
-    private static void scanLevel(MinecraftServer server, ServerLevel level, long tick, Set<UUID> seenShips) {
+    private static final Predicate<Portal> ANY_PORTAL = portal -> true;
+    /** Scaled portals straddling leaves to the one-step crossing (one that keeps sizes: teleportChangesScale off). */
+    private static final Predicate<Portal> SCALED_PORTAL = portal -> !isUnscaled(portal)
+        && !qouteall.imm_ptl.core.compat.sable_straddle.IPStraddle.straddlesScaledPortal(portal);
+
+    private static void scanLevel(MinecraftServer server, ServerLevel level, long tick, Set<UUID> seenShips,
+                                  java.util.function.Function<ServerSubLevel, Predicate<Portal>> oneStep) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) {
             return;
@@ -229,16 +245,17 @@ public final class IPShipPortalTraversalImpl {
             }
 
             seenShips.add(sub.getUniqueId());
+            Predicate<Portal> wanted = oneStep.apply(sub);
 
             try {
-                considerShip(server, level, sub, tick);
+                considerShip(server, level, sub, tick, wanted);
             } catch (Throwable e) {
                 LOGGER.warn("[IPShipPortal] ship {} failed", sub.getUniqueId(), e);
             }
         }
     }
 
-    private static void considerShip(MinecraftServer server, ServerLevel level, ServerSubLevel sub, long tick) {
+    private static void considerShip(MinecraftServer server, ServerLevel level, ServerSubLevel sub, long tick, Predicate<Portal> wanted) {
         UUID shipId = sub.getUniqueId();
         if (IPShipRagdollGuard.isRagdollSubLevel(sub)) {
             return;
@@ -257,7 +274,7 @@ public final class IPShipPortalTraversalImpl {
             return;
         }
 
-        List<Portal> candidates = overlappingPortals(level, hull);
+        List<Portal> candidates = overlappingPortals(level, hull, wanted);
         if (candidates.isEmpty()) {
             SUPPRESSED_UNTIL_CLEAR.remove(shipId);
             STUCK_SINCE.remove(shipId);
@@ -303,24 +320,40 @@ public final class IPShipPortalTraversalImpl {
     private static void moveThroughPortal(ServerLevel level, ServerLevel destLevel, ServerSubLevel sub, Portal portal, long tick) {
         UUID shipId = sub.getUniqueId();
         // a ship carrying portals going through a portal shatters them first (docs/lessons/ship-mounted-portals.md)
+        // a scaled portal resizes the ship by its scale, as IP does entities (Pym; docs/lessons/scaled-ships.md)
+        double sizeFactor = !isUnscaled(portal) && portal.isTeleportChangesScale() ? portal.getScale() : 1.0;
+        double fromScale = qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale.of(sub.logicalPose());
+        double toScale = fromScale * sizeFactor;
+        if (sizeFactor != 1.0) {
+            // the arrival clearance below judges where it arrives; no resize on top of one Pym is running
+            String refusal = IPPymCompat.isResizing(sub) ? "its size is changing" : IPPymCompat.whyNotResizable(sub, toScale);
+            if (refusal != null) {
+                LOGGER.info("[IPShipPortal] ship {} cannot become scale {} through the portal of scale {} ({}); crossing refused",
+                    shipId, String.format("%.3f", toScale), String.format("%.3f", portal.getScale()), refusal);
+                LAST_MOVE_TICK.put(shipId, tick);
+                pushBackOutOfPortal(sub, portal);
+                return;
+            }
+        }
         IPShipPortalAnchors.shatterCarriedPortals(shipId, "its ship is going through a portal");
         Vec3 destPos = portal.transformPoint(toVec3(sub));
         Quaterniond rotation = portalRotation(portal);
         Vec3 outDir = portal.getContentDirection().normalize();
+        // the ship as it will be on the far side: its size times the portal's scale
+        AABB arrivalHull = scaledAbout(IPSableBridge.worldAabb(sub), toVec3(sub), sizeFactor);
 
         try {
             // push the hull fully out of the portal plane on the far side
-            AABB rawHull = IPSableBridge.worldAabb(sub);
-            double halfExtent = 0.5 * Math.max(rawHull.getXsize(), Math.max(rawHull.getYsize(), rawHull.getZsize()));
+            double halfExtent = 0.5 * Math.max(arrivalHull.getXsize(), Math.max(arrivalHull.getYsize(), arrivalHull.getZsize()));
             destPos = destPos.add(outDir.scale(halfExtent + 2.0));
         } catch (Throwable ignored) {
         }
 
         try {
             Vec3 clear = IPShipArrivalClearance.findClearPosition(
-                destLevel, shipId, IPSableBridge.worldAabb(sub), toVec3(sub), shipShape(sub), destPos, rotation, outDir,
-                portalBoxes(destLevel, destPos, IPSableBridge.worldAabb(sub)),
-                otherShipBoxes(destLevel, shipId, destPos, IPSableBridge.worldAabb(sub))
+                destLevel, shipId, arrivalHull, toVec3(sub), scaled(shipShape(sub), sizeFactor), destPos, rotation, outDir,
+                portalBoxes(destLevel, destPos, arrivalHull),
+                otherShipBoxes(destLevel, shipId, destPos, arrivalHull)
             );
             if (clear == null) {
                 LOGGER.info(
@@ -352,6 +385,18 @@ public final class IPShipPortalTraversalImpl {
             LOGGER.warn("[IPShipPortal] move failed for ship {} (see above)", shipId);
         } else {
             LOGGER.info("[IPShipPortal] ship {} arrived in {} (plot-space shift {})", shipId, destLevel.dimension().location(), moved.shift());
+            if (sizeFactor != 1.0) {
+                IPPymCompat.Resize resized = IPPymCompat.resizeNow(moved.sub(), toScale, new Vector3d(destPos.x, destPos.y, destPos.z));
+                if (resized != null && resized.acceptedAt(toScale)) {
+                    LOGGER.info("[IPShipPortal] ship {} resized {} -> {} by the portal of scale {}", shipId,
+                        String.format("%.3f", fromScale), String.format("%.3f", toScale), String.format("%.3f", portal.getScale()));
+                } else {
+                    LOGGER.warn("[IPShipPortal] ship {} was to be scale {} on arrival, but Pym {} ({})", shipId,
+                        String.format("%.3f", toScale),
+                        resized != null && resized.accepted() ? "made it " + String.format("%.3f", resized.scale()) : "refused",
+                        resized == null ? "its resize API is not there" : resized.status() + ": " + resized.description());
+                }
+            }
             IPShipThroughPortalSync.onShipLeftDimension(level.getServer(), shipId, level.dimension());
             IPPhysicsStaffHooks.onShipMoved(level, destLevel, shipId, portal, moved);
         }
@@ -526,10 +571,10 @@ public final class IPShipPortalTraversalImpl {
      * The teleportable, unscaled, intact portals whose bounding box intersects the hull. Breakable portals
      * whose blocks are gone are broken instead of listed.
      */
-    private static List<Portal> overlappingPortals(ServerLevel level, AABB hull) {
+    private static List<Portal> overlappingPortals(ServerLevel level, AABB hull, Predicate<Portal> wanted) {
         List<Portal> result = new ArrayList<>();
         for (Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, hull, portal -> true)) {
-            if (isShipPortal(portal) && portal.getBoundingBox().intersects(hull)) {
+            if (isShipPortal(portal) && wanted.test(portal) && portal.getBoundingBox().intersects(hull)) {
                 if (portal instanceof BreakablePortalEntity breakable && !breakable.isIntactNow()) {
                     // its blocks are gone (e.g. assembled into this very ship): never carry a ship through a dead portal
                     LOGGER.info("[IPShipPortal] ignoring and breaking {}: its portal blocks are no longer in place", portal);
@@ -542,11 +587,42 @@ public final class IPShipPortalTraversalImpl {
         return result;
     }
 
-    /** A portal ships are carried through: teleportable, with a destination, unscaled. */
+    /**
+     * A portal ships are carried through: teleportable, with a destination, not ship-mounted, and unscaled, or scaled
+     * when Pym can resize the ship to match (docs/lessons/scaled-ships.md).
+     */
     private static boolean isShipPortal(Portal portal) {
         // ships do not go through ship-mounted portals (docs/lessons/ship-mounted-portals.md)
-        return portal.getTeleportable() && portal.getDestDim() != null && !(Math.abs(portal.getScale() - 1.0) > 1.0E-4)
+        return portal.getTeleportable() && portal.getDestDim() != null
+            && (isUnscaled(portal) || IPPymCompat.isLoaded())
             && !IPShipPortalAnchors.isShipMounted(portal);
+    }
+
+    private static boolean isUnscaled(Portal portal) {
+        return Math.abs(portal.getScale() - 1.0) <= 1.0E-4;
+    }
+
+    /** {@code hull} grown or shrunk by {@code factor} about {@code centre}. */
+    private static AABB scaledAbout(AABB hull, Vec3 centre, double factor) {
+        if (factor == 1.0) {
+            return hull;
+        }
+        return new AABB(
+            centre.x + (hull.minX - centre.x) * factor, centre.y + (hull.minY - centre.y) * factor, centre.z + (hull.minZ - centre.z) * factor,
+            centre.x + (hull.maxX - centre.x) * factor, centre.y + (hull.maxY - centre.y) * factor, centre.z + (hull.maxZ - centre.z) * factor);
+    }
+
+    /** {@code shape} (offsets from the ship's position) at {@code factor} times its size. */
+    private static IPShipArrivalClearance.@Nullable Shape scaled(IPShipArrivalClearance.@Nullable Shape shape, double factor) {
+        if (shape == null || factor == 1.0) {
+            return shape;
+        }
+        List<Vector3d> origins = new ArrayList<>(shape.blockOrigins().size());
+        for (Vector3d origin : shape.blockOrigins()) {
+            origins.add(new Vector3d(origin).mul(factor));
+        }
+        return new IPShipArrivalClearance.Shape(origins, new Vector3d(shape.edgeX()).mul(factor),
+            new Vector3d(shape.edgeY()).mul(factor), new Vector3d(shape.edgeZ()).mul(factor));
     }
 
     /** Signed distance of {@code point} from the portal plane, positive in front of the portal. */

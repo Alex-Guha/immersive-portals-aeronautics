@@ -49,6 +49,11 @@ public final class IPPhysicsStaffHooks {
         // players carried through with the ship went through its portal too, without IP's teleport and its hooks: a
         // drag kept in the old frame pulled the dragged ship a whole portal's offset away (into the void, under a stack)
         final List<ServerPlayer> carried = IPShipRiderCarry.takeCarriedPlayers();
+        // and without its scaling: a player seated on a ship through a portal that changes size kept theirs
+        final double factor = IPShipRiderCarry.scaleFactor(portal);
+        for (final ServerPlayer player : carried) {
+            IPShipRiderCarry.scaleThrough(player, factor);
+        }
         if (ACTIVE) {
             for (final ServerPlayer player : carried) {
                 onServerPlayerTeleported(player, src.dimension(), portal);

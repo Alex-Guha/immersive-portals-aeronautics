@@ -76,7 +76,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * re-meshed.
  * <p>
  * The search runs before the frame after a pipe or portal block changes in any client world, and every
- * {@link #SCAN_TICKS} ticks for the rest (portals and chunks coming and going). The far section is re-meshed with the
+ * {@code IPCreatePortalEndScan.SCAN_TICKS} ticks for the rest (portals and chunks coming and going). The far section is re-meshed with the
  * change's own priority: a block the player places or breaks is meshed in the frame it changes (vanilla and Sodium,
  * within 16 blocks of the camera), so the far half must be too, or one half of the pipe shows up before the other.
  * <p>

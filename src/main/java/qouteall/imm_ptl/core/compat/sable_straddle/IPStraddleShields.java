@@ -107,7 +107,7 @@ public final class IPStraddleShields {
             // a shield of a ship of the destination has the same plot position (plot grids are per level)
             return;
         }
-        final IPPortalIsometry isometry = session.isometry;
+        final IPPortalSimilarity isometry = session.map;
         mirroring = true;
         try {
             update.invoke(null, dest, key, mapBox(isometry, bounds), renderBounds, panels, triangles,
@@ -121,7 +121,7 @@ public final class IPStraddleShields {
         mirrors.put(key, new Mirror(session.source, dest.getGameTime()));
         final Object instance = instanceAt(dest, key);
         if (instance != null) {
-            KEEP.put(instance, new double[][]{plane(isometry.mapPoint(session.origin), isometry.mapVec(session.normal))});
+            KEEP.put(instance, new double[][]{plane(isometry.mapPoint(session.origin), isometry.mapDirection(session.normal))});
         }
     }
 
@@ -198,7 +198,7 @@ public final class IPStraddleShields {
         return new double[]{point.x, point.y, point.z, normal.x, normal.y, normal.z};
     }
 
-    private static AABB mapBox(final IPPortalIsometry isometry, final AABB box) {
+    private static AABB mapBox(final IPPortalSimilarity isometry, final AABB box) {
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < 8; i++) {

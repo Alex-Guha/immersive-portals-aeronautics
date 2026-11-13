@@ -44,6 +44,7 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
     public static void register() {
         try {
             PortalTrackProvider.REGISTRY.register(PortalPlaceholderBlock.instance, new IPCreatePortalTrackProvider());
+            Portal.SCALE_UNIT_CHANGED = IPCreatePortalTracks::onPortalScaleChanged;
             LOGGER.debug(TAG + "registered IP portal as Create portal-track");
         } catch (Throwable t) {
             LOGGER.error(TAG + "registration failed:", t);
@@ -151,9 +152,10 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
         Vec3 center = Vec3.atCenterOf(pos);
         List<Portal> candidates = qouteall.imm_ptl.core.compat.IPPortalLookup.touching(
             level, new AABB(pos).inflate(2.0),
-            // Create's portal tracks cannot move: never on a ship-mounted portal
+            // Create's portal tracks cannot move: never on a ship-mounted portal; and one track block to one
             p -> p.getTeleportable() && !(p instanceof qouteall.imm_ptl.core.portal.Mirror)
                 && !qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isShipMounted(p)
+                && IPCreatePortalTracks.trainsCross(p, 1.0)
         );
         Portal best = null;
         double bestDistSq = Double.MAX_VALUE;

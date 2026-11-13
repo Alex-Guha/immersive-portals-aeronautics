@@ -2,7 +2,8 @@
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
 // this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// Sable 2.0.6's log writer merged in, JNI symbols renamed for ipaeronautics.rapier.Rapier3D, stepChartOnly added.
+// Sable 2.0.6's log writer merged in, stepChartOnly added (declared in ipaeronautics.rapier.RapierExt),
+// IPSable's parent-frame tag removed (never set).
 
 pub mod algo;
 mod boxes;
@@ -63,13 +64,6 @@ pub struct ActiveLevelColliderInfo {
     /// IPL atlas: which chart (dimension frame) this body lives in. Drives chunk-map
     /// selection in the dispatcher, buoyancy scoping, and collision-report routing.
     pub chart: scene::ChartId,
-    /// IPL atlas: parent-frame id of a hosted body. Real hosted bodies share the
-    /// hosting chart at their own parents' coordinates, so numeric overlap between
-    /// bodies with different parents is meaningless — the dispatcher's dynamic pair
-    /// path drops native-vs-native manifolds when nonzero frames differ. 0 = untagged
-    /// (non-hosted bodies, contraptions, boot window): collides with everything,
-    /// matching pre-tag behavior. Set from Java on parent flips (`setParentFrame`).
-    pub ipl_parent_frame: i32,
     pub static_mount: Option<RigidBodyHandle>,
     pub fake_velocities: Option<RigidBodyVelocity<Real>>,
     pub local_bounds_min: Option<IVec3>,
@@ -112,7 +106,6 @@ impl ActiveLevelColliderInfo {
         Self {
             collider,
             chart,
-            ipl_parent_frame: 0,
             static_mount: None,
             fake_velocities: None,
             chunk_map: None,
@@ -371,7 +364,7 @@ impl Write for LogWriter {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_initialize<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_initialize<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     x: jdouble,
@@ -448,7 +441,6 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_initialize<'local>(
             level_colliders: HashMap::<LevelColliderID, ActiveLevelColliderInfo>::new(),
             rigid_bodies: HashMap::<LevelColliderID, RigidBodyHandle>::new(),
             bodies_by_chart: HashMap::<scene::ChartId, std::collections::HashSet<LevelColliderID>>::new(),
-            ipl_excluded_pairs: std::collections::HashSet::new(),
             ipl_image_anchors: HashMap::new(),
             ipl_rim_anchors: HashMap::new(),
             ipl_anchored_clip_bodies: std::collections::HashSet::new(),
@@ -537,7 +529,6 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_initialize<'local>(
         world,
         reported_collisions,
         current_step_vm,
-        gravity,
         universal_drag: universal_drag as Real,
         chart,
     };
@@ -555,7 +546,7 @@ fn ipl_world_registry() -> &'static std::sync::Mutex<std::sync::Weak<scene::Worl
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_dispose<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_dispose<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -568,6 +559,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_dispose<'local>(
             // routed records or leak chunks. Bodies are removed by Java via
             // removeSubLevel before dispose (stock flow).
             scene.world.chart_buffers.remove(&scene.chart);
+            // Immersive Portals: Aeronautics: the chart's portal rims, from the process-wide rim tables
+            crate::ipl_ext::purge_scene_rims(handle, &scene);
             if let Some(terrain) = scene.terrain_collider {
                 let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
                 let sim = &mut *sim;
@@ -585,7 +578,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_dispose<'local>(
 }
 
 /// Extracts a message from a caught panic payload
-fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+pub(crate) fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
         s.to_string()
     } else if let Some(s) = payload.downcast_ref::<String>() {
@@ -604,7 +597,7 @@ fn throw_on_panic(env: &mut JNIEnv, result: Result<(), Box<dyn std::any::Any + S
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_tick<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_tick<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -625,7 +618,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_tick<'local>(
 /// view's chart) without stepping the shared world. The fused step calls `step` for one chart per
 /// substep and this for every other chart, so no chart's ropes or joints miss a substep.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_stepChartOnly<'local>(
+pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_stepChartOnly<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -642,7 +635,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_stepChartOnly<'local>(
 
 /// Steps physics
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_step<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_step<'local>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -689,7 +682,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_step<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getPose<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_getPose<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -722,7 +715,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getPose<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setCenterOfMass<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setCenterOfMass<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -746,7 +739,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setCenterOfMass<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setLocalBounds<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setLocalBounds<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -786,7 +779,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setLocalBounds<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_createSubLevel<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_createSubLevel<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -865,7 +858,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_createSubLevel<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeSubLevel<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_removeSubLevel<
     'local,
 >(
     mut _env: JNIEnv<'local>,
@@ -951,7 +944,7 @@ pub fn insert_block_octree(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addChunk<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addChunk<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1102,7 +1095,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addChunk<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeChunk<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_removeChunk<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1171,7 +1164,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeChunk<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_changeBlock<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_changeBlock<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1291,7 +1284,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_changeBlock<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setMassProperties<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setMassProperties<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -1348,7 +1341,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setMassProperties<
 
 /// Teleports the object to the given position.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_teleportObject<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_teleportObject<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1383,7 +1376,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_teleportObject<
 
 /// Wakes up an object.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_wakeUpObject<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_wakeUpObject<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1405,7 +1398,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_wakeUpObject<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addLinearAngularVelocities<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addLinearAngularVelocities<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1447,7 +1440,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addLinearAngularVeloci
 /// A collision is formatted as follows:
 /// [body_a, body_b, force_amount, local_normal_a, local_normal_b, local_point_a, local_point_b]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_clearCollisions<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_clearCollisions<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1506,7 +1499,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_clearCollisions<
 
 /// Applies a force to a body
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_applyForce<'local>(
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_applyForce<'local>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -1552,7 +1545,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_applyForce<'local>(
 
 /// Applies a force and torque
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_applyForceAndTorque<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_applyForceAndTorque<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1598,7 +1591,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_applyForceAndTorque<
 
 /// Gets the linear velocity of a body
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getLinearVelocity<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_getLinearVelocity<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -1633,7 +1626,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getLinearVelocity<
 
 /// Gets the angular velocity of a body
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getAngularVelocity<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_getAngularVelocity<
     'local,
 >(
     _env: JNIEnv<'local>,

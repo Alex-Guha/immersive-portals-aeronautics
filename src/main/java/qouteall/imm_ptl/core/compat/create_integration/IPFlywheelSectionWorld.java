@@ -5,7 +5,7 @@ package qouteall.imm_ptl.core.compat.create_integration;
 
 /**
  * Whether the current thread is deciding, for a section being compiled, if a block entity becomes a Flywheel visual
- * (BUGS #8). Flywheel asks {@code supportsVisualization(level)}, which compares with {@code Minecraft.level}; compiles
+ * (bugs.md #8). Flywheel asks {@code supportsVisualization(level)}, which compares with {@code Minecraft.level}; compiles
  * run on worker threads while IP's portal passes swap that field, so a section of a world seen through a portal (or of
  * the player's world, compiled during a pass) was decided by whichever world was being drawn. A part kept out of
  * Flywheel there was then skipped by Create's renderer too (which asks the same question while its world is drawn),

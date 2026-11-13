@@ -42,8 +42,8 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * near the surface (coming off the belt), never ones walking on the frame below it.
  * <p>
  * Each side moves what it owns, as Create does: the server everything but players, the client its own player. Not at
- * frameless portals (no gap to carry across), not at sloped ends. A belt on a ship at its own mounted portal too
- * (2.6.12.9): the half is worked out in the ship's plot and its riders, which are in the world, taken into it. Mixin: {@code MixinBeltBlockEntity_PortalRiders}.
+ * frameless portals (no gap to carry across), not at sloped ends. A belt on a ship at its own mounted portal too:
+ * the half is worked out in the ship's plot and its riders, which are in the world, taken into it. Mixin: {@code MixinBeltBlockEntity_PortalRiders}.
  */
 public final class IPCreatePortalBeltRiders {
     /** Create's belt surface, above the bottom of the belt's block ({@code BeltMovementHandler}). */
@@ -100,7 +100,7 @@ public final class IPCreatePortalBeltRiders {
         final Vec3 face = Vec3.atCenterOf(cell).subtract(n.scale(0.5));
         final double top = cell.getY() + TOP;
         // past the plane only where the belt runs into the portal: where it runs out, past the plane is behind the
-        // portal, and pushing a rider from there took it through the portal's back face (user report, 2.6.12.9)
+        // portal, and pushing a rider from there took it through the portal's back face
         final boolean intoPortal = movement.dot(n) > 0;
         final AABB half = new AABB(face, Vec3.atCenterOf(cell).add(n.scale(intoPortal ? PAST : 0)))
             .inflate(out.getAxis() == Direction.Axis.X ? 0 : 0.5, 0, out.getAxis() == Direction.Axis.Z ? 0 : 0.5);

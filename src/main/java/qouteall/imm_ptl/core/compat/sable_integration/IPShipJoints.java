@@ -38,8 +38,8 @@ import java.util.UUID;
  * destination and its partner is not there. The joint's owner rebuilds it there from its saved data once both ships
  * have arrived, as after a world reload.
  * <p>
- * Fed by our physics backend ({@code ipaeronautics.rapier.RapierPhysicsPipeline.addConstraint}), so it knows the joints
- * only while that backend is active, which straddling needs anyway. A joint stops counting once its handle is removed
+ * Fed by Sable's {@code RapierPhysicsPipeline.addConstraint} ({@code MixinSableRapierPipeline_OwnBackend}) while our
+ * physics library runs, so it knows the joints only then, which straddling needs anyway. A joint stops counting once its handle is removed
  * or one of its ships is: removing a ship's body drops its Rapier joint but keeps Sable's entry, so
  * {@link PhysicsConstraintHandle#isValid()} alone stays true for a dead joint. Joints to the world do not join ships.
  */
@@ -268,8 +268,13 @@ public final class IPShipJoints {
                 for (ServerSubLevel ship : container.getAllSubLevels()) {
                     for (BlockEntity blockEntity : blockEntities(ship)) {
                         if (blockEntity instanceof SpringBlockEntity spring) {
+                            boolean ticked = false;
+                            for (BlockEntitySubLevelActor actor : ship.getPlot().getBlockEntityActors()) {
+                                ticked |= actor == spring;
+                            }
                             lines.add("Spring on ship " + ship.getUniqueId() + " tied to " + spring.getPartnerSubLevelID()
-                                + (spring.getPairedSpring() == null ? ": no partner" : ": paired"));
+                                + (spring.getPairedSpring() == null ? ": no partner" : ": paired")
+                                + (ticked ? "" : ", not ticked by Sable (no physics)"));
                         } else if (blockEntity instanceof DockingConnectorBlockEntity connector) {
                             DockingConnectorBlockEntity other = connector.getOtherConnector();
                             lines.add("Docking connector on ship " + ship.getUniqueId() + " tied to " + connector.otherConnectorSubLevelId

@@ -132,6 +132,9 @@ public final class IPCreateCarriageVanillaDraw {
         final Vec3 mappedCamera = portal.inverseTransformPoint(camera);
         final PoseStack pose = new PoseStack();
         pose.mulPose(portal.getRotationD().toMcQuaternion());
+        // a scaled portal shows the source level at its scale (a portal on a ship Create: Pocket Sized scaled)
+        final float scale = (float) portal.getScale();
+        pose.scale(scale, scale, scale);
         drawingFarHalf = true;
         try {
             ((IEWorldRenderer) minecraft.levelRenderer).ip_myRenderEntity(

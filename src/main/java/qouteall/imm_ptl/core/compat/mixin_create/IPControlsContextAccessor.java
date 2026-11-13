@@ -4,7 +4,6 @@
 package qouteall.imm_ptl.core.compat.mixin_create;
 
 import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
-import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
@@ -19,7 +18,4 @@ public interface IPControlsContextAccessor {
 
     @Accessor("entity")
     void ip_setEntity(AbstractContraptionEntity entity);
-
-    @Accessor("controlsLocalPos")
-    BlockPos ip_getControlsLocalPos();
 }

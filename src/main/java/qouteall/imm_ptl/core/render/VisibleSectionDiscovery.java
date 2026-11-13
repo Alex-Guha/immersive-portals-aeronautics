@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import de.nick1st.imm_ptl.events.ClientCleanupEvent;
@@ -61,13 +68,16 @@ public class VisibleSectionDiscovery {
         
         timeMark = System.nanoTime();
         
-        Vec3 cameraPos = camera.getPosition();
+        // Immersive Aeronautics: with a frustum captured (F3+U), the search starts at the captured camera
+        Vec3 cameraPos = IPFrustumCapture.isCulling() ? IPFrustumCapture.cullingPos() : camera.getPosition();
         vanillaFrustum.prepare(cameraPos.x, cameraPos.y, cameraPos.z);
         cameraSectionPos = SectionPos.of(BlockPos.containing(cameraPos));
         
         SectionPos modifiedVisibleSectionIterationOrigin = null;
-        if (PortalRendering.isRendering()) {
-            Portal renderingPortal = PortalRendering.getRenderingPortal();
+        // Immersive Aeronautics: with a frustum captured (F3+U), at the portal the captured camera sees this view through
+        Portal renderingPortal = IPFrustumCapture.isCulling() ? IPFrustumCapture.rimPortal() :
+            PortalRendering.isRendering() ? PortalRendering.getRenderingPortal() : null;
+        if (renderingPortal != null) {
             modifiedVisibleSectionIterationOrigin = renderingPortal.getPortalShape()
                 .getModifiedVisibleSectionIterationOrigin(renderingPortal, cameraPos);
         }

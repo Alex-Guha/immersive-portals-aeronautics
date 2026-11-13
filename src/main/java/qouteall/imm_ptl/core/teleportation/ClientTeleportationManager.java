@@ -3,7 +3,7 @@
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
  * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
  * Apache License 2.0. See NOTICE.
  */
@@ -383,6 +383,8 @@ public class ClientTeleportationManager {
         
         // Immersive Aeronautics: a physics staff drag turns with the player's view
         qouteall.imm_ptl.core.compat.sable_integration.IPPhysicsStaffHooks.onClientPlayerTeleported(portal);
+        // Immersive Aeronautics: a frustum captured with F3+U follows the player through (IPFrustumCapture)
+        qouteall.imm_ptl.core.render.IPFrustumCapture.onPlayerCrossed(portal);
         
         player.connection.send(new ServerboundCustomPayloadPacket(
             new ImmPtlNetworking.TeleportPacket(

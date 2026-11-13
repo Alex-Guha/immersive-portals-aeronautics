@@ -49,7 +49,8 @@ import qouteall.imm_ptl.core.portal.Portal;
  * As for pipes ({@link IPCreatePortalPipeStubs}): the portal blocks are never meshed, so the piece is added to the far
  * world's chunk mesh through NeoForge's {@link AddSectionGeometryEvent}; which far blocks get one is found on the client
  * thread before the frame after a block entity or portal block changes (a portal track has a block entity), and every
- * {@link #SCAN_TICKS} ticks for the rest. Not for ship-mounted portals (Create's portal tracks never link there).
+ * {@code IPCreatePortalEndScan.SCAN_TICKS} ticks for the rest. Not for ship-mounted portals: they predate track links
+ * through mounted portals (2.8.3) and were not extended to them (docs/completed/ship-trains.md).
  */
 public final class IPCreatePortalTrackStubs {
     private static final float FACE_EPSILON = 1.0e-4f;
@@ -66,8 +67,6 @@ public final class IPCreatePortalTrackStubs {
 
     /** Per dimension, per section ({@link SectionPos#asLong}) of the far portal block, the stubs in it. */
     private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> stubs = Map.of();
-    private static boolean changed;
-    private static boolean changedImportant;
 
     private IPCreatePortalTrackStubs() {
     }

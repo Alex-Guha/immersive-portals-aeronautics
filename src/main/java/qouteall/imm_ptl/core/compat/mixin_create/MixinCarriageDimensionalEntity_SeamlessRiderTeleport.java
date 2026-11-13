@@ -107,6 +107,11 @@ public class MixinCarriageDimensionalEntity_SeamlessRiderTeleport {
             original.call(player, level, x, y, z, yaw, pitch);
             return;
         }
+        if (crossing != null) {
+            // as IP does for an entity going through a portal itself: a scaled portal (one on a ship Create: Pocket
+            // Sized scaled) resizes the rider (Pehkui / the scale attribute), when the portal changes scale at all
+            qouteall.imm_ptl.core.ScaleUtils.onServerEntityTeleported(player, crossing.portal());
+        }
         if (crossing != null && leftCarriage.getCarriage() != null) {
             final Carriage.DimensionalCarriageEntity far =
                 ((IPCarriageAccessor) leftCarriage.getCarriage()).ip_getEntities().get(crossing.otherKey());

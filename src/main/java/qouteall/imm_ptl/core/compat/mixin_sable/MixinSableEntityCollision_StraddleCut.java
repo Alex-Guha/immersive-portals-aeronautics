@@ -77,7 +77,7 @@ public class MixinSableEntityCollision_StraddleCut {
     private static final ThreadLocal<java.util.IdentityHashMap<SubLevel, Behind>> ip_behind =
         ThreadLocal.withInitial(java.util.IdentityHashMap::new);
 
-    /** A block that crosses a plane, read last: its collision boxes are trimmed to the kept side. */
+    /** A block read last near a cut plane: its collision boxes are trimmed to the kept side. */
     @Unique
     private record Crossing(BlockPos pos, List<double[]> planes) {
     }
@@ -175,7 +175,7 @@ public class MixinSableEntityCollision_StraddleCut {
         final IPStraddleCut.Projection projection = ship.getLevel() == entity.level() ? null : IPStraddleCut.projectionOf(entity.level(), ship);
         final Behind behind = ship.getLevel() == entity.level() ? null : ip_behind.get().get(ship);
         if (behind != null) {
-            final Pose3d mapped = behind.projection().isometry().mapPose(pose);
+            final Pose3d mapped = behind.projection().map().mapPose(pose);
             final List<double[]> planes;
             if (projection != null && ip_samePlane(projection, behind.projection())) {
                 // straddling into this world through that plane: its far half in front of it, the rest behind
@@ -191,7 +191,7 @@ public class MixinSableEntityCollision_StraddleCut {
             ip_current.remove();
             return pose;
         }
-        final Pose3d mapped = projection.isometry().mapPose(pose);
+        final Pose3d mapped = projection.map().mapPose(pose);
         ip_current.set(new FarHalf(projection, mapped, new LevelAccelerator(ship.getLevel()), List.of(projection.localPlane(mapped)), null));
         return mapped;
     }
@@ -214,7 +214,7 @@ public class MixinSableEntityCollision_StraddleCut {
     private static Pose3dc ip_mapLastPose(final SubLevel ship, final Operation<Pose3dc> original) {
         final Pose3dc pose = original.call(ship);
         final FarHalf far = ip_current.get();
-        return far != null && far.projection().ship() == ship ? far.projection().isometry().mapPose(pose) : pose;
+        return far != null && far.projection().ship() == ship ? far.projection().map().mapPose(pose) : pose;
     }
 
     @WrapOperation(
@@ -250,13 +250,14 @@ public class MixinSableEntityCollision_StraddleCut {
         if (planes.isEmpty()) {
             return state;
         }
+        // Every block near a cut plane keeps its state and has its boxes trimmed at the planes, whether it crosses them,
+        // lies wholly past them or wholly on the kept side: Pym's indexed collision (SubLevelIndexedCollision, 0.5.1)
+        // serves boxes merged over several blocks under the first one's position. A block past the plane made air took
+        // the whole merged box along (the far half of a 6x4 platform was one box under a cut corner: nothing stood on
+        // it), and a kept block's box could reach past the plane (a 2x far half stood one block above it). The trim
+        // drops a box wholly past the planes and leaves a wholly kept one as it is.
         final List<double[]> crossing = IPStraddleCut.classify(planes, pos);
-        if (crossing == IPStraddleCut.CUT) {
-            return Blocks.AIR.defaultBlockState();
-        }
-        if (crossing != null) {
-            ip_crossing.set(new Crossing(pos.immutable(), crossing));
-        }
+        ip_crossing.set(new Crossing(pos.immutable(), crossing != null && crossing != IPStraddleCut.CUT ? crossing : planes));
         return state;
     }
 

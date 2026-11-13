@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import qouteall.imm_ptl.core.compat.sable_straddle.client.IPFarHalfSkyLightmap;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRender;
 
 /**
@@ -36,11 +37,15 @@ public class MixinSableChunkedRenderData_StraddleClip {
     private void ip_beginStraddleClip(final RenderType layer, final ShaderInstance shader, final Matrix4f modelView,
                                       final double camX, final double camY, final double camZ, final CallbackInfo ci) {
         this.ip_clipEnabled = shader != null && IPStraddleRender.beginShipDraw(this.subLevel, shader, camX, camY, camZ);
+        if (shader != null) {
+            IPFarHalfSkyLightmap.begin(this.subLevel, shader);
+        }
     }
 
     @Inject(method = "renderChunkedSubLevel", at = @At("RETURN"), require = 0)
     private void ip_endStraddleClip(final RenderType layer, final ShaderInstance shader, final Matrix4f modelView,
                                     final double camX, final double camY, final double camZ, final CallbackInfo ci) {
+        IPFarHalfSkyLightmap.end();
         if (this.ip_clipEnabled) {
             this.ip_clipEnabled = false;
             IPStraddleRender.endShipDraw(shader);

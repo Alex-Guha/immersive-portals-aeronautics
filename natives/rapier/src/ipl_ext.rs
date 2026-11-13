@@ -2,7 +2,8 @@
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
 // this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.RapierExt; portal rim shapes registered for the interior check.
+// JNI symbols renamed for ipaeronautics.rapier.RapierExt; portal rim shapes registered for the interior check;
+// IPSable's parent frames, dormant bodies and joint-component query removed (never called).
 
 //! IPSable extensions to the sable_rapier natives (portal-physics spec phase 4),
 //! rebased onto sable 2.0.3 (scene handles are raw `Arc<PhysicsScene>` pointers; sable
@@ -126,14 +127,40 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_removePortalRim<'loca
     let Some(rim) = IPL_PORTAL_RIMS.write().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&(scene_handle, rim_id)) else {
         return;
     };
-    {
-        let mut shapes = IPL_PORTAL_RIM_SHAPES.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-        for shape in &rim.shapes {
-            shapes.remove(shape);
-        }
+    if scene_handle == 0 {
+        forget_rim_shapes(&rim);
+        return;
     }
-    if scene_handle == 0 { return; }
     let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    drop_rim(scene, rim);
+}
+
+/// Immersive Portals: Aeronautics: removes every rim of the scene `scene_handle` while that scene is still alive
+/// (from `Rapier3D_dispose`, before the scene is dropped). Java forgets its rims once the scene is gone without
+/// removing them, since the scene pointer is dangling by then, so without this the process-wide tables kept every
+/// rim of every world played in the session: a stale rim's exclusions could drop a new rim's contacts with a ship
+/// (body handles restart in a new world), and a reused shape address could get the rim interior check.
+pub fn purge_scene_rims(scene_handle: jlong, scene: &PhysicsScene) {
+    let rims: Vec<PortalRim> = {
+        let mut table = IPL_PORTAL_RIMS.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let keys: Vec<(jlong, jint)> = table.keys().filter(|key| key.0 == scene_handle).copied().collect();
+        keys.iter().filter_map(|key| table.remove(key)).collect()
+    };
+    for rim in rims {
+        drop_rim(scene, rim);
+    }
+}
+
+fn forget_rim_shapes(rim: &PortalRim) {
+    let mut shapes = IPL_PORTAL_RIM_SHAPES.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    for shape in &rim.shapes {
+        shapes.remove(shape);
+    }
+}
+
+/// A rim already taken out of `IPL_PORTAL_RIMS`: its shapes, its anchor and its body (with its bars).
+fn drop_rim(scene: &PhysicsScene, rim: PortalRim) {
+    forget_rim_shapes(&rim);
     crate::moving_portals::forget_rim(
         &mut scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner), rim.body);
     let mut sim = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -251,11 +278,11 @@ pub fn read_clip_regions(env: &JNIEnv, data: &JDoubleArray) -> Option<Vec<IplCli
     if len > 0 && env.get_double_array_region(data, 0, &mut values).is_err() {
         return None;
     }
-    let mut regions = Vec::with_capacity(values.len() / 14);
+    let mut regions = Vec::with_capacity(values.len() / IPL_CLIP_STRIDE);
     if values.is_empty() {
         return Some(regions);
     }
-    for c in values.chunks_exact(ipl_clip_stride(values.len())) {
+    for c in values.chunks_exact(IPL_CLIP_STRIDE) {
         regions.push(IplClipRegion {
             point: Vec3::new(c[0] as Real, c[1] as Real, c[2] as Real),
             normal: Vec3::new(c[3] as Real, c[4] as Real, c[5] as Real),
@@ -263,22 +290,17 @@ pub fn read_clip_regions(env: &JNIEnv, data: &JDoubleArray) -> Option<Vec<IplCli
             half_w: c[9] as Real,
             axis_h: Vec3::new(c[10] as Real, c[11] as Real, c[12] as Real),
             half_h: c[13] as Real,
-            skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
-            max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            skin: c[14] as Real,
+            max_depth: c[15] as Real,
             anchor: None,
         });
     }
     Some(regions)
 }
 
-/// Clip-region stride. The current payload is 16 doubles per region:
+/// Clip-region stride (`RapierExt.CLIP_REGION_DOUBLES`; Java and this library ship in one jar):
 /// `[px py pz  nx ny nz  wx wy wz halfW  hx hy hz halfH  skin maxDepth]`.
-/// The historical 14-double payload (no skin, unbounded depth) is still accepted so an
-/// older Java side cannot hard-fail against a newer native.
-#[inline]
-fn ipl_clip_stride(len: usize) -> usize {
-    if len != 0 && len % 16 == 0 { 16 } else { 14 }
-}
+const IPL_CLIP_STRIDE: usize = 16;
 
 impl IplClipRegion {
     #[inline]
@@ -293,7 +315,7 @@ impl IplClipRegion {
 }
 
 /// Set (or clear, with an empty array) the clip regions of a body.
-/// Layout: N regions x 14 doubles: [px py pz  nx ny nz  wx wy wz  halfW  hx hy hz  halfH].
+/// Layout: N regions x `IPL_CLIP_STRIDE` doubles.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setClipRegions<'local>(
     env: JNIEnv<'local>,
@@ -330,7 +352,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setClipRegions<'local
     };
 
     info.clip_regions.clear();
-    for c in values.chunks_exact(ipl_clip_stride(values.len())) {
+    for c in values.chunks_exact(IPL_CLIP_STRIDE) {
         info.clip_regions.push(IplClipRegion {
             point: Vec3::new(c[0] as Real, c[1] as Real, c[2] as Real),
             normal: Vec3::new(c[3] as Real, c[4] as Real, c[5] as Real),
@@ -338,8 +360,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setClipRegions<'local
             half_w: c[9] as Real,
             axis_h: Vec3::new(c[10] as Real, c[11] as Real, c[12] as Real),
             half_h: c[13] as Real,
-            skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
-            max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            skin: c[14] as Real,
+            max_depth: c[15] as Real,
             anchor: None,
         });
     }
@@ -347,13 +369,10 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setClipRegions<'local
     // stderr write here is a server-thread tick cost. The MISS branch above stays.
 }
 
-/// Register (`excluded != 0`) or clear a contact exclusion between two bodies in one
-/// scene. The dispatcher's dynamic-vs-dynamic path generates no manifolds for excluded
-/// pairs (and drops persisted ones). Portal rims use this to exclude their carrier.
-///
-/// Defensive by design: no body-existence check (ids are just set keys), idempotent in
-/// both directions, no-op on a null scene. Entries for despawned bodies are inert
-/// (`nextBodyID` never reuses ids) but Java clears them on despawn anyway.
+/// Register (`excluded != 0`) or clear a contact exclusion between a portal rim (a negative
+/// id, either argument) and a body, in the rim's own exclusion set (`portal_rim_contact_allowed`).
+/// Portal rims use this to exclude their carrier and ships let through. Idempotent, no-op on
+/// a null scene or an unknown rim.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setBodyPairExclusion<'local>(
     _env: JNIEnv<'local>,
@@ -369,171 +388,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setBodyPairExclusion<
     }
     if id_b < 0 {
         set_portal_rim_exclusion(scene_handle, id_b, id_a, excluded);
-        return;
     }
-    if scene_handle == 0 || id_a == id_b || id_a < 0 || id_b < 0 {
-        return;
-    }
-    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
-    let mut sable_data = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let (a, b) = (id_a as LevelColliderID, id_b as LevelColliderID);
-    let key = if a <= b { (a, b) } else { (b, a) };
-    if excluded != 0 {
-        sable_data.ipl_excluded_pairs.insert(key);
-    } else {
-        sable_data.ipl_excluded_pairs.remove(&key);
-    }
-}
-
-/// Tag a hosted body's collider info with its parent-frame id. The dispatcher's
-/// dynamic-vs-dynamic path drops native-vs-native manifolds between bodies whose
-/// nonzero frames differ (see `ActiveLevelColliderInfo::ipl_parent_frame`); image
-/// colliders are unaffected — their frame is the shape's chart, which the chart
-/// guard already scopes. Java calls this only when a ship's parent dimension flips
-/// (or its body/scene is recreated), not per tick.
-///
-/// Returns JNI_TRUE when the tag landed; JNI_FALSE when the body id is unknown in
-/// this scene (registration race — Java retries next hosting tick).
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setParentFrame<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    scene_handle: jlong,
-    body_id: jint,
-    frame_id: jint,
-) -> jboolean {
-    if scene_handle == 0 || body_id < 0 {
-        return 0;
-    }
-    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
-    let mut sable_data = scene.sable_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(info) = sable_data
-        .level_colliders
-        .get_mut(&(body_id as LevelColliderID))
-    else {
-        return 0; // body not registered yet (or already gone) — caller retries
-    };
-    info.ipl_parent_frame = frame_id;
-    1
-}
-
-/// Dormancy switch for a hosted body whose parent-pointer chunks are unloaded: a Fixed
-/// body skips integration entirely (no gravity, immovable, still a valid joint/rope
-/// anchor), so an unloaded-area ship cannot fall through terrain that was never baked.
-/// Idempotent — Java re-applies it every tick while dormant, which also re-freezes a
-/// body that was recreated (rehome twin) mid-dormancy. Velocities are zeroed on freeze
-/// so the ship resumes at rest.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setBodyDormant<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    scene_handle: jlong,
-    body_id: jint,
-    dormant: jboolean,
-) {
-    use rapier3d::prelude::RigidBodyType;
-
-    if scene_handle == 0 || body_id < 0 {
-        return;
-    }
-    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
-    let handle = {
-        let sable_data = scene.sable_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(handle) = sable_data
-            .rigid_bodies
-            .get(&(body_id as LevelColliderID))
-            .copied()
-        else {
-            return;
-        };
-        handle
-    };
-    let mut sim_data = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(body) = sim_data.rigid_body_set.get_mut(handle) else {
-        return;
-    };
-    if dormant != 0 {
-        if body.body_type() != RigidBodyType::Fixed {
-            body.set_linvel(Vec3::new(0.0, 0.0, 0.0), false);
-            body.set_angvel(Vec3::new(0.0, 0.0, 0.0), false);
-            body.set_body_type(RigidBodyType::Fixed, true);
-        }
-    } else if body.body_type() != RigidBodyType::Dynamic {
-        body.set_body_type(RigidBodyType::Dynamic, true);
-    }
-}
-
-/// Sable body ids in the impulse-joint component containing `body_id`.
-///
-/// `rigid_only != 0`: traverse only joints that make a RIGID assembly — both endpoints
-/// Sable ship bodies AND at least one ANGULAR axis locked (bearing/fixed/prismatic
-/// couplings). This excludes flexible links regardless of construction: native rope
-/// particle chains (endpoints aren't ship bodies) and rope/chain links built as
-/// one-block sub-levels joined by ball-type joints (linear-only locks) or springs
-/// (empty lock mask). Roped ships transit independently and the rope spans the portal;
-/// only genuinely rigid assemblies cross as one unit.
-///
-/// `rigid_only == 0`: the full walk — every joint bridges.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_connectedSableBodyIds<'local>(
-    env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    scene_handle: jlong,
-    body_id: jint,
-    rigid_only: jboolean,
-) -> jni::objects::JIntArray<'local> {
-    if scene_handle == 0 || body_id < 0 {
-        return env.new_int_array(0).unwrap();
-    }
-    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
-    let sable_data = scene.sable_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(start) = sable_data.rigid_bodies.get(&(body_id as LevelColliderID)).copied() else {
-        return env.new_int_array(0).unwrap();
-    };
-    let sable_handles: HashSet<_> = sable_data.rigid_bodies.values().copied().collect();
-    let sim = scene.sim_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut connected = HashSet::from([start]);
-    loop {
-        let mut changed = false;
-        for (_, joint) in sim.impulse_joint_set.iter() {
-            if joint.body1 == scene.world.ground_handle || joint.body2 == scene.world.ground_handle {
-                continue;
-            }
-            if rigid_only != 0 {
-                if !sable_handles.contains(&joint.body1) || !sable_handles.contains(&joint.body2) {
-                    continue;
-                }
-                // Rope/chain links can be sub-levels too: a ball-type link (linear-only
-                // locks) or spring (empty mask) is flexible, not rigid. Rigid couplings
-                // (bearing = revolute, fixed) always lock at least one angular axis.
-                if !joint
-                    .data
-                    .locked_axes
-                    .intersects(rapier3d::prelude::JointAxesMask::ANG_AXES)
-                {
-                    continue;
-                }
-            }
-            if connected.contains(&joint.body1) && connected.insert(joint.body2) {
-                changed = true;
-            }
-            if connected.contains(&joint.body2) && connected.insert(joint.body1) {
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    let mut ids: Vec<jint> = sable_data.rigid_bodies.iter()
-        .filter_map(|(id, handle)| connected.contains(handle).then_some(*id as jint))
-        .collect();
-    ids.sort_unstable();
-    let result = env.new_int_array(ids.len() as i32).unwrap();
-    if !ids.is_empty() {
-        env.set_int_array_region(&result, 0, &ids).unwrap();
-    }
-    result
+    // Only portal rims (negative ids) exclude pairs; two ship ids have nothing to do.
 }
 
 // ---------------------------------------------------------------------------
@@ -550,7 +406,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_connectedSableBodyIds
 /// handle (index << 32 | generation), or -1 if the body is unknown.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createImageCollider<'local>(
-    _env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     scene_handle: jlong,
     body_id: jint,
@@ -561,6 +417,123 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createImageCollider<'
     qy: jdouble,
     qz: jdouble,
     qw: jdouble,
+) -> jlong {
+    // Immersive Portals: Aeronautics: a panic here crossed the JNI boundary and killed the game (user, 2026-11-10,
+    // after rejoining a world). Caught, it goes to Java as a RuntimeException with the scene's state, and the session
+    // is refused.
+    create_image_collider_caught(&mut env, scene_handle, body_id, dx, dy, dz, qx, qy, qz, qw, 1.0)
+}
+
+/// Immersive Portals: Aeronautics, scaled portals: `createImageCollider` through a portal of scale `k`, whose map is
+/// `S(x) = k R x + t` (`(dx, dy, dz)` = t). The image is k times its body: it collides at that size, and its contacts
+/// act on the body as through the similarity (engine: `ColliderParent::portal_scale`). `k = 1` is
+/// `createImageCollider`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createScaledImageCollider<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    scene_handle: jlong,
+    body_id: jint,
+    dx: jdouble,
+    dy: jdouble,
+    dz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    k: jdouble,
+) -> jlong {
+    if !(k.is_finite() && k > 0.0) {
+        let _ = env.throw_new("java/lang/IllegalArgumentException", format!("image scale {k}"));
+        return -1;
+    }
+    create_image_collider_caught(&mut env, scene_handle, body_id, dx, dy, dz, qx, qy, qz, qw, k)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_image_collider_caught(
+    env: &mut JNIEnv,
+    scene_handle: jlong,
+    body_id: jint,
+    dx: jdouble,
+    dy: jdouble,
+    dz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    k: jdouble,
+) -> jlong {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        create_image_collider(scene_handle, body_id, dx, dy, dz, qx, qy, qz, qw, k)
+    }));
+    match result {
+        Ok(handle) => handle,
+        Err(payload) => {
+            let msg = format!(
+                "Rapier native panic in createImageCollider: {} [{}]",
+                crate::panic_message(&payload),
+                describe_scene(scene_handle, Some(body_id))
+            );
+            let _ = env.throw_new("java/lang/RuntimeException", &msg);
+            -1
+        }
+    }
+}
+
+/// Immersive Portals: Aeronautics: a scene's chart and the shared world's counts, and what the world knows of
+/// `body_id`, for the message of a caught panic. Takes the locks itself (after a caught panic they are released, possibly poisoned).
+pub(crate) fn describe_scene(scene_handle: jlong, body_id: Option<jint>) -> String {
+    if scene_handle == 0 {
+        return "no scene".to_string();
+    }
+    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    let sable_data = scene.sable_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let sim_data = scene.sim_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut out = format!(
+        "chart {} of {} charts made in this native world, {} bodies, {} colliders, {} Sable bodies by id, {} charts live",
+        scene.chart,
+        scene.world.next_chart.load(std::sync::atomic::Ordering::Relaxed),
+        sim_data.rigid_body_set.len(),
+        sim_data.collider_set.len(),
+        sable_data.rigid_bodies.len(),
+        sable_data.charts.len()
+    );
+    if let Some(id) = body_id {
+        let key = id as LevelColliderID;
+        match sable_data.rigid_bodies.get(&key) {
+            Some(handle) => out.push_str(&format!(
+                "; body {id}: {:?}, in the body set {}",
+                handle,
+                sim_data.rigid_body_set.contains(*handle)
+            )),
+            None => out.push_str(&format!("; body {id}: not in the id map")),
+        }
+        match sable_data.level_colliders.get(&key) {
+            Some(info) => out.push_str(&format!(
+                ", level collider {:?} in the collider set {}, {} images",
+                info.collider,
+                sim_data.collider_set.contains(info.collider),
+                info.image_colliders.len()
+            )),
+            None => out.push_str(", no level collider info"),
+        }
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_image_collider(
+    scene_handle: jlong,
+    body_id: jint,
+    dx: jdouble,
+    dy: jdouble,
+    dz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    k: jdouble,
 ) -> jlong {
     use rapier3d::prelude::*;
 
@@ -595,6 +568,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createImageCollider<'
     };
     let image_shape = crate::collider::LevelCollider {
         chart: scene.chart,
+        scale: k as Real,
         ..native_shape
     };
 
@@ -622,6 +596,9 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createImageCollider<'
             .collider_set
             .insert_with_parent(collider, body_handle, &mut sim_data.rigid_body_set);
     sim_data.collider_set.get_mut(handle).unwrap().set_portal_prefix(Some(prefix));
+    if k != 1.0 {
+        sim_data.collider_set.get_mut(handle).unwrap().set_portal_scale(k as Real);
+    }
     let parent_pose = sim_data.rigid_body_set[body_handle].position().clone();
     sim_data.collider_set.get_mut(handle).unwrap()
         .refresh_portal_prefixed_pose(&parent_pose);
@@ -629,10 +606,6 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_createImageCollider<'
     // this image never enters broad phase at identity and leaves a one-step real/image twin.
 
     info.image_colliders.push(handle);
-    eprintln!(
-        "[ipl-natives] image collider created: body {body_id} chart {} shift ({dx:.1},{dy:.1},{dz:.1})",
-        scene.chart
-    );
 
     let (idx, generation) = handle.into_raw_parts();
     ((idx as jlong) << 32) | (generation as jlong)
@@ -681,7 +654,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_removeImageCollider<'
 
 /// Set (or clear, with an empty array) the clip regions of one IMAGE collider —
 /// the far side of the half-open aperture seam. Layout matches `setClipRegions`
-/// (N x 14 doubles).
+/// (N x `IPL_CLIP_STRIDE` doubles).
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageClipRegions<'local>(
     env: JNIEnv<'local>,
@@ -718,8 +691,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageClipRegions<'
         (packed_handle >> 32) as u32,
         (packed_handle & 0xFFFF_FFFF) as u32,
     );
-    let mut regions = Vec::with_capacity(values.len() / 14);
-    for c in values.chunks_exact(ipl_clip_stride(values.len())) {
+    let mut regions = Vec::with_capacity(values.len() / IPL_CLIP_STRIDE);
+    for c in values.chunks_exact(IPL_CLIP_STRIDE) {
         regions.push(IplClipRegion {
             point: Vec3::new(c[0] as Real, c[1] as Real, c[2] as Real),
             normal: Vec3::new(c[3] as Real, c[4] as Real, c[5] as Real),
@@ -727,8 +700,8 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImageClipRegions<'
             half_w: c[9] as Real,
             axis_h: Vec3::new(c[10] as Real, c[11] as Real, c[12] as Real),
             half_h: c[13] as Real,
-            skin: if c.len() > 14 { c[14] as Real } else { 1.0e-3 },
-            max_depth: if c.len() > 15 { c[15] as Real } else { Real::MAX },
+            skin: c[14] as Real,
+            max_depth: c[15] as Real,
             anchor: None,
         });
     }
@@ -771,6 +744,60 @@ pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImagePrefix<'local
     let Some(collider) = sim_data.collider_set.get_mut(handle) else {
         return; // image already retired — a moving-portal refresh racing session end
     };
+    collider.set_portal_prefix(Some(rapier3d::math::Pose {
+        translation: Vec3::new(dx as Real, dy as Real, dz as Real),
+        rotation: rapier3d::math::Rotation::from_xyzw(
+            qx as Real,
+            qy as Real,
+            qz as Real,
+            qw as Real,
+        )
+        .normalize(),
+    }));
+}
+
+/// Immersive Portals: Aeronautics, scaled portals: `setImagePrefix` with the portal's scale `k` (the map
+/// `S(x) = k R x + t`): the image's shape and its contacts take the new scale too. Not for a moving portal's image
+/// (its anchor composes rigid poses, `moving_portals.rs`).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ipaeronautics_rapier_RapierExt_setImagePrefixScaled<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    scene_handle: jlong,
+    packed_handle: jlong,
+    dx: jdouble,
+    dy: jdouble,
+    dz: jdouble,
+    qx: jdouble,
+    qy: jdouble,
+    qz: jdouble,
+    qw: jdouble,
+    k: jdouble,
+) {
+    use rapier3d::prelude::ColliderHandle;
+
+    if scene_handle == 0 || packed_handle < 0 || !(k.is_finite() && k > 0.0) {
+        return;
+    }
+    let scene = unsafe { &*(scene_handle as *const PhysicsScene) };
+    let mut sim_data = scene.sim_data.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let handle = ColliderHandle::from_raw_parts(
+        (packed_handle >> 32) as u32,
+        (packed_handle & 0xFFFF_FFFF) as u32,
+    );
+    let Some(collider) = sim_data.collider_set.get_mut(handle) else {
+        return; // image already retired
+    };
+    let Some(existing) = collider.shape().as_shape::<crate::collider::LevelCollider>().copied() else {
+        return;
+    };
+    if existing.scale != k as Real {
+        collider.set_shape(rapier3d::geometry::SharedShape::new(crate::collider::LevelCollider {
+            scale: k as Real,
+            ..existing
+        }));
+    }
+    collider.set_portal_scale(k as Real);
     collider.set_portal_prefix(Some(rapier3d::math::Pose {
         translation: Vec3::new(dx as Real, dy as Real, dz as Real),
         rotation: rapier3d::math::Rotation::from_xyzw(

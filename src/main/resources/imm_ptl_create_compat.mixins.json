@@ -59,10 +59,6 @@
     "MixinBeltInventory_PortalBelts",
     "MixinBeltMovementHandler_PortalRiders",
     "MixinBeltBlockEntity_PortalRiders",
-    "MixinEntity_SeatSyncTrace",
-    "MixinServerEntity_SeatSyncTrace",
-    "MixinControlsInputPacket_DriveTrace",
-    "MixinCarriageContraptionEntity_DriveTrace",
     "MixinCarriageDimensionalEntity_ShipLookahead"
   ],
   "injectors": {
@@ -88,12 +84,17 @@
     "MixinContraptionEntityRenderer_CarriageActors",
     "MixinCarriageContraptionEntityRenderer_NoVanillaBogeys",
     "MixinFlywheelRenderDispatcher_PortalPassSkip",
+    "MixinFlywheelVisualizationManager_PortalPassOrigin",
     "MixinFlywheelCompilation_PortalClipSource",
+    "MixinColorwheelCompilation_PortalClipSource",
+    "MixinColorwheelIndirectDrawManager_MatrixBinding",
+    "IPColorwheelEmbeddedAccessor",
+    "MixinColorwheelEnvironment_StraddleClip",
+    "MixinRopePackets_PlayerLevel",
     "MixinFlywheelGlProgram_PortalClipPlane",
     "MixinFlywheelRenderDispatcher_PortalClipState",
     "MixinAeronauticsBalloonEffect_PortalPassSkip",
     "MixinAeronauticsBalloonEffect_StraddleCut",
-    "MixinRopePackets_RedirectedLevel",
     "MixinRopeStrandRenderer_StraddleCut",
     "MixinSpringRenderer_StraddleCut",
     "MixinRopeConnectorRenderer_StraddleCut",
@@ -129,7 +130,6 @@
     "IPBeltRendererInvoker",
     "MixinBeltRenderer_PortalBelts",
     "MixinSafeBlockEntityRenderer_PortalBelts",
-    "MixinBeltVisual_PortalBelts",
-    "MixinClientPacketListener_SeatSyncTrace"
+    "MixinBeltVisual_PortalBelts"
   ]
 }

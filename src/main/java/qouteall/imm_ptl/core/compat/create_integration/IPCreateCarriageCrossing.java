@@ -261,7 +261,8 @@ public final class IPCreateCarriageCrossing {
         final Vec3 worldMiddle = frame == null ? middle : frame.toWorld(middle);
         final List<Portal> candidates = IPPortalLookup.touching(
             level, new AABB(worldMiddle, worldMiddle).inflate(SEARCH),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6
+            p -> !(p instanceof Mirror) && p.getTeleportable()
+                && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
                 && IPCreatePortalShafts.onOwnSide(p, frame)
         );
         Portal best = null;
@@ -414,6 +415,7 @@ public final class IPCreateCarriageCrossing {
             level, new AABB(worldLocation, worldLocation).inflate(1.5),
             p -> !(p instanceof Mirror) && p.getTeleportable() && otherDim.equals(p.getDestDim())
                 && IPCreatePortalShafts.onOwnSide(p, frame)
+                && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
         );
         IPCreateTrainPortal best = null;
         double bestDistance = Double.MAX_VALUE;

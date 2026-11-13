@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.sable_straddle.client;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import com.mojang.logging.LogUtils;
 import dev.eriksonn.aeronautics.content.blocks.hot_air.balloon.effect.HeatedCulledRenderRegion;
 import dev.ryanhcode.sable.Sable;
@@ -82,9 +83,9 @@ public final class IPBalloonOverlayClip {
             return;
         }
         final Pose3dc pose = ship.renderPose();
-        final Vector3d n = pose.orientation().transformInverse(
-                new Vector3d(plane.normal().x, plane.normal().y, plane.normal().z));
-        final double w = plane.distance(pose.transformPosition(origin)) + IPStraddleRender.seamReach();
+        // Pym scales the overlay with its ship (BalloonEffectScaleMixin): world = pose(origin) + s R p
+        final Vector3d n = IPShipScale.clipNormal(pose, plane.normal().x, plane.normal().y, plane.normal().z);
+        final double w = plane.distance(pose.transformPosition(origin)) + plane.reach();
         shader.getUniformSafe(UNIFORM).setVector((float) n.x, (float) n.y, (float) n.z, (float) w);
         if (!logged) {
             logged = true;

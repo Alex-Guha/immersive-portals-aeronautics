@@ -77,15 +77,6 @@ public final class IPVoxyPortalView {
         CREATION_LEVELS.poll();
     }
 
-    /** For the log: where {@link #creationLevel()} takes its level from. */
-    public static String creationLevelSource() {
-        return CREATION_LEVELS.isEmpty() ? "player's" : "allChanged's";
-    }
-
-    public static int creationScopeDepth() {
-        return CREATION_LEVELS.size();
-    }
-
     /**
      * True while {@code Minecraft.level} is not the player's world: a portal pass into another dimension, or a packet
      * of another world being handled. Neo Voxy's distant extras (tracks, kinetics, beacons, lasers) are single global

@@ -127,7 +127,8 @@ public final class IPCreatePortalEndScan {
     }
 
     private static void walk(final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds, final List<Scan> scans) {
-        if (portal.isRemoved() || !portal.isTeleportable() || Math.abs(portal.getScale() - 1) > 1.0e-6) {
+        if (portal.isRemoved() || !portal.isTeleportable()
+                || !IPCreatePortalEnds.blockForBlock(portal, IPShipPortals.sideScale(portal, true))) {
             return;
         }
         final UUID ownShip = IPShipPortals.ownSideCarrier(portal);
@@ -160,6 +161,20 @@ public final class IPCreatePortalEndScan {
         return bounds.inflate(0.5);
     }
 
+    /**
+     * Where a ship's plot point {@code local} is drawn: by the ship's render pose, which also places the ship's portals on
+     * the client (their animation follows it every frame). By its logical pose (the frame's {@code toWorld}) the portal
+     * blocks of a moving ship lay 0.07-0.2 blocks off the plane and were skipped now and then, and the shaft piece in
+     * them vanished. By the render pose they lie 0.0000 off the plane every time.
+     */
+    private static Vec3 drawnAt(final IPCreatePortalShafts.Frame frame, final Vec3 local) {
+        if (frame instanceof final IPCreateShaftShips.ShipFrame shipFrame
+                && shipFrame.subLevel() instanceof final dev.ryanhcode.sable.sublevel.ClientSubLevel client) {
+            return client.renderPose().transformPosition(local);
+        }
+        return frame.toWorld(local);
+    }
+
     private static void walkFrame(final ClientLevel world, final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final AABB cells,
                                   final Map<ResourceKey<Level>, ClientLevel> worlds, final List<Scan> scans) {
         final boolean ship = IPShipPortals.isShipMounted(portal);
@@ -179,14 +194,17 @@ public final class IPCreatePortalEndScan {
         if (wanting.isEmpty() || (long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
             return;
         }
-        final double planeSlack = ship ? SHIP_GAP : PLANE_EPSILON;
+        // in the frame's own blocks: a scaled ship's (Create: Pocket Sized) are larger in the world
+        final double unit = frame == null ? 1.0 : frame.scale();
+        final double planeSlack = (ship ? SHIP_GAP : PLANE_EPSILON) * unit;
         for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
             if (frame != null && !frame.holds(world, cell)) {
                 continue;
             }
             final Vec3 centre = Vec3.atCenterOf(cell);
-            final Vec3 worldCentre = frame == null ? centre : frame.toWorld(centre);
-            if (Math.abs(portal.getDistanceToPlane(worldCentre)) > planeSlack
+            final Vec3 worldCentre = frame == null ? centre : drawnAt(frame, centre);
+            final double distance = portal.getDistanceToPlane(worldCentre);
+            if (Math.abs(distance) > planeSlack
                 || !IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(cell), front)) {
                 continue;
             }

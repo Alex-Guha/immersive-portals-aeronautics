@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core.portal;
@@ -854,8 +854,23 @@ public class Portal extends Entity implements
     }
     
     public void setScaleTransformation(double newScale) {
+        double old = scaling;
         scaling = newScale;
+        // Immersive Portals: Aeronautics: what is linked through a portal on the condition that it is unscaled (Create
+        // tracks: a train cannot change size) hears when that changes, from a command, the API or an animation
+        java.util.function.Consumer<Portal> listener = SCALE_UNIT_CHANGED;
+        if (listener != null && (Math.abs(old - 1.0) <= 1.0E-4) != (Math.abs(newScale - 1.0) <= 1.0E-4)
+            && level() != null && !level().isClientSide()) {
+            listener.accept(this);
+        }
     }
+
+    /**
+     * Immersive Portals: Aeronautics: called on the server when a portal's scale becomes 1 or stops being 1
+     * ({@link #setScaleTransformation}, which animations go through too). Set by our Create integration.
+     */
+    @Nullable
+    public static volatile java.util.function.Consumer<Portal> SCALE_UNIT_CHANGED;
     
 
     /**
@@ -1460,7 +1475,8 @@ public class Portal extends Entity implements
     }
 
     public void setScaling(double scaling) {
-        this.scaling = scaling;
+        // Immersive Portals: Aeronautics: through setScaleTransformation, so SCALE_UNIT_CHANGED hears it
+        setScaleTransformation(scaling);
         updateCache();
     }
 

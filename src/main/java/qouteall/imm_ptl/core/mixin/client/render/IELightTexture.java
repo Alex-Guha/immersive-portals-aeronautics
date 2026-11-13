@@ -16,4 +16,8 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 public interface IELightTexture {
     @Accessor("updateLightTexture")
     void ip_setUpdateLightTexture(boolean update);
+
+    /** The lightmap's pixels on the CPU (x: block light, y: sky light), as last computed. */
+    @Accessor("lightPixels")
+    com.mojang.blaze3d.platform.NativeImage ip_getLightPixels();
 }

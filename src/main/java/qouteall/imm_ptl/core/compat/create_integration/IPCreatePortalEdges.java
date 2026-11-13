@@ -5,9 +5,7 @@ package qouteall.imm_ptl.core.compat.create_integration;
 
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.trains.graph.TrackNodeLocation;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
@@ -182,15 +180,6 @@ public final class IPCreatePortalEdges {
             set.add(Link.of(a, b));
         }
         return set;
-    }
-
-    /** For the log: the links, one per line. */
-    public static List<String> describe() {
-        final List<String> lines = new ArrayList<>();
-        for (final Link link : links) {
-            lines.add(link.a().dimension.location() + " " + link.a().getLocation() + " <-> " + link.b().getLocation());
-        }
-        return lines;
     }
 
     public static final class RemoteCallables {

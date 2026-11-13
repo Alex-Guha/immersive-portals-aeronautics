@@ -83,7 +83,7 @@ public class MixinSableCanFall_StraddleCut {
             ip_current.remove();
             return pose;
         }
-        final Pose3d mapped = projection.isometry().mapPose(pose);
+        final Pose3d mapped = projection.map().mapPose(pose);
         ip_current.set(new FarHalf(projection, mapped));
         return mapped;
     }

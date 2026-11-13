@@ -5,9 +5,11 @@
  */
 package qouteall.imm_ptl.core.compat.sable_straddle.client;
 
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import com.mojang.blaze3d.shaders.Uniform;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
+import dev.ryanhcode.sable.companion.math.BoundingBox3dc;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
@@ -20,6 +22,7 @@ import dev.ryanhcode.sable.sublevel.plot.LevelPlot;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
@@ -64,7 +67,27 @@ public final class IPStraddleRender {
     /**
      * A plane in world space: points with {@code normal . (p - point) >= 0} are kept.
      */
-    public record KeepPlane(Vec3 point, Vec3 normal) {
+    public record KeepPlane(Vec3 point, Vec3 normal, double across) {
+        /**
+         * @param across how large a length of the world beyond the portal looks in this plane's world (1/k for the near
+         *               half's cut at a portal of scale k, k for the far half's)
+         */
+        public KeepPlane {
+        }
+
+        public KeepPlane(final Vec3 point, final Vec3 normal) {
+            this(point, normal, 1.0);
+        }
+
+        /**
+         * @return how far [blocks] the kept side reaches past this plane in the current pass: {@link #seamReach()}, except
+         * that drawn directly it stops short only as far as the other side's view reaches past the plane, which looks
+         * {@code across} times its {@value #SEAM} (a portal of scale 2 left half of it open on the smaller side)
+         */
+        public double reach() {
+            return PortalRendering.isRendering() ? SEAM : -SEAM * Math.min(1.0, this.across);
+        }
+
         boolean keeps(final Vec3 p) {
             return this.normal.dot(p.subtract(this.point)) >= 0.0;
         }
@@ -75,12 +98,16 @@ public final class IPStraddleRender {
         }
     }
 
-    private record Projection(ClientSubLevel ship, Pose3dc pose, KeepPlane plane, IPPortalIsometry isometry,
+    private record Projection(ClientSubLevel ship, Pose3dc pose, KeepPlane plane, IPPortalSimilarity isometry,
                               IPStraddleClientSessions.Session session) {
     }
 
     @Nullable
     private static Projection projection;
+    /** The projection {@link #skyLight} was read for (one value per far-half draw, read once per block entity). */
+    @Nullable
+    private static Projection skyLightOf;
+    private static int skyLight;
 
     private IPStraddleRender() {
     }
@@ -99,10 +126,61 @@ public final class IPStraddleRender {
     }
 
     /**
+     * Sable lights a ship's sky light by a factor it reads around the ship in the ship's own world
+     * ({@code ClientSubLevel.computeSubLevelSkyLight}, {@code SableSkyLightScale}); a far half is drawn in the
+     * destination and takes it from there, at the same sample points mapped through the portal.
+     *
+     * @return the sky light (0-15) {@code ship}'s far half drawn now is lit with, or -1 when it is not projected
+     */
+    public static int farHalfSkyLight(final ClientSubLevel ship) {
+        final Projection current = projection;
+        if (current == null || current.ship() != ship) {
+            return -1;
+        }
+        if (skyLightOf != current) {
+            skyLight = skyLightAt(current);
+            skyLightOf = current;
+        }
+        return skyLight;
+    }
+
+    /**
+     * Sable's {@code computeSubLevelSkyLight} read in the world being drawn: a small ship at its mapped position (one
+     * block up and down when dark), else the most of its bounding box's centre and four corners at the centre's height.
+     */
+    private static int skyLightAt(final Projection p) {
+        final ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) {
+            return -1;
+        }
+        final BoundingBox3dc box = p.ship().boundingBox();
+        if (box.volume() < 9) {
+            final Vec3 at = new Vec3(p.pose().position().x(), p.pose().position().y(), p.pose().position().z());
+            int sky = level.getBrightness(LightLayer.SKY, BlockPos.containing(at));
+            if (sky == 0) {
+                sky = level.getBrightness(LightLayer.SKY, BlockPos.containing(at.add(0, 1, 0)));
+            }
+            if (sky == 0) {
+                sky = level.getBrightness(LightLayer.SKY, BlockPos.containing(at.add(0, -1, 0)));
+            }
+            return sky;
+        }
+        final double y = (box.minY() + box.maxY()) * 0.5 + 0.1;
+        final double[][] samples = {{(box.minX() + box.maxX()) * 0.5, (box.minZ() + box.maxZ()) * 0.5},
+                {box.minX(), box.minZ()}, {box.maxX(), box.minZ()}, {box.minX(), box.maxZ()}, {box.maxX(), box.maxZ()}};
+        int max = 0;
+        for (final double[] xz : samples) {
+            final Vec3 mapped = p.isometry().mapPoint(new Vec3(xz[0], y, xz[1]));
+            max = Math.max(max, level.getBrightness(LightLayer.SKY, BlockPos.containing(mapped)));
+        }
+        return max;
+    }
+
+    /**
      * @return the portal map of the projection of {@code ship} being drawn now, or null when it is not projected
      */
     @Nullable
-    public static IPPortalIsometry projectionIsometry(final ClientSubLevel ship) {
+    public static IPPortalSimilarity projectionIsometry(final ClientSubLevel ship) {
         final Projection current = projection;
         return current != null && current.ship() == ship ? current.isometry() : null;
     }
@@ -149,7 +227,7 @@ public final class IPStraddleRender {
         }
         // one plane per ship (a ship straddling two portals at once is cut at the first only)
         final IPStraddleClientSessions.Session session = sessions.get(0);
-        return new KeepPlane(session.origin(), session.normal().scale(-1.0));
+        return new KeepPlane(session.origin(), session.normal().scale(-1.0), 1.0 / session.map().scale());
     }
 
     /**
@@ -175,12 +253,12 @@ public final class IPStraddleRender {
             GL11.glEnable(GL30.GL_CLIP_DISTANCE1);
             return true;
         }
-        // Ship terrain vertices are Position + ChunkOffset = R^-1 (world - camera), R the render orientation (the
-        // translation is folded into ChunkOffset; MixinSableChunkedRenderData_ClipSpace relies on the same).
-        final Vector3d n = ship.renderPose().orientation().transformInverse(
-                new Vector3d(plane.normal().x, plane.normal().y, plane.normal().z));
+        // Ship terrain vertices are Position + ChunkOffset = s^-1 R^-1 (world - camera), R the render orientation, s the
+        // ship's scale (the translation is folded into ChunkOffset; MixinSableChunkedRenderData_ClipSpace relies on the
+        // same): IPShipScale.clipNormal.
+        final Vector3d n = IPShipScale.clipNormal(ship.renderPose(), plane.normal().x, plane.normal().y, plane.normal().z);
         final Vec3 rel = plane.point().subtract(camX, camY, camZ);
-        final double w = -plane.normal().dot(rel) + (PortalRendering.isRendering() ? SEAM : -SEAM);
+        final double w = -plane.normal().dot(rel) + plane.reach();
         uniform.set((float) n.x, (float) n.y, (float) n.z, (float) w);
         uniform.upload();
         GL11.glEnable(GL30.GL_CLIP_DISTANCE1);
@@ -216,7 +294,7 @@ public final class IPStraddleRender {
         }
         final Vec3 n = plane.normal();
         final Vec3 rel = plane.point().subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
-        final double w = -n.dot(rel) + (PortalRendering.isRendering() ? SEAM : -SEAM);
+        final double w = -n.dot(rel) + plane.reach();
         return new float[]{(float) n.x, (float) n.y, (float) n.z, (float) w};
     }
 
@@ -231,7 +309,9 @@ public final class IPStraddleRender {
         }
         final Vec3 n = session.normal();
         final Vec3 rel = session.origin().subtract(renderOrigin.getX(), renderOrigin.getY(), renderOrigin.getZ());
-        final double w = -n.dot(rel) + (PortalRendering.isRendering() ? SEAM : -SEAM);
+        // drawn in the ship's own world, shown k times as large: the far half's reach in its own units
+        final double k = session.map().scale();
+        final double w = -n.dot(rel) + new KeepPlane(session.destOrigin(), session.destNormal(), k).reach() / k;
         return new float[]{(float) n.x, (float) n.y, (float) n.z, (float) w};
     }
 
@@ -329,7 +409,7 @@ public final class IPStraddleRender {
         if (plane == null) {
             return null;
         }
-        final Vec3 point = plane.point().subtract(plane.normal().scale(seamReach())).subtract(cameraX, cameraY, cameraZ);
+        final Vec3 point = plane.point().subtract(plane.normal().scale(plane.reach())).subtract(cameraX, cameraY, cameraZ);
         final org.joml.Matrix4f matrix = poseStack.last().pose();
         final org.joml.Vector3f anchor = matrix.transformPosition(new org.joml.Vector3f((float) point.x, (float) point.y, (float) point.z));
         final org.joml.Vector3f normal = matrix.transformDirection(new org.joml.Vector3f(
@@ -381,8 +461,8 @@ public final class IPStraddleRender {
             return range[0] >= 0.0 ? BlockEntityCut.WHOLE : range[1] < 0.0 ? BlockEntityCut.SKIP : BlockEntityCut.CLIP;
         }
         final double centre = plane.distance(ship.renderPose().transformPosition(Vec3.atCenterOf(blockEntity.getBlockPos())));
-        return centre > BLOCK_ENTITY_CLIP_REACH ? BlockEntityCut.WHOLE
-                : centre < -BLOCK_ENTITY_CLIP_REACH ? BlockEntityCut.SKIP : BlockEntityCut.CLIP;
+        final double reach = BLOCK_ENTITY_CLIP_REACH * IPShipScale.of(ship.renderPose());
+        return centre > reach ? BlockEntityCut.WHOLE : centre < -reach ? BlockEntityCut.SKIP : BlockEntityCut.CLIP;
     }
 
     /**
@@ -479,7 +559,7 @@ public final class IPStraddleRender {
             final KeepPlane plane = ship == null ? null : planeFor(ship);
             if (plane != null) {
                 final org.joml.Vector3f[] drawing = drawingPlane(ship, pos, poseStack,
-                        plane.point().subtract(plane.normal().scale(seamReach())), plane.normal());
+                        plane.point().subtract(plane.normal().scale(plane.reach())), plane.normal());
                 result = new IPPlaneClippingBufferSource(result, drawing[0], drawing[1]);
             }
         }
@@ -494,7 +574,7 @@ public final class IPStraddleRender {
             final ClientSubLevel ship, final BlockPos pos, final com.mojang.blaze3d.vertex.PoseStack poseStack,
             final net.minecraft.client.renderer.MultiBufferSource source, final KeepPlane plane) {
         final org.joml.Vector3f[] drawing = drawingPlane(ship, pos, poseStack,
-                plane.point().subtract(plane.normal().scale(seamReach())), plane.normal());
+                plane.point().subtract(plane.normal().scale(plane.reach())), plane.normal());
         return clippingAtPortal(ship, pos, poseStack, new IPPlaneClippingBufferSource(source, drawing[0], drawing[1]));
     }
 
@@ -525,7 +605,7 @@ public final class IPStraddleRender {
         final ClientSubLevel ship = cutShipAt(blockEntity.getLevel(), pos);
         final KeepPlane plane = ship == null ? null : planeFor(ship);
         if (plane != null) {
-            planes.add(drawingPlane(ship, pos, poseStack, plane.point().subtract(plane.normal().scale(seamReach())), plane.normal()));
+            planes.add(drawingPlane(ship, pos, poseStack, plane.point().subtract(plane.normal().scale(plane.reach())), plane.normal()));
         }
         if (PortalRendering.isRendering()) {
             final Plane clip = PortalRendering.getActiveClippingPlane();
@@ -574,7 +654,7 @@ public final class IPStraddleRender {
         IPPlaneClippingVertexConsumer atPortal = null;
         com.mojang.blaze3d.vertex.VertexConsumer target = consumer;
         if (plane != null) {
-            target = atCut = clippingInDrawingSpace(target, plane.point().subtract(plane.normal().scale(seamReach())),
+            target = atCut = clippingInDrawingSpace(target, plane.point().subtract(plane.normal().scale(plane.reach())),
                     plane.normal(), modelView, camera);
         }
         if (portal != null) {
@@ -689,8 +769,8 @@ public final class IPStraddleRender {
             if (ship == null) {
                 continue;
             }
-            final Pose3d mapped = session.isometry().mapPose(ship.renderPose());
-            projections.add(new Projection(ship, mapped, new KeepPlane(session.destOrigin(), session.destNormal()), session.isometry(), session));
+            final Pose3d mapped = session.map().mapPose(ship.renderPose());
+            projections.add(new Projection(ship, mapped, new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session));
         }
         for (final Projection p : projections) {
             projection = p;
@@ -704,8 +784,8 @@ public final class IPStraddleRender {
 
     /** Runs {@code draw} with {@code ship} drawn mapped through the portal of {@code session}, its far side as the cut. */
     static void withProjection(final ClientSubLevel ship, final IPStraddleClientSessions.Session session, final Runnable draw) {
-        projection = new Projection(ship, session.isometry().mapPose(ship.renderPose()),
-                new KeepPlane(session.destOrigin(), session.destNormal()), session.isometry(), session);
+        projection = new Projection(ship, session.map().mapPose(ship.renderPose()),
+                new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session);
         try {
             draw.run();
         } finally {

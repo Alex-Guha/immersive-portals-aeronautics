@@ -39,7 +39,7 @@ public class MixinCarriageContraptionEntity_TrainSides implements IPCarriageSide
      * Client: Create binds a copy to its carriage's record on every synced value it receives
      * ({@code onSyncedDataUpdated}), its own carriage data first, before the side the server gave the copy (ours is
      * defined later). A copy the server has just created on a portal's far side thus took the record of the copy
-     * already there, which was then drawn from the far copy for a frame as a crossing started (2.5.7.2-2.5.7.5). A copy
+     * already there, which was then drawn from the far copy for a frame as a crossing started. A copy
      * with no side yet waits while another live copy holds the record of its level; its side arrives with the next
      * value of the same packet, and Create binds again.
      */

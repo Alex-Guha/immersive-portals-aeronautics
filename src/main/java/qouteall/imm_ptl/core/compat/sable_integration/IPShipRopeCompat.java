@@ -418,11 +418,8 @@ public final class IPShipRopeCompat {
 
         /** The plot block of {@code ship} at the world position {@code worldPos} (its block centre). */
         private static BlockPos toPlot(ServerSubLevel ship, BlockPos worldPos) {
-            Vec3 center = Vec3.atCenterOf(worldPos);
-            Pose3dc pose = ship.logicalPose();
-            Vector3d local = new Vector3d(center.x, center.y, center.z).sub(pose.position());
-            new Quaterniond(pose.orientation()).conjugate().transform(local);
-            local.add(pose.rotationPoint());
+            // through the pose, which applies a ship's scale (Create: Pocket Sized)
+            Vec3 local = ship.logicalPose().transformPositionInverse(Vec3.atCenterOf(worldPos));
             return BlockPos.containing(local.x, local.y, local.z);
         }
 

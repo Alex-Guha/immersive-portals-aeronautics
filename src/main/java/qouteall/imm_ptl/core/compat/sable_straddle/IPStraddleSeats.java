@@ -65,13 +65,16 @@ public final class IPStraddleSeats {
         final BlockPos seatPos;
         /** The rider's feet in the ship's plot. */
         final Vec3 riderPlot;
-        final IPPortalIsometry isometry;
+        final IPPortalSimilarity isometry;
         final Vec3 origin;
         final Vec3 normal;
+        /** What the rider was scaled by going through (1: the portal keeps sizes); undone coming back. */
+        final double scaleFactor;
         final Display.BlockDisplay entity;
 
         Proxy(final UUID player, final UUID ship, final ResourceKey<Level> shipDim, final BlockPos seatPos, final Vec3 riderPlot,
-              final IPPortalIsometry isometry, final Vec3 origin, final Vec3 normal, final Display.BlockDisplay entity) {
+              final IPPortalSimilarity isometry, final Vec3 origin, final Vec3 normal, final double scaleFactor,
+              final Display.BlockDisplay entity) {
             this.player = player;
             this.ship = ship;
             this.shipDim = shipDim;
@@ -80,6 +83,7 @@ public final class IPStraddleSeats {
             this.isometry = isometry;
             this.origin = origin;
             this.normal = normal;
+            this.scaleFactor = scaleFactor;
             this.entity = entity;
         }
     }
@@ -134,12 +138,14 @@ public final class IPStraddleSeats {
             final SubLevel ship = Sable.HELPER.getContaining(seat);
             final Vec3 plot = seat.position();
             final Vec3 feet = ship == null ? plot : ship.logicalPose().transformPosition(plot);
+            final double factor = scaleIntoSeatLevel(player, level, ship, feet);
             ServerTeleportationManager.of(server).forceTeleportPlayer(player, level.dimension(), feet);
             if (player.level() != level) {
                 LOGGER.warn("[IPStraddle] could not move {} to a seat in {}; left standing", player.getGameProfile().getName(),
                     level.dimension().location());
                 return;
             }
+            IPShipRiderCarry.scaleThrough(player, factor);
             if (seat.isRemoved()) {
                 sit(level, seat.blockPosition(), player);
             } else {
@@ -148,6 +154,33 @@ public final class IPStraddleSeats {
             LOGGER.info("[IPStraddle] {} took a seat in {} from another dimension", player.getGameProfile().getName(),
                 level.dimension().location());
         }));
+    }
+
+    /**
+     * @return what {@code player} is scaled by going from their level to {@code level}, the seat's, the way they saw it:
+     * back through the portal its ship straddles into the player's level (the seat is on the far half), else through the
+     * nearest portal to {@code level} that brings the seat ({@code feet}) close to the player's eye. 1 when neither
+     * changes sizes.
+     */
+    private static double scaleIntoSeatLevel(final ServerPlayer player, final ServerLevel level, @Nullable final SubLevel ship,
+                                             final Vec3 feet) {
+        if (ship != null) {
+            final double[] back = {0.0};
+            IPStraddleSessions.forEach(session -> {
+                if (back[0] == 0.0 && session.ship == ship && session.dest == player.level()) {
+                    back[0] = 1.0 / IPShipRiderCarry.scaleFactor(session.portal);
+                }
+            });
+            if (back[0] != 0.0) {
+                return back[0];
+            }
+        }
+        final Vec3 eye = player.getEyePosition();
+        return qouteall.imm_ptl.core.IPMcHelper.getNearbyPortals(player, 64.0)
+            .filter(portal -> portal.getDestDim() == level.dimension())
+            .min(java.util.Comparator.comparingDouble(portal -> portal.inverseTransformPoint(feet).distanceToSqr(eye)))
+            .map(IPShipRiderCarry::scaleFactor)
+            .orElse(1.0);
     }
 
     // ---- through the portal
@@ -176,11 +209,11 @@ public final class IPStraddleSeats {
 
     private static void cross(final ServerPlayer player, final Entity seat, final IPStraddleSessions.Session session) {
         final ServerLevel dest = session.dest;
-        final IPPortalIsometry isometry = session.isometry;
+        final IPPortalSimilarity isometry = session.map;
         final Vec3 feet = player.position();
         final Vector3d plot = session.ship.logicalPose().transformPositionInverse(new Vector3d(feet.x, feet.y, feet.z));
         final Vec3 target = isometry.mapPoint(feet);
-        final Vec3 look = isometry.mapVec(player.getLookAngle());
+        final Vec3 look = isometry.mapDirection(player.getLookAngle());
         final BlockPos seatPos = seat.blockPosition();
 
         // unlinked without vanilla's dismount placement (the player is moved right after)
@@ -192,6 +225,8 @@ public final class IPStraddleSeats {
             return;
         }
         setLook(player, look);
+        final double factor = IPShipRiderCarry.scaleFactor(session.portal);
+        IPShipRiderCarry.scaleThrough(player, factor);
 
         final Display.BlockDisplay entity = EntityType.BLOCK_DISPLAY.create(dest);
         if (entity == null) {
@@ -202,14 +237,14 @@ public final class IPStraddleSeats {
         IPSeatProxies.add(entity.getUUID(), false);
         dest.addFreshEntity(entity);
         final Proxy proxy = new Proxy(player.getUUID(), session.ship.getUniqueId(), session.source.dimension(), seatPos,
-            new Vec3(plot.x, plot.y, plot.z), isometry, session.origin, session.normal, entity);
+            new Vec3(plot.x, plot.y, plot.z), isometry, session.origin, session.normal, factor, entity);
         BY_PLAYER.put(proxy.player, proxy);
         BY_ENTITY.put(entity.getUUID(), proxy);
         player.startRiding(entity, true);
 
         final Quaterniondc q = isometry.rotation();
         McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "begin", entity.getUUID(), proxy.ship, proxy.shipDim, proxy.riderPlot,
-            isometry.origin(), isometry.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+            isometry.origin(), isometry.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()), isometry.scale());
         LOGGER.info("[IPStraddle] {} seated on ship {} went through portal {} ({} -> {})", player.getGameProfile().getName(),
             proxy.ship, session.portal.getUUID(), proxy.shipDim.location(), dest.dimension().location());
     }
@@ -244,10 +279,11 @@ public final class IPStraddleSeats {
 
     private static void comeBack(final MinecraftServer server, final Proxy proxy, final ServerPlayer player, final ServerLevel source,
                                  final Vec3 feet) {
-        final Vec3 look = proxy.isometry.inverse().mapVec(player.getLookAngle());
+        final Vec3 look = proxy.isometry.unmapDirection(player.getLookAngle());
         player.removeVehicle();
         ServerTeleportationManager.of(server).forceTeleportPlayer(player, source.dimension(), feet);
         setLook(player, look);
+        IPShipRiderCarry.scaleThrough(player, 1.0 / proxy.scaleFactor);
         sit(source, proxy.seatPos, player);
         drop(server, proxy, "came back through the portal with the seat");
     }

@@ -96,6 +96,11 @@ public final class IPFlywheelFarHalf {
         if (drawing || failed) {
             return;
         }
+        // Colorwheel runs afterEntities again for its translucent and shadow phases; a far half is drawn once, after
+        // the solid phase (its draw runs that phase only; in the shadow pass it would go into the shadow map)
+        if (IPFlywheelEmbeddings.COLORWHEEL && IPColorwheelEmbeddings.isTranslucentOrShadowContext(context)) {
+            return;
+        }
         if (SABLE && !IPStraddleClientSessions.isEmpty()) {
             drawShips(context);
         }
@@ -107,17 +112,16 @@ public final class IPFlywheelFarHalf {
     private static void drawShips(final RenderContext context) {
         final List<IPStraddleClientSessions.Session> sessions = IPStraddleClientSessions.renderSessionsInto(context.level().dimension());
         for (final IPStraddleClientSessions.Session session : sessions) {
-            if (session.shipDim().equals(context.level().dimension())) {
-                continue;
-            }
+            // a ship straddling a portal into its own dimension: its own engine draws its far half too (the skip of
+            // such sessions dated from 1.14.0, before same-dimension straddles; carriages never had it)
             final ClientSubLevel ship = IPStraddleRender.shipOf(session);
             if (ship == null || !(ship.getLevel() instanceof final ClientLevel shipLevel)) {
                 continue;
             }
-            final Quaterniondc q = session.isometry().rotation();
+            final Quaterniondc q = session.map().rotation();
             final Quaternionf rotation = new Quaternionf((float) q.x(), (float) q.y(), (float) q.z(), (float) q.w());
-            final Vec3 cameraPos = session.isometry().unmapPoint(context.camera().getPosition());
-            if (!draw(context, shipLevel, rotation, cameraPos, new IPFlywheelStraddleClip.ShipFarHalf(ship, session))) {
+            final Vec3 cameraPos = session.map().unmapPoint(context.camera().getPosition());
+            if (!draw(context, shipLevel, rotation, (float) session.map().scale(), cameraPos, new IPFlywheelStraddleClip.ShipFarHalf(ship, session))) {
                 return;
             }
         }
@@ -128,11 +132,12 @@ public final class IPFlywheelFarHalf {
      *
      * @param sourceLevel the level whose engine draws (the far half's own dimension)
      * @param rotation    the portal's rotation: a vector v of the source level appears as R v in this pass's level
+     * @param scale       the portal's scale k: v appears as k R v (1 for a straddling ship's far half)
      * @param cameraPos   this pass's camera mapped back into the source level
      * @param selection   which environments are drawn, and their cuts
      * @return false if drawing failed (turned off for the session)
      */
-    static boolean draw(final RenderContext context, final ClientLevel sourceLevel, final Quaternionf rotation,
+    static boolean draw(final RenderContext context, final ClientLevel sourceLevel, final Quaternionf rotation, final float scale,
                         final Vec3 cameraPos, final IPFlywheelStraddleClip.FarHalf selection) {
         if (drawing || failed) {
             return false;
@@ -145,7 +150,7 @@ public final class IPFlywheelFarHalf {
         try {
             final VisualizationManagerImpl manager = VisualizationManagerImpl.get(sourceLevel);
             if (manager != null) {
-                draw(context, sourceLevel, manager, rotation, cameraPos, selection);
+                draw(context, sourceLevel, manager, rotation, scale, cameraPos, selection);
             } else if (!missingLogged) {
                 missingLogged = true;
                 LOGGER.info("[IPStraddle] no Flywheel visualization for {}: far half of Flywheel parts not drawn", sourceLevel.dimension().location());
@@ -161,14 +166,20 @@ public final class IPFlywheelFarHalf {
                 drawn = false;
                 // the frame uniforms are shared: give them back to this pass (crumbling draws later read them)
                 Uniforms.update(context);
+                // Colorwheel's are shared too, and its translucent draw of this pass follows (IPColorwheelFarHalf)
+                if (IPFlywheelEmbeddings.isColorwheelBackend()) {
+                    IPColorwheelFarHalf.end(context);
+                }
             }
         }
     }
 
     private static void draw(final RenderContext context, final ClientLevel sourceLevel, final VisualizationManagerImpl manager,
-                             final Quaternionf rotation, final Vec3 cameraPos, final IPFlywheelStraddleClip.FarHalf selection) {
+                             final Quaternionf rotation, final float scale, final Vec3 cameraPos,
+                             final IPFlywheelStraddleClip.FarHalf selection) {
         // a vector v of the source world appears as R v in the destination, so the source world is seen with view * R
-        final Matrix4f modelView = new Matrix4f(context.modelView()).rotate(rotation);
+        // a scaled portal (scale k) shows the source level k times its size: d - c_d = k R (s - c_s)
+        final Matrix4f modelView = new Matrix4f(context.modelView()).rotate(rotation).scale(scale);
         final Matrix4f viewProjection = new Matrix4f(context.projection()).mul(modelView);
         final Vector3f look = rotation.transformInverse(new Vector3f(context.camera().getLookVector()));
         final LevelRenderer renderer = ClientWorldLoader.getWorldRenderer(sourceLevel.dimension());
@@ -183,7 +194,7 @@ public final class IPFlywheelFarHalf {
             final double[] equation = FrontClipping.getActiveClipPlaneEquationBeforeModelView();
             if (equation != null) {
                 final Vector3f n = rotation.transformInverse(new Vector3f((float) equation[0], (float) equation[1], (float) equation[2]));
-                portalPlane = new float[]{n.x, n.y, n.z, (float) equation[3]};
+                portalPlane = new float[]{n.x, n.y, n.z, (float) (equation[3] / scale)};
                 clipPortal = true;
             }
         }
@@ -199,6 +210,11 @@ public final class IPFlywheelFarHalf {
             final Integer started = STARTED.get(sourceLevel);
             if (started == null || started != RenderStates.frameIndex) {
                 manager.renderDispatcher().onStartLevelRender(sourceContext);
+            }
+            if (IPFlywheelEmbeddings.isColorwheelBackend()) {
+                // the mapped camera for IP's portal clip (flw_cameraPos) and the pack, whether or not the source's
+                // engine prepares its frame here
+                IPColorwheelFarHalf.begin(sourceContext);
             }
             IPFlywheelStraddleClip.beginFarHalf(selection);
             manager.renderDispatcher().afterEntities(sourceContext);

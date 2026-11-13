@@ -16,7 +16,7 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
+import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 
 /**
  * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
@@ -122,7 +122,7 @@ public final class IPStraddleCommand {
     }
 
     private static int status(final CommandContext<CommandSourceStack> context) {
-        final boolean backend = IPPhysicsPipelineProvider.isOwnBackendActive();
+        final boolean backend = IPPhysicsBackend.isOwnBackendActive();
         final String text = "Ship straddling: " + (IPStraddle.isEnabled() ? "on" : "off")
                 + (backend ? "" : " (inactive: the ipa_rapier physics backend is not running, ships use the one-step crossing)")
                 + ", debug outline: " + (IPStraddle.isDebugOutline() ? "on" : "off")

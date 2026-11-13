@@ -9,9 +9,6 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.plot.LevelPlot;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
 import dev.ryanhcode.sable.sublevel.storage.serialization.SubLevelSerializer;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,21 +25,15 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.PalettedContainer;
 import net.neoforged.fml.ModList;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.tree.AnnotationNode;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodNode;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
-import org.spongepowered.asm.mixin.transformer.meta.MixinMerged;
 import qouteall.imm_ptl.core.compat.IPMixinReport;
 
 /**
  * Guards ship moves against other mods that change how Sable loads a plot. {@link IPSableBridge#tryLoad} edits the
  * saved plot for its destination (section keys, plot, block positions) and then lets Sable load it; a mod that edits
  * the plot on load as well can put the blocks somewhere else, and Sable then drops every block entity that finds air.
- * Dimensional Sable 1.1.0 did that to every ship crossing into a level of another height (player report via the user,
- * 2026-11-05).
+ * Dimensional Sable 1.1.0 did that to every ship crossing into a level of another height.
  * <ul>
  * <li>{@link #landedWhole} compares every saved block with the loaded ship; a move that lost blocks is undone (the
  * ship goes back to its own level, or stays in the teleport journal), so a change in another mod costs a crossing and
@@ -142,29 +133,19 @@ public final class IPShipLoadGuard {
     }
 
     /**
-     * Logs every other mod's mixin into the methods of {@link #LOAD_PATH}. Never throws. The mixins are found by the
-     * {@link MixinMerged} annotation Mixin puts on every handler it merges into a target, then read from their own
-     * bytecode for the methods they name ({@code Mixins.getMixinsForClass} listed none of them on a dedicated server, 2.8.27).
+     * Logs every other mod's mixin into the methods of {@link #LOAD_PATH} ({@link IPMixinReport#otherModsMixins}).
+     * Never throws.
      */
     public static void audit() {
         try {
             List<String> checked = new ArrayList<>();
             int hooks = 0;
             for (Map.Entry<Class<?>, Set<String>> target : LOAD_PATH) {
-                Set<String> mixins = new TreeSet<>();
-                for (Method method : target.getKey().getDeclaredMethods()) {
-                    MixinMerged merged = method.getAnnotation(MixinMerged.class);
-                    if (merged != null && !merged.mixin().startsWith("qouteall.")) {
-                        mixins.add(merged.mixin());
-                    }
-                }
-                for (String mixin : mixins) {
-                    ClassNode node = readClass(mixin);
-                    // unreadable: it hooks the class, the method is not known
-                    Set<String> hooked = node == null ? Set.of("?") : hookedMethods(node, target.getValue());
-                    if (!hooked.isEmpty()) {
+                Map<String, Set<String>> mixins = IPMixinReport.otherModsMixins(target.getKey(), target.getValue());
+                for (Map.Entry<String, Set<String>> mixin : mixins.entrySet()) {
+                    if (!mixin.getValue().isEmpty()) {
                         hooks++;
-                        report(mixin, target.getKey().getSimpleName() + "." + String.join("/", hooked));
+                        report(mixin.getKey(), target.getKey().getSimpleName() + "." + String.join("/", mixin.getValue()));
                     }
                 }
                 checked.add(target.getKey().getSimpleName() + " " + mixins.size());
@@ -197,72 +178,5 @@ public final class IPShipLoadGuard {
                 known.modId(), version, where, known.checkedVersion(), known.note()
             );
         }
-    }
-
-    /**
-     * The mixin class as its jar holds it (ModLauncher's bytecode provider hands out only transformed classes, and a
-     * mixin class cannot be loaded), or null.
-     */
-    private static @Nullable ClassNode readClass(String className) {
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        if (loader == null) {
-            loader = IPShipLoadGuard.class.getClassLoader();
-        }
-        try (InputStream in = loader.getResourceAsStream(className.replace('.', '/') + ".class")) {
-            if (in == null) {
-                return null;
-            }
-            ClassNode node = new ClassNode();
-            new ClassReader(in.readAllBytes()).accept(node, ClassReader.SKIP_CODE);
-            return node;
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
-    }
-
-    /** Which of {@code watched} the mixin's injectors and overwrites name. */
-    private static Set<String> hookedMethods(ClassNode mixin, Set<String> watched) {
-        Set<String> hooked = new TreeSet<>();
-        for (MethodNode method : mixin.methods) {
-            for (List<AnnotationNode> annotations : List.of(
-                method.visibleAnnotations == null ? List.<AnnotationNode>of() : method.visibleAnnotations,
-                method.invisibleAnnotations == null ? List.<AnnotationNode>of() : method.invisibleAnnotations
-            )) {
-                for (AnnotationNode annotation : annotations) {
-                    if ("Lorg/spongepowered/asm/mixin/Overwrite;".equals(annotation.desc)) {
-                        if (watched.contains(method.name)) {
-                            hooked.add(method.name);
-                        }
-                    } else if (IPMixinReport.isInjector(annotation.desc)) {
-                        for (String selector : selectors(annotation)) {
-                            String name = selectorName(selector);
-                            if (watched.contains(name)) {
-                                hooked.add(name);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return hooked;
-    }
-
-    private static List<String> selectors(AnnotationNode annotation) {
-        if (annotation.values != null) {
-            for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
-                if ("method".equals(annotation.values.get(i)) && annotation.values.get(i + 1) instanceof List<?> list) {
-                    return list.stream().map(String::valueOf).toList();
-                }
-            }
-        }
-        return List.of();
-    }
-
-    /** {@code load}, {@code load(Lnet/...;)V} and {@code Ldev/...;load(...)V} all name {@code load}. */
-    private static String selectorName(String selector) {
-        int paren = selector.indexOf('(');
-        String head = paren < 0 ? selector : selector.substring(0, paren);
-        int semicolon = head.lastIndexOf(';');
-        return semicolon < 0 ? head : head.substring(semicolon + 1);
     }
 }

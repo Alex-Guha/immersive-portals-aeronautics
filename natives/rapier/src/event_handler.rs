@@ -1,7 +1,7 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026: scaled images.
 
 use crate::ReportedCollision;
 use crate::collider::LevelCollider;
@@ -60,8 +60,10 @@ impl EventHandler for SableEventHandler {
                 let local_n1 = manifold.local_n1;
                 let local_n2 = manifold.local_n2;
 
-                let local_p1 = point.local_p1;
-                let local_p2 = point.local_p2;
+                // Immersive Portals: Aeronautics: points of a scaled image are k times plot offsets (the force is
+                // reported as the destination world feels it)
+                let local_p1 = point.local_p1 / level_collider_a.scale;
+                let local_p2 = point.local_p2 / level_collider_b.scale;
 
                 batch.push(ReportedCollision {
                     body_a: level_collider_a.id,

@@ -14,11 +14,13 @@ import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.mixin_render_tweaks.IEIrisRenderingPipeline_BlockIds;
-import qouteall.imm_ptl.core.compat.voxy_integration.IPVoxyIrisPipelines;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,12 +95,49 @@ public final class IPIrisPortalViewPipelines {
             return null;
         }
         ClientLevel level = Minecraft.getInstance().level;
-        if (level == null || (VOXY && IPVoxyIrisPipelines.bindsVoxy(level))) {
+        if (level == null || (VOXY && VoxyHook.bindsVoxy(level))) {
             return null;
         }
         int view = viewOfPass(dimension);
         int index = level.dimension() == RenderStates.originalPlayerDimension ? view : view - 1;
         return index < 0 ? null : PIPELINES.get(index);
+    }
+
+    /**
+     * {@code IPVoxyIrisPipelines.bindsVoxy}, found by name: the Voxy compat is left out of a build with
+     * {@code -PwithoutVoxy} (a clone without the Roxy-patched Voxy jar it compiles against), and this class must compile
+     * without it. A holder, so the Voxy class loads where it did when this called it directly: at the first call with
+     * Voxy installed. A jar without the Voxy compat answers false, as if no render system bound a pipeline.
+     */
+    private static final class VoxyHook {
+        private static final @Nullable MethodHandle BINDS_VOXY = find();
+
+        private static @Nullable MethodHandle find() {
+            try {
+                Class<?> pipelines = Class.forName("qouteall.imm_ptl.core.compat.voxy_integration.IPVoxyIrisPipelines");
+                return MethodHandles.lookup().findStatic(
+                    pipelines, "bindsVoxy", MethodType.methodType(boolean.class, ClientLevel.class));
+            }
+            catch (ReflectiveOperationException e) {
+                LOGGER.warn("[IPIris] Voxy is installed but this jar was built without its compat: {}", e.toString());
+                return null;
+            }
+        }
+
+        static boolean bindsVoxy(ClientLevel level) {
+            if (BINDS_VOXY == null) {
+                return false;
+            }
+            try {
+                return (boolean) BINDS_VOXY.invokeExact(level);
+            }
+            catch (RuntimeException | Error e) {
+                throw e;
+            }
+            catch (Throwable e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 
     private static int viewOfPass(NamespacedId dimension) {

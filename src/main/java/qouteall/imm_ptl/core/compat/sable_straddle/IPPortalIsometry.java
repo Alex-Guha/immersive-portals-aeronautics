@@ -16,6 +16,9 @@ import qouteall.q_misc_util.my_util.DQuaternion;
 /**
  * The rigid map of an unscaled portal from its own world into its destination: {@code p -> dest + R (p - origin)}.
  * As a pose prefix it is {@code (R, dest - R origin)}, which is what the native image collider takes.
+ * <p>
+ * Straddle sessions map through {@link IPPortalSimilarity}, which adds the portal's scale; this record is its rigid
+ * part. Its components and constructor stay as they are: Create Simurail builds and reads it.
  */
 public record IPPortalIsometry(Vec3 origin, Vec3 dest, Quaterniondc rotation) {
     public static final IPPortalIsometry IDENTITY = new IPPortalIsometry(Vec3.ZERO, Vec3.ZERO, new Quaterniond());

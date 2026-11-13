@@ -14,7 +14,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.ducks.IEParticleManager;
 import qouteall.imm_ptl.core.mixin.client.particle.IEParticle;
 
@@ -92,10 +92,10 @@ public final class IPStraddleParticles {
             final Vector3d shipVelocity = Sable.HELPER.getVelocity(level, local, new Vector3d());
             velocity = velocity.add(shipVelocity.x / 20.0, shipVelocity.y / 20.0, shipVelocity.z / 20.0);
         }
-        final IPPortalIsometry isometry = session.isometry();
+        final IPPortalSimilarity isometry = session.map();
         final Vec3 position = isometry.mapPoint(center.subtract(0.0, particle.getBoundingBox().getYsize() * 0.5, 0.0));
         final Vec3 last = isometry.mapPoint(new Vec3(fields.ip_getXo(), fields.ip_getYo(), fields.ip_getZo()));
-        final Vec3 mappedVelocity = isometry.mapVec(velocity);
+        final Vec3 mappedVelocity = isometry.mapDisplacement(velocity);
 
         extension.sable$setTrackingSubLevel(null, position);
         fields.ip_setWorld(dest);

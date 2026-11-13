@@ -56,23 +56,33 @@ final class IPStraddleSessions {
         final ServerLevel source;
         final ServerLevel dest;
         final int bodyId;
+        /** The portal's map into the destination, scale included; every use of the session's geometry goes through it. */
+        IPPortalSimilarity map;
+        /**
+         * {@link #map}'s rigid part, kept as a field because Create Simurail reads it by accessor (the
+         * {@code simurail-session-mixins} memory). Always {@code map.rigid()}.
+         */
         IPPortalIsometry isometry;
         Vec3 normal;
         Vec3 origin;
         double[] realClip;
         long imageHandle = -1L;
+        /** The ship's scale when its image was made ({@link #rebuildImageIfResized}). */
+        double imageShipScale = 1.0;
         /** Bumped whenever the portal geometry changes, so clients are told again ({@link IPStraddleSync}). */
         int version;
         /** Server tick the session opened at. */
         long openedTick;
         /** Added to the clip depth while the ship waits wholly past the plane ({@link #setExtraDepth}). */
         double extraDepth;
+        /** Whether the image was last made or anchored with a scale other than 1 (a mounted portal's scale can change). */
+        boolean scaledImage;
         /** The portal's carrier when it is mounted on a ship ({@link IPMountedStraddle}), else null. */
         @Nullable
         final IPShipPortalAnchors.Mount mount;
 
         private Session(final Key key, final ServerSubLevel ship, final Portal portal, final ServerLevel source,
-                        final ServerLevel dest, final IPPortalIsometry isometry, final Vec3 normal,
+                        final ServerLevel dest, final IPPortalSimilarity map, final Vec3 normal,
                         @Nullable final IPShipPortalAnchors.Mount mount) {
             this.key = key;
             this.ship = ship;
@@ -80,7 +90,8 @@ final class IPStraddleSessions {
             this.source = source;
             this.dest = dest;
             this.bodyId = ship.getRuntimeId();
-            this.isometry = isometry;
+            this.map = map;
+            this.isometry = map.rigid();
             this.normal = normal;
             this.origin = portal.getOriginPos();
             this.mount = mount;
@@ -98,6 +109,18 @@ final class IPStraddleSessions {
     private static final double GHOST_MARGIN = 0.1;
 
     private IPStraddleSessions() {
+    }
+
+    /**
+     * The map a session through {@code portal} uses, its scale included (docs/lessons/scaled-ships.md). Rigid for a
+     * portal within IP's tolerance of 1, so unscaled portals keep the rigid image bit for bit. A portal on a ship that
+     * Create: Pocket Sized scales has its carriers' scales in it (its image's anchor follows, every tick).
+     */
+    static IPPortalSimilarity mapOf(final Portal portal) {
+        if (Math.abs(portal.getScale() - 1.0) <= 1.0E-4) {
+            return IPPortalSimilarity.rigid(IPPortalIsometry.of(portal));
+        }
+        return IPPortalSimilarity.of(portal);
     }
 
     static boolean anyOfShip(final UUID shipId) {
@@ -151,6 +174,7 @@ final class IPStraddleSessions {
                 close(key, "ship reloaded");
             } else {
                 refreshIfMoved(existing, portal, normal);
+                rebuildImageIfResized(existing);
                 return true;
             }
         }
@@ -167,16 +191,27 @@ final class IPStraddleSessions {
 
         // a ship carrying portals going through a portal shatters them first (docs/lessons/ship-mounted-portals.md)
         IPShipPortalAnchors.shatterCarriedPortals(ship.getUniqueId(), "its ship is going through a portal");
-        final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
-        checkAgainstPortal(isometry, portal);
+        final IPPortalSimilarity map = mapOf(portal);
+        checkAgainstPortal(map, portal);
         final IPShipPortalAnchors.Mount mount = IPShipPortalAnchors.mountFor(portal);
-        final Session session = new Session(key, ship, portal, source, dest, isometry, normal, mount);
+        final Session session = new Session(key, ship, portal, source, dest, map, normal, mount);
         session.openedTick = tick;
-        final Vec3 t = isometry.translation();
-        final Quaterniondc q = isometry.rotation();
+        session.scaledImage = map.isScaled();
+        session.imageShipScale = IPShipScale.of(ship.logicalPose());
+        final Vec3 t = map.translation();
+        final Quaterniondc q = map.rotation();
         // Created through the destination's chart view: the image pairs with that chart's terrain and bodies. Body
         // lookup is world-wide, and the image reads the ship's blocks from the body's own (source) chart.
-        session.imageHandle = RapierExt.createImageCollider(destScene, session.bodyId, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w());
+        try {
+            session.imageHandle = map.isScaled()
+                    ? RapierExt.createScaledImageCollider(destScene, session.bodyId, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w(), map.scale())
+                    : RapierExt.createImageCollider(destScene, session.bodyId, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w());
+        } catch (final RuntimeException e) {
+            // a native panic here killed the game: the natives catch it and throw
+            LOGGER.error("[IPStraddle] the image of ship {} (body {}) in {} failed natively; no session: {}",
+                    ship.getUniqueId(), session.bodyId, dest.dimension().location(), e.getMessage());
+            return false;
+        }
         if (session.imageHandle < 0L) {
             LOGGER.warn("[IPStraddle] could not create the image of ship {} (body {}) in {}; no session",
                     ship.getUniqueId(), session.bodyId, dest.dimension().location());
@@ -188,8 +223,47 @@ final class IPStraddleSessions {
 
         LOGGER.info("[IPStraddle] ship {} straddles portal {} ({} -> {}, facing {}){}: image collider {}",
                 ship.getUniqueId(), portal.getUUID(), source.dimension().location(), dest.dimension().location(),
-                portal.getNormal(), isIdentity(q) ? "" : " (rotated)", session.imageHandle);
+                portal.getNormal(), (isIdentity(q) ? "" : " (rotated)") + (map.isScaled() ? " (scale " + map.scale() + ")" : ""), session.imageHandle);
         return true;
+    }
+
+    /**
+     * The image is a copy of the ship's collider as it was when made, and does not follow Create: Pocket Sized resizing
+     * the ship (a sphere resized 1x -> 2x while straddling kept a 1x far half: headless pocket-resize-straddling): a
+     * ship whose scale changed gets a new image, made before the old one is removed.
+     */
+    private static void rebuildImageIfResized(final Session session) {
+        final double scale = IPShipScale.of(session.ship.logicalPose());
+        if (Math.abs(scale - session.imageShipScale) <= 1.0e-6) {
+            return;
+        }
+        final long destScene = RapierExt.sceneHandle(session.dest);
+        if (destScene == 0L) {
+            return;
+        }
+        final IPPortalSimilarity map = session.map;
+        final Vec3 t = map.translation();
+        final Quaterniondc q = map.rotation();
+        final long handle;
+        try {
+            handle = session.scaledImage
+                    ? RapierExt.createScaledImageCollider(destScene, session.bodyId, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w(), map.scale())
+                    : RapierExt.createImageCollider(destScene, session.bodyId, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w());
+        } catch (final RuntimeException e) {
+            LOGGER.warn("[IPStraddle] could not remake the image of resized ship {}: {}", session.ship.getUniqueId(), e.getMessage());
+            return;
+        }
+        if (handle < 0L) {
+            return;
+        }
+        RapierExt.removeImageCollider(destScene, session.bodyId, session.imageHandle);
+        LOGGER.info("[IPStraddle] ship {} resized from {} to {} while straddling portal {}: image remade ({} -> {})",
+                session.ship.getUniqueId(), String.format("%.3f", session.imageShipScale), String.format("%.3f", scale),
+                session.portal.getUUID(), session.imageHandle, handle);
+        session.imageHandle = handle;
+        session.imageShipScale = scale;
+        IPMountedStraddle.sendAnchor(session, destScene);
+        applyClipRegions(session, session.portal);
     }
 
     /**
@@ -228,8 +302,9 @@ final class IPStraddleSessions {
     }
 
     private static void refreshIfMoved(final Session session, final Portal portal, final Vec3 normal) {
-        final IPPortalIsometry fresh = IPPortalIsometry.of(portal);
-        final boolean isometryMoved = !fresh.sameAs(session.isometry);
+        final IPPortalSimilarity fresh = mapOf(portal);
+        final boolean isometryMoved = !fresh.sameAs(session.map);
+        final boolean scaled = fresh.isScaled() || session.map.isScaled();
         final boolean apertureMoved = session.origin.distanceToSqr(portal.getOriginPos()) > 1.0e-10
                 || session.normal.distanceToSqr(normal) > 1.0e-10;
         // a mounted portal's transforms are in its carrier's body frame, which Sable re-bases when the carrier's mass
@@ -237,7 +312,8 @@ final class IPStraddleSessions {
         if (!isometryMoved && !apertureMoved && session.mount == null) {
             return;
         }
-        session.isometry = fresh;
+        session.map = fresh;
+        session.isometry = fresh.rigid();
         session.normal = normal;
         session.origin = portal.getOriginPos();
         if (session.mount == null) {
@@ -252,7 +328,11 @@ final class IPStraddleSessions {
             if (destScene != 0L) {
                 final Vec3 t = fresh.translation();
                 final Quaterniondc q = fresh.rotation();
-                RapierExt.setImagePrefix(destScene, session.imageHandle, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w());
+                if (scaled) {
+                    RapierExt.setImagePrefixScaled(destScene, session.imageHandle, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w(), fresh.scale());
+                } else {
+                    RapierExt.setImagePrefix(destScene, session.imageHandle, t.x, t.y, t.z, q.x(), q.y(), q.z(), q.w());
+                }
             }
         }
         applyClipRegions(session, portal);
@@ -277,12 +357,13 @@ final class IPStraddleSessions {
         session.realClip = clipRegion(session.origin, session.normal, portal.getAxisW(), portal.getAxisH(), halfW, halfH, depth);
         pushRealClipRegions(session.ship, session.source, session.bodyId);
 
-        final IPPortalIsometry iso = session.isometry;
-        final double[] imageClip = imageClipRegions(iso.mapPoint(session.origin), iso.mapVec(session.normal),
-                iso.mapVec(portal.getAxisW()), iso.mapVec(portal.getAxisH()), halfW, halfH, depth);
+        final IPPortalSimilarity map = session.map;
+        final double[] imageClip = imageClipRegions(map.mapPoint(session.origin), map.mapDirection(session.normal),
+                map.mapDirection(portal.getAxisW()), map.mapDirection(portal.getAxisH()),
+                map.mapLength(halfW), map.mapLength(halfH), map.mapLength(depth));
         final long destScene = RapierExt.sceneHandle(session.dest);
         if (destScene != 0L) {
-            final double[] regions = concat(imageClip, ghostRegions(session.ship.getUniqueId(), iso));
+            final double[] regions = concat(imageClip, ghostRegions(session.ship.getUniqueId(), map));
             if (session.mount != null && session.mount.destination() != null) {
                 // the destination plane is on a carrier: the image's regions follow it
                 final ServerSubLevel carrier = session.mount.destination();
@@ -323,20 +404,16 @@ final class IPStraddleSessions {
         }
     }
 
-    static boolean hasGhosts(final UUID shipId) {
-        return GHOSTS.containsKey(shipId);
-    }
-
     /** Drops the let-through frame blocks of every ship not in {@code live}, without native calls (their bodies are gone). */
     static void retainGhosts(final java.util.Set<UUID> live) {
         GHOSTS.keySet().retainAll(live);
     }
 
     /**
-     * Clip regions covering a ship's let-through frame blocks, in its own level or, with {@code isometry}, mapped into a
+     * Clip regions covering a ship's let-through frame blocks, in its own level or, with {@code map}, mapped into a
      * portal's destination.
      */
-    private static double[] ghostRegions(final UUID shipId, @Nullable final IPPortalIsometry isometry) {
+    private static double[] ghostRegions(final UUID shipId, @Nullable final IPPortalSimilarity map) {
         final List<AABB> boxes = GHOSTS.get(shipId);
         if (boxes == null) {
             return new double[0];
@@ -348,13 +425,19 @@ final class IPStraddleSessions {
             Vec3 normal = new Vec3(1.0, 0.0, 0.0);
             Vec3 axisW = new Vec3(0.0, 1.0, 0.0);
             Vec3 axisH = new Vec3(0.0, 0.0, 1.0);
-            if (isometry != null) {
-                point = isometry.mapPoint(point);
-                normal = isometry.mapVec(normal);
-                axisW = isometry.mapVec(axisW);
-                axisH = isometry.mapVec(axisH);
+            double halfW = box.getYsize() * 0.5;
+            double halfH = box.getZsize() * 0.5;
+            double depth = box.getXsize();
+            if (map != null) {
+                point = map.mapPoint(point);
+                normal = map.mapDirection(normal);
+                axisW = map.mapDirection(axisW);
+                axisH = map.mapDirection(axisH);
+                halfW = map.mapLength(halfW);
+                halfH = map.mapLength(halfH);
+                depth = map.mapLength(depth);
             }
-            System.arraycopy(clipRegion(point, normal, axisW, axisH, box.getYsize() * 0.5, box.getZsize() * 0.5, box.getXsize()),
+            System.arraycopy(clipRegion(point, normal, axisW, axisH, halfW, halfH, depth),
                     0, flat, i * RapierExt.CLIP_REGION_DOUBLES, RapierExt.CLIP_REGION_DOUBLES);
         }
         return flat;
@@ -428,7 +511,8 @@ final class IPStraddleSessions {
         final double dx = box.maxX() - box.minX() + 1.0;
         final double dy = box.maxY() - box.minY() + 1.0;
         final double dz = box.maxZ() - box.minZ() + 1.0;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz) + APERTURE_MARGIN;
+        // plot blocks are s wide in the world on a ship Create: Pocket Sized scales
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) * IPShipScale.of(ship.logicalPose()) + APERTURE_MARGIN;
     }
 
     private static double[] clipRegion(final Vec3 point, final Vec3 normal, final Vec3 axisW, final Vec3 axisH,
@@ -450,7 +534,7 @@ final class IPStraddleSessions {
      * The image's isometry is built from the portal's quaternion with JOML; IP maps entities with its own quaternion
      * code. Logs once if the two disagree for a portal (they must, or the image sits where the ship is not drawn).
      */
-    private static void checkAgainstPortal(final IPPortalIsometry isometry, final Portal portal) {
+    private static void checkAgainstPortal(final IPPortalSimilarity isometry, final Portal portal) {
         final Vec3 probe = portal.getOriginPos().add(portal.getAxisW().scale(1.7)).add(portal.getNormal().scale(-2.3)).add(0.0, 0.9, 0.0);
         final double error = isometry.mapPoint(probe).distanceTo(portal.transformPoint(probe));
         if (error > 1.0e-6 && !warnedMismatch) {

@@ -56,6 +56,16 @@ public final class IPShipBlockInteraction {
     }
 
     /**
+     * @return whether the block at {@code pos} of {@code level}, a portal block, is on a ship with a portal at it: IP
+     * gives a portal block no outline where a portal is ({@code MixinClipContext}), looking at the block's own
+     * position, which on a ship is in plot space
+     */
+    public static boolean isShipPortalBlock(final Level level, final BlockPos pos) {
+        return SABLE && IPSableCompatHelper.isPlotSpacePosition(pos.getX() + 0.5, pos.getZ() + 0.5)
+            && IPStraddleInteraction.isShipPortalBlock(level, pos);
+    }
+
+    /**
      * Client, before IP looks for a target through a portal: forgets the previous far-half target.
      */
     public static void onPickStart() {

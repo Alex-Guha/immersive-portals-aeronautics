@@ -17,6 +17,7 @@ import org.joml.Quaterniond;
 import org.joml.Vector3d;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPSeatProxiesClientAccess;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalUtils;
@@ -36,7 +37,7 @@ public final class IPStraddleSeatsClient {
     /** How far in front of the plane the cross-portal view starts its ray to the head. */
     private static final double ORIGIN_OFFSET = 0.05;
 
-    private record Proxy(UUID ship, ResourceKey<Level> shipDim, Vec3 riderPlot, IPPortalIsometry isometry) {
+    private record Proxy(UUID ship, ResourceKey<Level> shipDim, Vec3 riderPlot, IPPortalSimilarity isometry) {
     }
 
     private static final Map<UUID, Proxy> PROXIES = new HashMap<>();
@@ -80,8 +81,8 @@ public final class IPStraddleSeatsClient {
             final Vec3 normal = session.destNormal();
             final Vec3 offset = eye.subtract(session.destOrigin());
             final double depth = offset.dot(normal);
-            if (depth >= 0.0 || Math.abs(offset.dot(session.isometry().mapVec(session.axisW()))) > session.halfW()
-                || Math.abs(offset.dot(session.isometry().mapVec(session.axisH()))) > session.halfH()) {
+            if (depth >= 0.0 || Math.abs(offset.dot(session.map().mapDirection(session.axisW()))) > session.map().mapLength(session.halfW())
+                || Math.abs(offset.dot(session.map().mapDirection(session.axisH()))) > session.map().mapLength(session.halfH())) {
                 continue;
             }
             final Vec3 origin = eye.add(normal.scale(-depth + ORIGIN_OFFSET));
@@ -107,9 +108,9 @@ public final class IPStraddleSeatsClient {
         }
 
         public static void begin(final UUID entity, final UUID ship, final ResourceKey<Level> shipDim, final Vec3 riderPlot,
-                                 final Vec3 origin, final Vec3 dest, final DQuaternion rotation) {
-            PROXIES.put(entity, new Proxy(ship, shipDim, riderPlot,
-                new IPPortalIsometry(origin, dest, new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize())));
+                                 final Vec3 origin, final Vec3 dest, final DQuaternion rotation, final double scale) {
+            PROXIES.put(entity, new Proxy(ship, shipDim, riderPlot, new IPPortalSimilarity(
+                new IPPortalIsometry(origin, dest, new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize()), scale)));
             IPSeatProxiesClientAccess.add(entity);
         }
 

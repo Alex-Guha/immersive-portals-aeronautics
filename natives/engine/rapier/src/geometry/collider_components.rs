@@ -1,7 +1,8 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
 // frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
-// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
+// the frame velocity of moving portals' images (`portal_frame_*`) and scaled portals (`portal_scale`, 2.9.0),
+// PolyForm Shield License 1.0.0; see NOTICE.
 
 use crate::alloc_prelude::*;
 use crate::dynamics::{CoefficientCombineRule, MassProperties, RigidBodyHandle, RigidBodyType};
@@ -187,6 +188,11 @@ pub struct ColliderParent {
     /// mass-properties composition (images are massless by construction) nor to
     /// the CCD paths (CCD stays disabled for imaged bodies).
     pub portal_prefix: Option<Pose>,
+    /// Immersive Portals: Aeronautics, scaled portals: the scale k of the portal map, so the image is
+    /// `S(x) = k R x + t` applied to the body (`P = (R, t)`). The collider pose stays an isometry
+    /// `(R R_b, k R t_b + t)` and the shape (`LevelCollider::scale`) is k times the body's. 1 for every
+    /// other collider (only read with a prefix).
+    pub portal_scale: Real,
     /// IPL atlas, moving portals (Immersive Portals: Aeronautics): the velocity of the image's points caused by the
     /// portal moving, at this collider's image points (frame twist). Contacts treat it as a surface velocity of the
     /// image, so a portal on a moving ship carries what its image touches. None for still portals.
@@ -213,6 +219,10 @@ impl ColliderParent {
     pub fn collider_pose(&self, parent_pos: &Pose) -> Pose {
         let unprefixed = *parent_pos * self.pos_wrt_parent;
         match &self.portal_prefix {
+            Some(prefix) if self.portal_scale != 1.0 => Pose {
+                rotation: prefix.rotation * unprefixed.rotation,
+                translation: prefix.rotation * (unprefixed.translation * self.portal_scale) + prefix.translation,
+            },
             Some(prefix) => *prefix * unprefixed,
             None => unprefixed,
         }

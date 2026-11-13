@@ -34,6 +34,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaterniond;
@@ -63,11 +64,6 @@ public final class IPSableBridge {
         return new AABB(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ());
     }
 
-    public static AABB plotAabb(SubLevel sub) {
-        BoundingBox3ic bounds = sub.getPlot().getBoundingBox();
-        return bounds == BoundingBox3i.EMPTY ? null : new AABB(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX() + 1, bounds.maxY() + 1, bounds.maxZ() + 1);
-    }
-
     public static IPSableBridge.Moved moveThroughPortal(ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation) {
         return moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, null);
     }
@@ -85,14 +81,6 @@ public final class IPSableBridge {
             IPShipJoints.shiftLoadedJoints(dstLevel, Map.of(moved.sub().getUniqueId(), moved.shift()));
         }
         return moved;
-    }
-
-    /** As the overload below, for a ship that did not straddle the portal. */
-    public static IPSableBridge.Moved moveThroughPortal(
-        ServerSubLevel sub, ServerLevel srcLevel, ServerLevel dstLevel, Vec3 destPos, Quaterniond rotation, @Nullable Velocity carried,
-        Set<UUID> travelling
-    ) {
-        return moveThroughPortal(sub, srcLevel, dstLevel, destPos, rotation, carried, travelling, false);
     }
 
     /**
@@ -143,6 +131,13 @@ public final class IPSableBridge {
                 srcLevel.getServer(), data.uuid(), srcLevel.dimension().location(), dstLevel.dimension().location(), srcLevel.getMinBuildHeight(), data
             );
             srcContainer.removeSubLevel(sub, SubLevelRemovalReason.REMOVED);
+            // Pym would rebuild the old copy's last joints (a held handle's, aimed at this world's coordinates) on the new
+            // copy when it is resized: the new copy has the same UUID (IPPymCompat.forgetConstraintsOf)
+            int forgotten = IPPymCompat.forgetConstraintsOf(sub.getUniqueId());
+            if (forgotten > 0) {
+                LOGGER.info("[IPShipPortal] Pym: forgot {} joint record(s) of ship {} left in {}", forgotten, sub.getUniqueId(),
+                    srcLevel.dimension().location());
+            }
 
             IPSableBridge.Loaded loaded;
             try {
@@ -340,7 +335,7 @@ public final class IPSableBridge {
      *                  standing on it, pose snapshots), so in the old plot the arrived copy took over what was meant for
      *                  the copy that left: a move packet the rider's client sent from the old copy put the player a
      *                  portal's distance on, their own crossing was refused as too far, and a drag or held handle was
-     *                  left a portal off and pulled the ship there (user, 2026-11-04)
+     *                  left a portal off and pulled the ship there
      */
     public static IPSableBridge.Loaded reloadInDestination(int srcMinBuildHeight, ServerLevel dstLevel, ServerSubLevelContainer dstContainer, SubLevelData data,
                                                            boolean otherPlot) {
@@ -466,6 +461,9 @@ public final class IPSableBridge {
             "[IPShipPortal] loading ship {} into {}: plot ({},{}) -> ({},{}), section shift {}, block shift ({}, {}, {})",
             data.uuid(), dstLevel.dimension().location(), oldPlotX, oldPlotZ, freePlot[0], freePlot[1], sectionShift, shiftX, shiftY, shiftZ
         );
+        if (READ_PLOT_BEFORE_LOAD) {
+            readPlotChunks(dstLevel, dstContainer, plotTag, freePlot);
+        }
         ServerSubLevel loaded = SubLevelSerializer.fullyLoad(dstLevel, edited);
         if (loaded == null) {
             return null;
@@ -530,7 +528,7 @@ public final class IPSableBridge {
      * on load adds {@code min_section_y - level.getMinSection()} to every section key ({@code ServerLevelPlotMixin},
      * 1.1.0): the re-keying {@link #rekeySections} has already done. Applied twice, an overworld ship loaded in the
      * nether or the End came back 64 blocks below its pose: its block entities found air and were dropped, and the
-     * ship sat in the ground under the portal (player report via the user, 2026-11-05). The tag now says its sections
+     * ship sat in the ground under the portal. The tag now says its sections
      * are keyed for the destination, so that mod adds nothing; Sable ignores the key.
      */
     private static void keySectionsForDestination(CompoundTag plotTag, ServerLevel dstLevel) {
@@ -635,6 +633,26 @@ public final class IPSableBridge {
                     entry.putIntArray("Controller", new int[]{controller[0] + dx, controller[1] + dy, controller[2] + dz});
                 }
             }
+        }
+    }
+
+    /**
+     * Test switch {@code -Dip_aeronautics.debug.readPlotBeforeLoad=true}: looks up every chunk of the destination plot
+     * before the ship is loaded there, as code in game may (it leaves vanilla's last-chunk cache answering for them;
+     * {@code MixinSableLevelPlot_ChunkCache}).
+     */
+    private static final boolean READ_PLOT_BEFORE_LOAD = Boolean.getBoolean("ip_aeronautics.debug.readPlotBeforeLoad");
+
+    private static void readPlotChunks(ServerLevel level, ServerSubLevelContainer container, CompoundTag plotTag, int[] plot) {
+        int logPlotSize = container.getLogPlotSize();
+        int originX = container.getOrigin().x();
+        int originZ = container.getOrigin().y();
+        for (String key : plotTag.getCompound("chunks").getAllKeys()) {
+            long local = Long.parseLong(key);
+            int chunkX = ((plot[0] + originX) << logPlotSize) + ChunkPos.getX(local);
+            int chunkZ = ((plot[1] + originZ) << logPlotSize) + ChunkPos.getZ(local);
+            BlockPos pos = new BlockPos(chunkX << 4, level.getMinBuildHeight(), chunkZ << 4);
+            LOGGER.info("[IPShipPortal] test: looked up {} before loading: {}", pos.toShortString(), level.getBlockState(pos));
         }
     }
 

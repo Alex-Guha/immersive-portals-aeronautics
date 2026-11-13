@@ -37,7 +37,7 @@ import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
  * pack. Only a dimension stack's floor or ceiling is drawn past the render distance, and only with LODs (DH or Voxy):
  * past the vanilla terrain nothing else is there to see. Regular portals stop at the render distance: the server
  * sends a portal only while its chunk is in the player's view distance, and a view through a portal farther than that
- * has no terrain in range of its camera (tried in 2.8.8.3-draw-distance, given up: user 2026-11-02). Over the last quarter of the range the portal fades out: what was behind the portal is
+ * has no terrain in range of its camera (drawing them past it was tried and given up). Over the last quarter of the range the portal fades out: what was behind the portal is
  * copied before its pass and blended back over the portal's stencil area afterwards, so blocks, LODs and clouds fade
  * together.
  * <p>
@@ -100,6 +100,9 @@ public final class IPPortalDrawDistance {
         if (visibility >= 1) {
             return false;
         }
+        // read before allocating or resizing the backdrop: RenderTarget's resize ends by binding framebuffer 0
+        int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         if (backdrop == null) {
             backdrop = new TextureTarget(target.width, target.height, false, Minecraft.ON_OSX);
         }
@@ -107,8 +110,6 @@ public final class IPPortalDrawDistance {
             backdrop.resize(target.width, target.height, Minecraft.ON_OSX);
         }
 
-        int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         boolean scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
         if (scissor) {
             GL11.glDisable(GL11.GL_SCISSOR_TEST);

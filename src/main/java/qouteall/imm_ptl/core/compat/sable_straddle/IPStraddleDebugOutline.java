@@ -38,7 +38,7 @@ final class IPStraddleDebugOutline {
             if (session.ship.isRemoved() || session.dest.players().isEmpty()) {
                 return;
             }
-            final Pose3d mapped = session.isometry.mapPose(session.ship.logicalPose());
+            final Pose3d mapped = session.map.mapPose(session.ship.logicalPose());
             final BoundingBox3ic box = session.ship.getPlot().getBoundingBox();
             final Vec3[] corners = new Vec3[8];
             for (int i = 0; i < 8; i++) {

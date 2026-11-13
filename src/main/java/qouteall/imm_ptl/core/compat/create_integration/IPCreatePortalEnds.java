@@ -32,10 +32,10 @@ import java.util.UUID;
 /**
  * Who owns the space between the two sides of a portal at one spot. The two portal blocks there (each from its block
  * face to its plane) make one block of space between the blocks facing them, and only one thing goes through it: the
- * highest of what faces the portal on either side, by {@link Kind} (belts, then shafts, then pipes, then tracks; user,
- * 2026-10-28). The owner keeps its look and behaviour through the whole space (its own half, and a lone end's piece
+ * highest of what faces the portal on either side, by {@link Kind} (belts, then shafts, then pipes, then tracks).
+ * The owner keeps its look and behaviour through the whole space (its own half, and a lone end's piece
  * past the plane); an outranked end draws nothing in its portal block and passes nothing through, as if it faced a
- * wall. Ends of the same kind join as before. Before 2.6.12.3 a sideways belt's pulley across the portal drew its half
+ * wall. Ends of the same kind join as before. Without an owner a sideways belt's pulley across the portal drew its half
  * shaft through the portal into the half where the near belt runs its items.
  */
 public final class IPCreatePortalEnds {
@@ -66,10 +66,10 @@ public final class IPCreatePortalEnds {
      * @param centre the face's centre
      * @param normal the face's normal
      */
-    public record Face(Vec3 localNormal, Vec3 centre, Vec3 normal) {
-        /** Where a portal this face meets can be. */
+    public record Face(Vec3 localNormal, Vec3 centre, Vec3 normal, double scale) {
+        /** Where a portal this face meets can be (within one of its blocks, {@code scale} world blocks). */
         public AABB search() {
-            return new AABB(this.centre, this.centre.add(this.normal)).inflate(0.25);
+            return new AABB(this.centre, this.centre.add(this.normal.scale(this.scale))).inflate(0.25 * this.scale);
         }
     }
 
@@ -78,7 +78,7 @@ public final class IPCreatePortalEnds {
         final Vec3 localNormal = Vec3.atLowerCornerOf(side.getNormal());
         final Vec3 localCentre = Vec3.atCenterOf(pos).add(localNormal.scale(0.5));
         return new Face(localNormal, frame == null ? localCentre : frame.toWorld(localCentre),
-            frame == null ? localNormal : frame.toWorldDirection(localNormal).normalize());
+            frame == null ? localNormal : frame.toWorldDirection(localNormal).normalize(), frame == null ? 1.0 : frame.scale());
     }
 
     /**
@@ -100,7 +100,8 @@ public final class IPCreatePortalEnds {
      * ({@link IPCreatePortalShafts#onOwnSide}). Else null. Each kind goes on with {@link #far}.
      */
     public static @Nullable Opening opening(final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final Face face) {
-        if (portal.isRemoved() || Math.abs(portal.getScale() - 1) > 1.0e-6 || !IPCreatePortalShafts.onOwnSide(portal, frame)) {
+        final double nearScale = frame == null ? 1.0 : frame.scale();
+        if (portal.isRemoved() || !blockForBlock(portal, nearScale) || !IPCreatePortalShafts.onOwnSide(portal, frame)) {
             return null;
         }
         final Level farLevel = portal.getDestWorld();
@@ -114,15 +115,27 @@ public final class IPCreatePortalEnds {
         if (normal.dot(face.normal()) > -cos) {
             return null;
         }
-        final double gap = portal.getDistanceToPlane(face.centre());
+        // in the near side's blocks (a scaled ship's are larger in the world)
+        final double gap = portal.getDistanceToPlane(face.centre()) / nearScale;
         if (gap < -slack || gap >= 1 - PLANE_EPSILON) {
             return null;
         }
-        final Vec3 onPlane = face.centre().subtract(normal.scale(gap));
+        final Vec3 onPlane = face.centre().subtract(normal.scale(gap * nearScale));
         if (!portal.getPortalShape().isBoxInPortalProjection(portal.getThisSideState(), AABB.ofSize(onPlane, 0.1, 0.1, 0.1))) {
             return null;
         }
         return new Opening(portal, farLevel, onPlane, gap, portal.transformPoint(onPlane), portal.transformLocalVecNonScale(face.normal()), cos, slack);
+    }
+
+    /**
+     * Whether {@code portal} takes one block of its near side to one block of its far side, a side being the world or
+     * the plot of a ship scaled by Create: Pocket Sized ({@code nearScale}: world blocks per near block): its scale
+     * times the near side's over the far side's is 1. An unscaled portal between unscaled sides, and a portal mounted
+     * on a scaled ship (a scaled portal that is one block to one block in the ship's own blocks). Create parts link
+     * only through such portals: through any other, a block faces part of a block or several.
+     */
+    public static boolean blockForBlock(final Portal portal, final double nearScale) {
+        return Math.abs(portal.getScale() * nearScale / IPShipPortals.sideScale(portal, false) - 1.0) <= 1.0e-4;
     }
 
     /** What a kind wants of a far block. */

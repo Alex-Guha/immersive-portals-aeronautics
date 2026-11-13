@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPhysicsStaffDragSessionAccessor;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPhysicsStaffServerHandlerAccessor;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
@@ -68,7 +69,7 @@ public final class IPPhysicsStaffPortals {
     /**
      * @param frame maps the player's world ({@code playerDim}) into the ship's world
      */
-    public record Grab(UUID ship, ResourceKey<Level> playerDim, IPPortalIsometry frame) {
+    public record Grab(UUID ship, ResourceKey<Level> playerDim, IPPortalSimilarity frame) {
     }
 
     /** By player. Server thread only. */
@@ -82,10 +83,19 @@ public final class IPPhysicsStaffPortals {
     }
 
     /**
-     * @return whether the staff maps through {@code portal}: rigid portals only (no scale, no mirror)
+     * @return whether the staff maps through {@code portal}: any portal but a mirror (a scaled one through its
+     * similarity, {@link #mapOf})
      */
-    public static boolean isRigid(final Portal portal) {
-        return !(portal instanceof Mirror) && Math.abs(portal.getScale() - 1.0) < 1.0e-6;
+    public static boolean isMappable(final Portal portal) {
+        return !(portal instanceof Mirror);
+    }
+
+    /**
+     * @return the map through {@code portal} for the staff's and handles' frames: rigid when unscaled
+     */
+    public static IPPortalSimilarity mapOf(final Portal portal) {
+        return Math.abs(portal.getScale() - 1.0) < 1.0e-6
+            ? IPPortalSimilarity.rigid(IPPortalIsometry.of(portal)) : IPPortalSimilarity.of(portal);
     }
 
     @Nullable
@@ -216,18 +226,21 @@ public final class IPPhysicsStaffPortals {
         final UUID ship = drag.ip_getSubLevel().getUniqueId();
         Grab grab = grabOf(player.getUUID(), ship);
         if (grab == null) {
-            grab = new Grab(ship, from, IPPortalIsometry.IDENTITY);
+            grab = new Grab(ship, from, IPPortalSimilarity.IDENTITY);
         }
-        if (!isRigid(portal) || !grab.playerDim().equals(from)) {
+        if (!isMappable(portal) || !grab.playerDim().equals(from)) {
             LOGGER.info("[IPStaff] {} went through portal {} while dragging ship {}: drag ended ({})", player.getGameProfile().getName(),
-                portal.getUUID(), ship, isRigid(portal) ? "not in the drag's world" : "scaled or mirror portal");
+                portal.getUUID(), ship, isMappable(portal) ? "not in the drag's world" : "mirror");
             handler.stopDragging(player.getUUID());
             return;
         }
-        final IPPortalIsometry through = IPPortalIsometry.of(portal);
+        final IPPortalSimilarity through = mapOf(portal);
         GRABS.put(player.getUUID(), new Grab(ship, portal.getDestDim(), through.inverse().then(grab.frame())));
         // until the client's next drag packet (already in the new world's frame) the goal offset is the old one, turned
         through.rotation().transform(drag.ip_getPlayerRelativeGoal());
+        if (through.isScaled()) {
+            drag.ip_getPlayerRelativeGoal().mul(through.scale());
+        }
         LOGGER.info("[IPStaff] {} went through portal {} ({} -> {}) while dragging ship {}", player.getGameProfile().getName(),
             portal.getUUID(), from.location(), portal.getDestDim().location(), ship);
     }
@@ -237,13 +250,13 @@ public final class IPPhysicsStaffPortals {
      * their own teleport.
      */
     static void tellCarried(final ServerPlayer player, final Portal portal) {
-        if (!isRigid(portal)) {
+        if (!isMappable(portal)) {
             return;
         }
-        final IPPortalIsometry through = IPPortalIsometry.of(portal);
+        final IPPortalSimilarity through = mapOf(portal);
         final Quaterniondc q = through.rotation();
         McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "onCarriedThrough", portal.getDestDim(),
-            through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+            through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()), through.scale());
     }
 
     /**
@@ -263,23 +276,23 @@ public final class IPPhysicsStaffPortals {
             final UUID playerId = entry.getKey();
             final ServerPlayer player = src.getServer().getPlayerList().getPlayer(playerId);
             final Grab grab = grabOf(playerId, shipId);
-            if (player == null || !isRigid(portal)) {
+            if (player == null || !isMappable(portal)) {
                 from.stopDragging(playerId);
                 continue;
             }
-            final IPPortalIsometry through = IPPortalIsometry.of(portal);
+            final IPPortalSimilarity through = mapOf(portal);
             final Vector3d relative = new Vector3d(drag.ip_getPlayerRelativeGoal());
             final Vector3d anchor = new Vector3d(drag.ip_getPlotAnchor()).add(moved.shift().getX(), moved.shift().getY(), moved.shift().getZ());
             final Quaterniond orientation = new Quaterniond(through.rotation()).mul(drag.ip_getOrientation());
             final Grab carried = new Grab(shipId, grab != null ? grab.playerDim() : player.level().dimension(),
-                (grab != null ? grab.frame() : IPPortalIsometry.IDENTITY).then(through));
+                (grab != null ? grab.frame() : IPPortalSimilarity.IDENTITY).then(through));
 
             from.stopDragging(playerId);
             PhysicsStaffServerHandler.get(dst).drag(playerId, shipId, relative, anchor, orientation);
             GRABS.put(playerId, carried);
             final Quaterniondc q = through.rotation();
             McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "onShipMoved", shipId, dst.dimension(), moved.shift(),
-                through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+                through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()), through.scale());
             LOGGER.info("[IPStaff] {}'s drag of ship {} follows it to {}", player.getGameProfile().getName(), shipId, dst.dimension().location());
         }
     }
@@ -323,31 +336,31 @@ public final class IPPhysicsStaffPortals {
 
     /**
      * @return the map from {@code player}'s world into {@code shipLevel} along the portals named by {@code chain}, or
-     * null when they do not lead there (or one is not rigid)
+     * null when they do not lead there (or one is a mirror)
      */
     @Nullable
-    static IPPortalIsometry resolve(final ServerPlayer player, final ServerLevel shipLevel, final ListTag links) {
+    static IPPortalSimilarity resolve(final ServerPlayer player, final ServerLevel shipLevel, final ListTag links) {
         ResourceKey<Level> at = player.level().dimension();
-        IPPortalIsometry frame = IPPortalIsometry.IDENTITY;
+        IPPortalSimilarity frame = IPPortalSimilarity.IDENTITY;
         for (int i = 0; i < links.size(); i++) {
             final CompoundTag link = links.getCompound(i);
             final ResourceLocation dimId = ResourceLocation.tryParse(link.getString(LINK_DIM));
             final ServerLevel level = dimId == null ? null : player.server.getLevel(ResourceKey.create(Registries.DIMENSION, dimId));
             final Portal portal = level == null || !link.hasUUID(LINK_PORTAL) ? null : findPortal(level, link.getUUID(LINK_PORTAL));
-            if (portal == null || !isRigid(portal)) {
+            if (portal == null || !isMappable(portal)) {
                 return null;
             }
             if (link.getBoolean(LINK_INVERSE)) {
                 if (!portal.getDestDim().equals(at)) {
                     return null;
                 }
-                frame = frame.then(IPPortalIsometry.of(portal).inverse());
+                frame = frame.then(mapOf(portal).inverse());
                 at = level.dimension();
             } else {
                 if (!level.dimension().equals(at)) {
                     return null;
                 }
-                frame = frame.then(IPPortalIsometry.of(portal));
+                frame = frame.then(mapOf(portal));
                 at = portal.getDestDim();
             }
         }
@@ -372,7 +385,7 @@ public final class IPPhysicsStaffPortals {
                 return;
             }
             final ServerLevel shipLevel = player.server.getLevel(shipDim);
-            final IPPortalIsometry frame = shipLevel == null || !hasShip(shipLevel, ship) ? null : resolve(player, shipLevel, links);
+            final IPPortalSimilarity frame = shipLevel == null || !hasShip(shipLevel, ship) ? null : resolve(player, shipLevel, links);
             if (frame == null) {
                 LOGGER.info("[IPStaff] {} cannot drag ship {} of {} through the portals named: they do not lead there",
                     player.getGameProfile().getName(), ship, shipDim.location());

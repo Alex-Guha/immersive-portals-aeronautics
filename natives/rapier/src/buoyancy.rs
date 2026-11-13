@@ -62,6 +62,8 @@ pub fn compute_buoyancy(scene: &PhysicsScene) {
             true,
             &sable_data,
             info.chart,
+            1.0,
+            1.0,
         );
         let vels: RigidBodyVelocity<Real> = *body.vels();
 

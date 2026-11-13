@@ -80,16 +80,12 @@ public final class IPShipRiderCarry {
         return entity instanceof Portal ? true : entity.getClass().getName().startsWith("qouteall.imm_ptl");
     }
 
-    public static Captured capture(ServerLevel level, ServerSubLevel sub) {
-        return capture(level, sub, false);
-    }
-
     /**
      * @param straddled the ship went through straddling the portal (a hand-off), so it is wholly past the plane: a
      *                  player standing next to it is not carried. One in front of the portal has not gone through and
      *                  walks through on their own; the carry moved them by the ship's displacement to just short of the
-     *                  far portal's plane, and through a portal with two faces its back face then took them straight back
-     *                  (user, 2026-11-04). One behind the plane in this world got there some other way (round the
+     *                  far portal's plane, and through a portal with two faces its back face then took them straight back.
+     *                  One behind the plane in this world got there some other way (round the
      *                  frame, or out of the far end of a portal into the same world). Seated players are still carried.
      */
     public static Captured capture(ServerLevel level, ServerSubLevel sub, boolean straddled) {
@@ -275,6 +271,26 @@ public final class IPShipRiderCarry {
             captured.seats().size(),
             queuedRemounts
         );
+    }
+
+    /**
+     * @return the factor IP's own teleport scales an entity by through {@code portal}
+     * ({@code ScaleUtils.onServerEntityTeleported}): its scaling when it changes the scale of what goes through, else 1
+     */
+    public static double scaleFactor(final Portal portal) {
+        return portal.hasScaling() && portal.isTeleportChangesScale() ? portal.getScaling() : 1.0;
+    }
+
+    /**
+     * Scales {@code player}, moved through a portal by our code (carried with its ship, or seated on it) rather than by
+     * IP's teleport, by {@code factor} ({@link #scaleFactor}, or its inverse coming back), as IP would have.
+     */
+    public static void scaleThrough(final ServerPlayer player, final double factor) {
+        if (factor != 1.0) {
+            qouteall.imm_ptl.core.ScaleUtils.doScalingForEntity(player, factor);
+            LOGGER.info("[IPShipPortal] {} scaled by {} through the portal (now {})", player.getGameProfile().getName(),
+                String.format("%.3f", factor), String.format("%.3f", qouteall.imm_ptl.core.ScaleUtils.getIPortalScaling(player)));
+        }
     }
 
     /**

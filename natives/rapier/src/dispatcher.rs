@@ -2,7 +2,9 @@
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
 // this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// exact chart check for body pairs; Sable's interior check for ship blocks against portal rims.
+// exact chart check for body pairs; Sable's interior check for ship blocks against portal rims; IPSable's
+// parent-frame guard removed (never set); scaled images (`LevelCollider::scale`): blocks are k wide in the
+// shape's frame, block lookups and interior checks stay in plot units.
 
 use crate::collider::LevelCollider;
 use log::info;
@@ -193,21 +195,6 @@ where
                     manifolds.clear();
                     return Ok(());
                 }
-                // Portal rims can exclude a registered pair from contacts. Clear rather
-                // than keep persisted manifolds: stale contacts must not survive exclusion.
-                if let (Some(id1), Some(id2)) = (g1.id, g2.id) {
-                    let key = if id1 <= id2 { (id1, id2) } else { (id2, id1) };
-                    if self
-                        .sable_data
-                        .read()
-                        .unwrap()
-                        .ipl_excluded_pairs
-                        .contains(&key)
-                    {
-                        manifolds.clear();
-                        return Ok(());
-                    }
-                }
                 let swap = {
                     let sable_data = self.sable_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
                     // IPL defensive: a pair can outlive one body by a beat during teardown
@@ -225,27 +212,6 @@ where
                         manifolds.clear();
                         return Ok(());
                     };
-                    // IPL atlas cross-parent guard: real hosted bodies share the
-                    // hosting chart at their own parents' coordinates, so numeric
-                    // overlap between different parent frames is meaningless. A
-                    // shape whose chart matches its body info is the NATIVE
-                    // collider (images carry the far chart on the shape) — drop
-                    // native-vs-native pairs with differing nonzero frames, stale
-                    // manifolds included, like the chart guard in world_vs_world.
-                    // Image shapes skip this on purpose: an image pair meeting in
-                    // a shared far chart is a legitimate portal-mediated contact
-                    // (straddle into the other ship's dimension) regardless of
-                    // parents, and cross-chart image pairs are already dropped by
-                    // the chart guard. 0 = untagged, collides with everything.
-                    if g1.chart == body_1.chart
-                        && g2.chart == body_2.chart
-                        && body_1.ipl_parent_frame != 0
-                        && body_2.ipl_parent_frame != 0
-                        && body_1.ipl_parent_frame != body_2.ipl_parent_frame
-                    {
-                        manifolds.clear();
-                        return Ok(());
-                    }
                     let (Some(min_1), Some(max_1), Some(min_2), Some(max_2)) = (
                         body_1.local_bounds_min,
                         body_1.local_bounds_max,
@@ -330,13 +296,18 @@ impl SableDispatcher {
         let margin: Real = 0.1;
         local_aabb.maxs += Vec3::splat(prediction + margin);
         local_aabb.mins -= Vec3::splat(prediction + margin);
+        // Immersive Portals: Aeronautics, scaled images: the block range is found in plot units (shape frame / k);
+        // contacts are made in the shape's frame with blocks k wide.
+        let k1 = g1.scale;
+        let local_aabb = if k1 != 1.0 { Aabb::new(local_aabb.mins / k1, local_aabb.maxs / k1) } else { local_aabb };
+        let plot_prediction = prediction / k1;
         let local_aabb = if interior_check {
-            Self::adjust_aabb_for_body_blocks(local_aabb, collider_info, center_of_mass_1, prediction)
+            Self::adjust_aabb_for_body_blocks(local_aabb, collider_info, center_of_mass_1, plot_prediction)
         } else {
-            Self::adjust_aabb_for_body(local_aabb, collider_info, center_of_mass_1, prediction)
+            Self::adjust_aabb_for_body(local_aabb, collider_info, center_of_mass_1, plot_prediction)
         };
         let (local_min, local_max) =
-            Self::calculate_local_bounds(local_aabb, center_of_mass_1, prediction);
+            Self::calculate_local_bounds(local_aabb, center_of_mass_1, plot_prediction);
 
         let mut manifold_index = 0;
 
@@ -404,11 +375,13 @@ impl SableDispatcher {
                             (max_x - min_x) / 2.0,
                             (max_y - min_y) / 2.0,
                             (max_z - min_z) / 2.0,
-                        );
+                        ) * k1;
+                        // the block's centre in the shape's frame (`center` stays in plot units)
+                        let shape_center = center * k1;
 
                         // Translate to match the center of the current block
                         let mut block_isometry = *pos12;
-                        block_isometry.translation -= center;
+                        block_isometry.translation -= shape_center;
 
                         if !swap {
                             DefaultQueryDispatcher
@@ -446,7 +419,7 @@ impl SableDispatcher {
 
                         if interior_check {
                             drop_interior_points(chunk_access, IVec3::new(x, y, z), center, center_of_mass_1,
-                                &mut manifolds[manifold_index], swap);
+                                k1, &mut manifolds[manifold_index], swap);
                         }
 
                         if !manifolds[manifold_index].points.is_empty() {
@@ -489,7 +462,7 @@ impl SableDispatcher {
                         }
 
                         for point in &mut manifolds[manifold_index].points {
-                            let diff = Vec3::new(center.x, center.y, center.z);
+                            let diff = Vec3::new(shape_center.x, shape_center.y, shape_center.z);
                             match swap {
                                 true => point.local_p2 -= diff,
                                 false => point.local_p1 += diff,
@@ -581,7 +554,12 @@ impl SableDispatcher {
             // Static-octree chart = the terrain side's SHAPE chart (dest chart for
             // an image-vs-terrain pair). Unused when both sides are bodies.
             g1.chart,
+            g2.scale,
+            g1.scale,
         );
+        // Immersive Portals: Aeronautics, scaled images: each side's blocks are its scale wide in its shape's frame.
+        let k1 = g1.scale;
+        let k2 = g2.scale;
 
         for (static_pos, dynamic_pos) in pairs.iter() {
             let static_x = static_pos.x;
@@ -631,11 +609,12 @@ impl SableDispatcher {
                     (max_x - min_x) / 2.0,
                     (max_y - min_y) / 2.0,
                     (max_z - min_z) / 2.0,
-                );
+                ) * k1;
+                let shape_center = center * k1;
 
                 // Translate to match the center of the current block
                 let mut block_isometry = *pos12;
-                block_isometry.translation -= center;
+                block_isometry.translation -= shape_center;
 
                 let Some(other_chunk) =
                     chunk_access_2.get_chunk(other_bx >> 4, other_by >> 4, other_bz >> 4)
@@ -694,12 +673,13 @@ impl SableDispatcher {
                         (other_max_x - other_min_x) / 2.0,
                         (other_max_y - other_min_y) / 2.0,
                         (other_max_z - other_min_z) / 2.0,
-                    );
+                    ) * k2;
+                    let other_shape_center = other_center * k2;
 
                     // combine block isometries
                     let mut combined_block_isometry = block_isometry;
 
-                    let transformed = combined_block_isometry.rotation.mul_vec3(other_center);
+                    let transformed = combined_block_isometry.rotation.mul_vec3(other_shape_center);
 
                     combined_block_isometry.translation += transformed;
 
@@ -724,6 +704,8 @@ impl SableDispatcher {
                         other_center,
                         center_of_mass_1,
                         center_of_mass_2,
+                        k1,
+                        k2,
                         &mut new_manifold,
                     ) {
                         let index = self
@@ -766,8 +748,8 @@ impl SableDispatcher {
                         manifolds[manifold_index] = new_manifold;
 
                         for point in &mut manifolds[manifold_index].points {
-                            point.local_p1 += center;
-                            point.local_p2 += other_center;
+                            point.local_p1 += shape_center;
+                            point.local_p2 += other_shape_center;
                         }
 
                         manifold_index += 1;
@@ -889,6 +871,9 @@ fn is_interior_collision<ManifoldData: Default + Clone, ContactData: Default + C
     other_center: Vec3,
     center_of_mass_1: DVec3,
     center_of_mass_2: DVec3,
+    // Immersive Portals: Aeronautics: the shapes' scales; manifold points are k times plot offsets
+    scale_1: Real,
+    scale_2: Real,
     manifold: &mut ContactManifold<ManifoldData, ContactData>,
 ) -> bool {
     let physics_state = crate::get_physics_state();
@@ -898,7 +883,7 @@ fn is_interior_collision<ManifoldData: Default + Clone, ContactData: Default + C
             || (collider_info_1.unwrap().local_bounds_min.unwrap()
                 != collider_info_1.unwrap().local_bounds_max.unwrap())
         {
-            let world_p1 = (point.local_p1 * 0.997 + center).as_dvec3() + center_of_mass_1;
+            let world_p1 = (point.local_p1 / scale_1 * 0.997 + center).as_dvec3() + center_of_mass_1;
             let normal1 = manifold.local_n1.as_dvec3();
 
             let displaced_p1 = world_p1 + normal1 * 0.01;
@@ -912,7 +897,7 @@ fn is_interior_collision<ManifoldData: Default + Clone, ContactData: Default + C
             let normal2 = manifold.local_n2.as_dvec3();
 
             // we have to "pull in the points" a tiny bit incase they're outside of the block slightly off-normal
-            let world_p2 = (point.local_p2 * INTERIOR_COLLISION_SCALE_FACTOR + other_center)
+            let world_p2 = (point.local_p2 / scale_2 * INTERIOR_COLLISION_SCALE_FACTOR + other_center)
                 .as_dvec3()
                 + center_of_mass_2;
 
@@ -937,6 +922,7 @@ fn drop_interior_points<ManifoldData: Default + Clone, ContactData: Default + Co
     block: IVec3,
     center: Vec3,
     center_of_mass: DVec3,
+    scale: Real,
     manifold: &mut ContactManifold<ManifoldData, ContactData>,
     swap: bool,
 ) {
@@ -944,7 +930,7 @@ fn drop_interior_points<ManifoldData: Default + Clone, ContactData: Default + Co
     let normal = if swap { manifold.local_n2 } else { manifold.local_n1 }.as_dvec3();
     manifold.points.retain(|point| {
         let local = if swap { point.local_p2 } else { point.local_p1 };
-        let position = (local * INTERIOR_COLLISION_SCALE_FACTOR + center).as_dvec3() + center_of_mass;
+        let position = (local / scale * INTERIOR_COLLISION_SCALE_FACTOR + center).as_dvec3() + center_of_mass;
         !is_inside_voxel_collider(chunk_access, &physics_state, block,
             position + normal * INTERIOR_COLLISION_CHECK_DISTANCE)
     });

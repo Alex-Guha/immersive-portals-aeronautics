@@ -17,7 +17,7 @@ import qouteall.imm_ptl.core.compat.sable_integration.IPShipRenderWatchdog;
  * A new Flywheel manager for a level (the first, or after a reset: the backend switched on or off with a shader pack,
  * F3+A, IP reloading a world's renderer) starts without block entity visuals; Flywheel gets them back as sections
  * compile. Ship sections Flywheel took a part out of keep their compiled state, so the part was drawn by neither
- * until the ship was synced again (BUGS #8): the watchdog rebuilds that level's ships
+ * until the ship was synced again (bugs.md #8): the watchdog rebuilds that level's ships
  * ({@link IPShipRenderWatchdog#onFlywheelManagerCreated}). Constructed on whichever thread first asks for it.
  */
 @Mixin(value = VisualizationManagerImpl.class, remap = false)

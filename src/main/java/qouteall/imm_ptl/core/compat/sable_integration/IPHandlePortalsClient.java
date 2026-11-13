@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.q_misc_util.api.McRemoteProcedureCallClient;
@@ -64,7 +65,7 @@ public final class IPHandlePortalsClient {
         ResourceKey<Level> shipDim;
         ResourceKey<Level> playerDim;
         /** Maps the player's world ({@link #playerDim}) into the ship's world. */
-        IPPortalIsometry frame;
+        IPPortalSimilarity frame;
         /** The portals the handle was seen through, for the server. */
         final ListTag chain;
         /** The dimension the ship was moved to, until it shows up there. */
@@ -72,14 +73,14 @@ public final class IPHandlePortalsClient {
         ResourceKey<Level> movedTo;
         /** The portal map of that move, applied to {@link #frame} when the hold goes on with the moved ship. */
         @Nullable
-        IPPortalIsometry pendingMove;
+        IPPortalSimilarity pendingMove;
         BlockPos shift = BlockPos.ZERO;
         int waited;
         int removedFor;
         /** The hold cannot go on: it ends at the next tick. */
         boolean lost;
 
-        Hold(final UUID ship, final ResourceKey<Level> shipDim, final ResourceKey<Level> playerDim, final IPPortalIsometry frame,
+        Hold(final UUID ship, final ResourceKey<Level> shipDim, final ResourceKey<Level> playerDim, final IPPortalSimilarity frame,
              final ListTag chain) {
             this.ship = ship;
             this.shipDim = shipDim;
@@ -142,7 +143,7 @@ public final class IPHandlePortalsClient {
             across = null;
         }
         starting = across == null
-            ? new Hold(ship.getUniqueId(), clientLevel.dimension(), local.level().dimension(), IPPortalIsometry.IDENTITY, new ListTag())
+            ? new Hold(ship.getUniqueId(), clientLevel.dimension(), local.level().dimension(), IPPortalSimilarity.IDENTITY, new ListTag())
             : new Hold(ship.getUniqueId(), clientLevel.dimension(), local.level().dimension(), across.frame(),
             across.chain().getList(IPPhysicsStaffPortals.LINKS, CompoundTag.TAG_COMPOUND));
     }
@@ -335,17 +336,17 @@ public final class IPHandlePortalsClient {
         if (current == null) {
             return;
         }
-        if (!IPPhysicsStaffPortals.isRigid(portal)) {
+        if (!IPPhysicsStaffPortals.isMappable(portal)) {
             current.lost = true;
             return;
         }
-        onPlayerTeleported(IPPortalIsometry.of(portal), portal.getDestDim());
+        onPlayerTeleported(IPPhysicsStaffPortals.mapOf(portal), portal.getDestDim());
     }
 
     /**
-     * As {@link #onPlayerTeleported(Portal)}, for a rigid portal's map {@code through} into {@code dim}.
+     * As {@link #onPlayerTeleported(Portal)}, for a portal's map {@code through} into {@code dim}.
      */
-    static void onPlayerTeleported(final IPPortalIsometry through, final ResourceKey<Level> dim) {
+    static void onPlayerTeleported(final IPPortalSimilarity through, final ResourceKey<Level> dim) {
         final Hold current = hold;
         if (current == null) {
             return;
@@ -371,13 +372,13 @@ public final class IPHandlePortalsClient {
          * to {@code dim}, its plot by {@code shift}; the hold goes on there.
          */
         public static void onShipMoved(final UUID ship, final ResourceKey<Level> dim, final BlockPos shift, final Vec3 origin,
-                                       final Vec3 dest, final DQuaternion rotation) {
+                                       final Vec3 dest, final DQuaternion rotation, final double scale) {
             final Hold current = hold;
             if (current == null || !current.ship.equals(ship)) {
                 return;
             }
-            final IPPortalIsometry through = new IPPortalIsometry(origin, dest,
-                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
+            final IPPortalSimilarity through = new IPPortalSimilarity(new IPPortalIsometry(origin, dest,
+                new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize()), scale);
             current.pendingMove = current.pendingMove == null ? through : current.pendingMove.then(through);
             current.shift = current.movedTo != null ? current.shift.offset(shift) : shift;
             current.movedTo = dim;

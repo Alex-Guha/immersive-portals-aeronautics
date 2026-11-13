@@ -24,6 +24,7 @@ import org.joml.Vector3dc;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.sable_integration.IPPhysicsStaffHooks;
 import qouteall.imm_ptl.core.compat.sable_integration.IPSableBridge;
+import qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRagdollGuard;
@@ -461,7 +462,7 @@ final class IPStraddleController {
      */
     private static boolean samePassage(final Portal a, final Portal b) {
         return a.getUUID().equals(b.getUUID())
-                || (a.getDestDim().equals(b.getDestDim()) && IPPortalIsometry.of(a).sameAs(IPPortalIsometry.of(b))
+                || (a.getDestDim().equals(b.getDestDim()) && IPStraddleSessions.mapOf(a).sameAs(IPStraddleSessions.mapOf(b))
                 && a.getNormal().dot(b.getNormal()) > 0.999 && a.getOriginPos().distanceToSqr(b.getOriginPos()) < 1.0e-6);
     }
 
@@ -475,9 +476,50 @@ final class IPStraddleController {
         }
     }
 
+    /** A ship Pym is resizing: no sessions, no frame let through (it may be resized mid-straddle). */
+    private static void leaveResizing(final ServerLevel level, final ServerSubLevel ship) {
+        for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
+            if (key.ship().equals(ship.getUniqueId())) {
+                IPStraddleSessions.close(key, "resized by Create: Pocket Sized, crosses in one step");
+            }
+        }
+        if (LET_THROUGH.remove(ship.getUniqueId()) != null) {
+            IPStraddleSessions.setGhosts(ship, level, List.of());
+            IPPortalRims.setLetThrough(ship, false);
+        }
+        STUCK_SINCE.remove(ship.getUniqueId());
+    }
+
+    private static void holdWhileResizing(final ServerLevel level, final ServerSubLevel ship, final long tick,
+                                          final Set<IPStraddleSessions.Key> seen) {
+        for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
+            if (!key.ship().equals(ship.getUniqueId())) {
+                continue;
+            }
+            final IPStraddleSessions.Session session = IPStraddleSessions.get(key);
+            if (session != null && !session.portal.isRemoved()
+                    && IPStraddleSessions.openOrRefresh(ship, session.portal, level, session.portal.getNormal().scale(-1.0), tick)) {
+                seen.add(key);
+            }
+        }
+    }
+
     private static void considerShip(final ServerLevel level, final ServerSubLevel ship, final long tick,
                                      final Set<IPStraddleSessions.Key> seen, final List<Handoff> handoffs) {
         if (ship.getPlot().getBoundingBox() == BoundingBox3i.EMPTY || IPShipRagdollGuard.isRagdollSubLevel(ship)) {
+            return;
+        }
+        if (IPPymCompat.isResizing(ship)) {
+            if (IPStraddleSessions.anyOfShip(ship.getUniqueId())) {
+                // resized while straddling: the sessions follow it (the image reads the ship's cells by its id and takes
+                // its bounds, update_collider_aabb; the far half is drawn at the pose's scale), and it is handed off
+                // only once the size has settled, so no resize at the hand-off runs over Pym's. Closing them left the
+                // ship in its own world across the portal, never to straddle again without leaving it
+                holdWhileResizing(level, ship, tick, seen);
+                return;
+            }
+            // not straddling: kept out of portals until it settles, crossing in one step (IPShipPortalTraversalImpl)
+            leaveResizing(level, ship);
             return;
         }
         final AABB swept = IPShipCrossingDetector.sweptBounds(ship);
@@ -564,6 +606,13 @@ final class IPStraddleController {
                 }
                 if (!haveSession && partnerCrossesOtherFace(level, ship, portal)) {
                     declined(ship, portal, state, "a ship tied to it crosses the opposite face of this doorway");
+                    continue;
+                }
+                final String scaledRefusal = haveSession ? null : whyNotThroughScaled(level, ship, portal);
+                if (scaledRefusal != null) {
+                    // it would come out another size: pushed back before anything of it is drawn resized past the plane
+                    refusedScaled(ship, portal, scaledRefusal);
+                    IPSableBridge.pushBackOutOfPortal(ship, portal.getNormal(), REFUSED_PUSH_BACK_SPEED);
                     continue;
                 }
                 final boolean twinHasSession = twin != null && hasSession(ship, twin);
@@ -707,6 +756,35 @@ final class IPStraddleController {
     }
 
     /**
+     * Why {@code ship} cannot go through {@code portal}, a portal that changes size, or null when it can (or the portal
+     * keeps sizes): Create: Pocket Sized must be able to make it its scale times the portal's at the hand-off, and
+     * ships tied to others do not straddle such portals yet (docs/lessons/scaled-ships.md).
+     */
+    @Nullable
+    private static String whyNotThroughScaled(final ServerLevel level, final ServerSubLevel ship, final Portal portal) {
+        final IPPortalSimilarity map = IPStraddleSessions.mapOf(portal);
+        if (!map.isScaled() || IPStraddle.SCALED_IMAGES_TEST) {
+            return null;
+        }
+        if (crossingGroup(level, ship).size() > 1) {
+            return "ships tied to other ships do not go through portals that change size yet";
+        }
+        final double toScale = IPShipScale.of(ship.logicalPose()) * map.scale();
+        final String refusal = IPPymCompat.whyNotResizable(ship, toScale);
+        return refusal == null ? null : "it cannot become scale " + String.format("%.3f", toScale) + " (" + refusal + ")";
+    }
+
+    /** Logs a refusal at a scaled portal once per ship, portal and reason. */
+    private static void refusedScaled(final ServerSubLevel ship, final Portal portal, final String reason) {
+        final Refusal last = REFUSALS.get(ship.getUniqueId());
+        if (last == null || !last.portal().equals(portal.getUUID()) || !last.reason().equals(reason)) {
+            LOGGER.info("[IPStraddle] ship {} does not go through portal {} (scale {}): {}; pushed back",
+                    ship.getUniqueId(), portal.getUUID(), String.format("%.3f", portal.getScale()), reason);
+            REFUSALS.put(ship.getUniqueId(), new Refusal(portal.getUUID(), reason, 0L));
+        }
+    }
+
+    /**
      * Why {@code ship}, wholly through {@code portal}, cannot be handed off now, or null when it can: the destination
      * level is missing, the move would fail ({@link IPSableBridge#whyNotMovable}), or a hand-off through this portal
      * failed less than {@value #FAILED_HANDOFF_RETRY_TICKS} ticks ago.
@@ -724,7 +802,8 @@ final class IPStraddleController {
         if (last != null && last.portal().equals(portal.getUUID()) && tick < last.retryTick()) {
             return last.reason();
         }
-        return IPSableBridge.whyNotMovable(ship, level, dest);
+        final String scaled = whyNotThroughScaled(level, ship, portal);
+        return scaled != null ? scaled : IPSableBridge.whyNotMovable(ship, level, dest);
     }
 
     /**
@@ -777,7 +856,7 @@ final class IPStraddleController {
 
     static boolean isShipPortal(final Entity entity) {
         return entity instanceof final Portal portal && portal.isTeleportable() && portal.getDestDim() != null
-                && Math.abs(portal.getScale() - 1.0) <= 1.0E-4;
+                && (Math.abs(portal.getScale() - 1.0) <= 1.0E-4 || IPStraddle.straddlesScaledPortal(portal));
     }
 
     private static boolean hasSession(final ServerSubLevel ship, final Portal face) {
@@ -871,10 +950,10 @@ final class IPStraddleController {
             }
             return null;
         }
-        final IPPortalIsometry isometry = IPPortalIsometry.of(portal);
+        final IPPortalSimilarity isometry = IPStraddleSessions.mapOf(portal);
         final Vector3dc position = ship.logicalPose().position();
         final Vec3 destPos = isometry.mapPoint(new Vec3(position.x(), position.y(), position.z()));
-        final Vec3 arrivalDisplacement = isometry.mapVec(toVec3(position).subtract(toVec3(ship.lastPose().position())));
+        final Vec3 arrivalDisplacement = isometry.mapDisplacement(toVec3(position).subtract(toVec3(ship.lastPose().position())));
         final Quaterniond rotation = new Quaterniond(isometry.rotation());
 
         IPSableBridge.Velocity carried = null;
@@ -887,8 +966,8 @@ final class IPStraddleController {
             carried = new IPSableBridge.Velocity(velocity[0], velocity[1]);
         } else if (body != null) {
             carried = new IPSableBridge.Velocity(
-                    toVector(isometry.mapVec(toVec3(body.getLinearVelocity(new Vector3d())))),
-                    toVector(isometry.mapVec(toVec3(body.getAngularVelocity(new Vector3d())))));
+                    toVector(isometry.mapDisplacement(toVec3(body.getLinearVelocity(new Vector3d())))),
+                    toVector(isometry.mapDirection(toVec3(body.getAngularVelocity(new Vector3d())))));
         }
 
         if (LET_THROUGH.remove(shipId) != null) {
@@ -924,10 +1003,37 @@ final class IPStraddleController {
             onHandoffFailed(handoff, server.getTickCount(), travelling);
         } else {
             REFUSALS.remove(shipId);
-            IPShipCrossingDetector.seedArrival(moved.sub(), arrivalDisplacement, isometry.mapPoint(portal.getOriginPos()),
-                    isometry.mapVec(portal.getNormal().scale(-1.0)), server.getTickCount());
             IPStraddleDebugTrace.onHandedOff(shipId, server.getTickCount());
-            LOGGER.info("[IPStraddle] ship {} arrived in {} (plot-space shift {})", shipId, dest.dimension().location(), moved.shift());
+            if (isometry.isScaled() && IPPymCompat.isLoaded()) {
+                // the far half was the ship at its scale times the portal's: the whole ship takes that size where it
+                // is, about its rotation point (Pym's immediate resize; its collider follows before the next step)
+                final double fromScale = IPShipScale.of(handoffPose);
+                final double toScale = fromScale * isometry.scale();
+                final IPPymCompat.Resize resized = IPPymCompat.resizeNow(moved.sub(), toScale, new Vector3d(destPos.x, destPos.y, destPos.z));
+                if (resized != null && resized.acceptedAt(toScale)) {
+                    LOGGER.info("[IPStraddle] ship {} resized {} -> {} by the portal of scale {}", shipId,
+                            String.format("%.3f", fromScale), String.format("%.3f", toScale), String.format("%.3f", isometry.scale()));
+                } else {
+                    LOGGER.warn("[IPStraddle] ship {} was to be scale {} on arrival, but Pym {} ({})", shipId,
+                            String.format("%.3f", toScale),
+                            resized != null && resized.accepted() ? "made it " + String.format("%.3f", resized.scale()) : "refused",
+                            resized == null ? "its resize API is not there" : resized.status() + ": " + resized.description());
+                }
+            }
+            // after the resize: the seed is the detector's first history pose, and its frame carries the pose's scale.
+            // Seeded at the old size, a ship resized smaller "swept" from its old extent back across the doorway it had
+            // come out of, into the doorway's other face, and was handed back the next tick (a 6x4 platform at a nether
+            // portal pair, scale 0.5)
+            IPShipCrossingDetector.seedArrival(moved.sub(), arrivalDisplacement, isometry.mapPoint(portal.getOriginPos()),
+                    isometry.mapDirection(portal.getNormal().scale(-1.0)), server.getTickCount());
+            final double arrivedScale = IPShipScale.of(moved.sub().logicalPose());
+            if (Math.abs(arrivedScale - IPShipScale.of(handoffPose)) > 1.0E-6 || Math.abs(arrivedScale - 1.0) > 1.0E-6) {
+                // Sable's saved pose has no scale; Pym puts it back when the ship loads (docs/lessons/scaled-ships.md)
+                LOGGER.info("[IPStraddle] ship {} arrived in {} (plot-space shift {}, scale {} at arrival, {} before)", shipId,
+                        dest.dimension().location(), moved.shift(), arrivedScale, IPShipScale.of(handoffPose));
+            } else {
+                LOGGER.info("[IPStraddle] ship {} arrived in {} (plot-space shift {})", shipId, dest.dimension().location(), moved.shift());
+            }
             IPShipThroughPortalSync.onShipLeftDimension(server, shipId, handoff.level().dimension());
             IPShipThroughPortalSync.onShipArrived(dest, moved.sub());
             IPStraddleSeats.onHandedOff(handoff.level(), dest, shipId, moved);

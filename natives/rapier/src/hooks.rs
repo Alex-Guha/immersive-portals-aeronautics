@@ -1,8 +1,8 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.Rapier3D.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026: scaled images
+// (plot points and block velocities through `LevelCollider::scale`, ropes not against scaled images).
 
 use jni::JavaVM;
 use jni::objects::{JDoubleArray, JObject, JValue};
@@ -145,7 +145,6 @@ impl PhysicsHooks for SablePhysicsHooks {
 }
 
 static IPL_CLIP_DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-static IPL_CLIP_FIRST_DROP: std::sync::Once = std::sync::Once::new();
 
 fn ipl_clip_disabled() -> bool {
     *IPL_CLIP_DISABLED
@@ -172,7 +171,7 @@ impl SablePhysicsHooks {
                 {
                     for owner in crate::rope::clip_owners(&sable_data, rope_id).into_iter().flatten() {
                         if let Some(info) = sable_data.level_colliders.get(&owner) {
-                            Self::ipl_neutralize(context, &info.clip_regions, owner);
+                            Self::ipl_neutralize(context, &info.clip_regions);
                         }
                     }
                 }
@@ -181,6 +180,18 @@ impl SablePhysicsHooks {
             let Some(id) = level_collider.id else {
                 continue; // the static world collider is never clipped
             };
+            // Immersive Portals: Aeronautics, scaled images: rope contacts go through the generic (multibody)
+            // constraint, which maps no portal scale; a rope passes through the far half of a ship at a portal that
+            // changes size rather than being pushed wrongly (docs/lessons/scaled-ships.md).
+            if level_collider.scale != 1.0 && colliders.get(other).and_then(crate::rope::rope_id_of).is_some() {
+                for c in context.solver_contacts.iter_mut() {
+                    c.dist = 10.0;
+                    c.friction = 0.0;
+                    c.restitution = 0.0;
+                    c.tangent_velocity = Vec3::ZERO;
+                }
+                continue;
+            }
             let Some(info) = sable_data.level_colliders.get(&(id as LevelColliderID)) else {
                 continue;
             };
@@ -191,7 +202,7 @@ impl SablePhysicsHooks {
                 .get(&handle)
                 .map(|v| v.as_slice())
                 .unwrap_or(&info.clip_regions);
-            Self::ipl_neutralize(context, regions, id);
+            Self::ipl_neutralize(context, regions);
         }
     }
 
@@ -200,11 +211,10 @@ impl SablePhysicsHooks {
         collider.shape().as_shape::<LevelCollider>().is_some_and(|level_collider| level_collider.id.is_none())
     }
 
-    /// Neutralizes the solver contacts inside `regions` (the clip regions of body `id`).
+    /// Neutralizes the solver contacts inside `regions` (the clip regions of one body).
     fn ipl_neutralize(
         context: &mut ContactModificationContext,
         regions: &[crate::ipl_ext::IplClipRegion],
-        id: LevelColliderID,
     ) {
         if regions.is_empty() {
             return;
@@ -217,23 +227,13 @@ impl SablePhysicsHooks {
         // lane-gathers contacts unchecked. A far-separated zero-friction contact
         // yields zero impulse: physically identical to removal, structurally
         // invisible to the batcher.
-        let mut clipped = 0u64;
         for c in context.solver_contacts.iter_mut() {
             if regions.iter().any(|r| r.contains(c.point)) {
                 c.dist = 10.0;
                 c.friction = 0.0;
                 c.restitution = 0.0;
                 c.tangent_velocity = Vec3::ZERO;
-                clipped += 1;
             }
-        }
-        // Diagnostic: prove in-game that the clip pass fires at all (once).
-        if clipped > 0 {
-            IPL_CLIP_FIRST_DROP.call_once(|| {
-                eprintln!(
-                    "[ipl-natives] aperture clip ACTIVE: first neutralize, {clipped} contact(s) for body {id}"
-                );
-            });
         }
     }
 
@@ -253,10 +253,12 @@ impl SablePhysicsHooks {
 
             if let Some(fake_velo) = collider_info.fake_velocities {
                 let transform = collider_a.position();
+                // a scaled image's frame is k times the body's (Immersive Portals: Aeronautics)
+                let k = level_collider_a.scale;
                 return transform.transform_vector(fake_velo.velocity_at_point(
-                    transform.inverse_transform_point(contact.point),
+                    transform.inverse_transform_point(contact.point) / k,
                     Vec3::ZERO,
-                ));
+                ) * k);
             };
         }
         Vec3::ZERO
@@ -273,6 +275,8 @@ impl SablePhysicsHooks {
         body_a: bool,
     ) -> (Vec3, bool, Real, Real) {
         let state = crate::get_physics_state();
+        // Immersive Portals: Aeronautics: a scaled image's shape frame is k times plot units
+        let k = level_collider.map_or(1.0, |lc| lc.scale);
 
         let (tangent_velo, center_of_mass, skip_contact_events) = {
             let sable_data = self.sable_data.read().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -282,9 +286,9 @@ impl SablePhysicsHooks {
             let mut tangent_velo = Vec3::ZERO;
             if let Some(fake_velo) = collider_info.and_then(|info| info.fake_velocities) {
                 tangent_velo += isometry.transform_vector(fake_velo.velocity_at_point(
-                    isometry.inverse_transform_point(*global_point),
+                    isometry.inverse_transform_point(*global_point) / k,
                     Vec3::ZERO,
-                ));
+                ) * k);
             }
 
             let center_of_mass = collider_info.map_or(DVec3::ZERO, |b| b.center_of_mass.unwrap());
@@ -313,7 +317,7 @@ impl SablePhysicsHooks {
             )
         };
 
-        let local = isometry.inverse_transform_point(*global_point);
+        let local = isometry.inverse_transform_point(*global_point) / k;
         let block_coord_d: DVec3 = local.as_dvec3() + center_of_mass;
 
         if block_id == 0 {
@@ -383,7 +387,7 @@ impl SablePhysicsHooks {
         );
 
         (
-            tangent_velo + isometry.transform_vector(velo),
+            tangent_velo + isometry.transform_vector(velo * k),
             velo_arr[3] > 0.0,
             friction_multiplier,
             restitution,

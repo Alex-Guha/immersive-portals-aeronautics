@@ -134,10 +134,6 @@ pub struct SableSceneData {
     /// maps above, but buoyancy must not scan every world's ships from every chart tick.
     pub bodies_by_chart: HashMap<ChartId, HashSet<LevelColliderID>>,
 
-    /// IPL: body pairs (normalized id order) that must never generate contacts. Portal
-    /// rims use this to exempt an anchored portal carrier from its containment body.
-    pub ipl_excluded_pairs: HashSet<(LevelColliderID, LevelColliderID)>,
-
     /// Immersive Portals: Aeronautics, moving portals: image colliders anchored to a carrier body.
     pub ipl_image_anchors: HashMap<rapier3d::prelude::ColliderHandle, crate::moving_portals::ImageAnchor>,
     /// Bodies with clip regions anchored to a carrier body.
@@ -203,9 +199,6 @@ pub struct PhysicsScene {
 
     /// The handle to a static rigidbody
     pub ground_handle: Option<RigidBodyHandle>,
-
-    /// The current gravity vector for all bodies. [m/s^2]
-    pub gravity: Vec3,
 
     /// Universal linear drag applied to all bodies
     pub universal_drag: Real,

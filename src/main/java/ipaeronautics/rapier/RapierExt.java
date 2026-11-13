@@ -1,18 +1,22 @@
 /*
  * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * Declarations follow IPSable 0.5.0's IplRapierNatives by r2smith141 (Apache License 2.0). The functions are IPSable's
- * additions to Sable's crate, in ipa_rapier's natives/rapier/src/ipl_ext.rs; the JNI names are fixed there.
+ * additions to Sable's crate and ours, in ipa_rapier's natives/rapier/src (ipl_ext.rs, moving_portals.rs, lib.rs); the
+ * JNI names are fixed there.
  */
 package ipaeronautics.rapier;
 
-import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
+import dev.ryanhcode.sable.physics.impl.rapier.Rapier3D;
+import dev.ryanhcode.sable.physics.impl.rapier.RapierPhysicsPipeline;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.ApiStatus;
+import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 
 /**
- * Image colliders and clip regions of the ipa_rapier natives (docs/lessons/physics-backend.md). Only callable
- * while {@link Rapier3D#isLoaded()}; every scene handle must be live (see {@link #sceneHandle}).
+ * Image colliders, clip regions, portal rims and the chart-only step of the ipa_rapier natives
+ * (docs/lessons/physics-backend.md). Only callable while {@link IPPhysicsBackend#isOwnBackendActive()}: Sable's own
+ * library has none of these. Every scene handle must be live (see {@link #sceneHandle}).
  * <p>
  * Clip region layout: N regions of 16 doubles, {@code [px py pz  nx ny nz  wx wy wz halfW  hx hy hz halfH  skin
  * maxDepth]}. A solver contact whose point lies inside a region (from {@code skin} before the plane through
@@ -26,24 +30,30 @@ public final class RapierExt {
     }
 
     /**
-     * @return the native scene handle (the level's chart view) of a level using our pipeline, or 0 when it has none
-     * (stock pipeline, not initialised, or already disposed)
+     * @return the native scene handle (the level's chart view) of a level, or 0 when it has none (our library not
+     * loaded, no pipeline, not initialised, or already disposed)
      */
     public static long sceneHandle(final ServerLevel level) {
-        final SubLevelPhysicsSystem system = SubLevelPhysicsSystem.get(level);
-        if (system == null) {
+        if (!IPPhysicsBackend.isOwnBackendActive()) {
             return 0L;
         }
-        final PhysicsPipeline pipeline = system.getPipeline();
-        if (!(pipeline instanceof final RapierPhysicsPipeline rapier)) {
+        final SubLevelPhysicsSystem system = SubLevelPhysicsSystem.get(level);
+        if (system == null || !(system.getPipeline() instanceof RapierPhysicsPipeline)) {
             return 0L;
         }
         try {
-            return rapier.getSceneHandle();
+            return Rapier3D.getSceneHandle(level);
         } catch (final IllegalStateException e) {
             return 0L;
         }
     }
+
+    /**
+     * The per-chart upkeep of Sable's {@code Rapier3D.step} (ropes, joints) without stepping the shared world: the
+     * fused step steps the world with one level's pipeline per substep and calls this for the others'
+     * ({@code MixinSableRapierPipeline_OwnBackend}).
+     */
+    public static native void stepChartOnly(long sceneHandle);
 
     /**
      * Sets (or clears, with an empty array) the clip regions of a body's own collider.
@@ -60,6 +70,22 @@ public final class RapierExt {
     public static native long createImageCollider(long sceneHandle, int bodyId,
                                                   double dx, double dy, double dz,
                                                   double qx, double qy, double qz, double qw);
+
+    /**
+     * {@link #createImageCollider} through a portal of scale {@code k}, whose map is {@code x -> k R x + t}
+     * ({@code (dx, dy, dz)} = t): the image is k times its body, collides at that size and acts on the body through
+     * the similarity. {@code k = 1} is {@code createImageCollider}.
+     */
+    public static native long createScaledImageCollider(long sceneHandle, int bodyId,
+                                                        double dx, double dy, double dz,
+                                                        double qx, double qy, double qz, double qw, double k);
+
+    /**
+     * {@link #setImagePrefix} with the portal's scale {@code k}. Not for a moving portal's image.
+     */
+    public static native void setImagePrefixScaled(long sceneHandle, long imageHandle,
+                                                   double dx, double dy, double dz,
+                                                   double qx, double qy, double qz, double qw, double k);
 
     /**
      * Replaces an image collider's isometry (a portal that moved).
@@ -100,6 +126,19 @@ public final class RapierExt {
      */
     public static native void setImageAnchorBetween(long sceneHandle, long imageHandle, int sourceId, int destId,
                                                     double tx, double ty, double tz, double qx, double qy, double qz, double qw);
+
+    /**
+     * {@link #setImageAnchor} through a portal of scale {@code s} ({@code k} a similarity of scale s; the carriers'
+     * native body frames are metric). The image's shape takes the scale; s = 1 puts it back.
+     */
+    public static native void setImageAnchorScaled(long sceneHandle, long imageHandle, int carrierId, int mode,
+                                                   double tx, double ty, double tz, double qx, double qy, double qz, double qw,
+                                                   double s);
+
+    /** {@link #setImageAnchorBetween} through a portal of scale {@code s}, as {@link #setImageAnchorScaled}. */
+    public static native void setImageAnchorBetweenScaled(long sceneHandle, long imageHandle, int sourceId, int destId,
+                                                          double tx, double ty, double tz, double qx, double qy, double qz,
+                                                          double qw, double s);
 
     /**
      * Moving portals: sets the clip regions of body {@code bodyId} ({@code imageHandle} &lt; 0) or of one of its image

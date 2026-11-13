@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import net.minecraft.client.Minecraft;
@@ -24,11 +31,15 @@ public class FrustumCuller {
     private double camX;
     private double camY;
     private double camZ;
+    // Immersive Aeronautics: whether the func is a portal's inner culling (the cut to its opening), which Sodium's
+    // section test also applies (canCullSection)
+    private boolean innerCulling;
     
     public FrustumCuller() {
     }
     
     public void update(double cameraX, double cameraY, double cameraZ) {
+        innerCulling = false;
         canDetermineInvisibleFunc = getCanDetermineInvisibleFunc(cameraX, cameraY, cameraZ);
         camX = cameraX;
         camY = cameraY;
@@ -61,6 +72,22 @@ public class FrustumCuller {
         );
     }
     
+    /**
+     * Immersive Aeronautics: Sodium 0.6+'s section search tests each 16^3 section by its centre
+     * ({@code Viewport.isBoxVisible}, {@code isBoxVisibleLooser}), not through the box test the inner culling was
+     * hooked into, so without this a portal view drew every section in the screen's cone behind the portal. Only the
+     * inner culling: the outer culling has not run with Sodium since 0.6 and turning it on is its own change.
+     */
+    public boolean canCullSection(float centerX, float centerY, float centerZ, float halfSize) {
+        if (!innerCulling || canDetermineInvisibleFunc == null) {
+            return false;
+        }
+        return canDetermineInvisibleFunc.test(
+            centerX - halfSize, centerY - halfSize, centerZ - halfSize,
+            centerX + halfSize, centerY + halfSize, centerZ + halfSize
+        );
+    }
+    
     public boolean canDetermineInvisibleWithWorldCoord(
         double minX, double minY, double minZ, double maxX, double maxY, double maxZ
     ) {
@@ -86,11 +113,25 @@ public class FrustumCuller {
             return null;
         }
         
+        // Immersive Aeronautics: with a frustum captured (F3+U), the rim of the portal the captured camera sees
+        // this view through, none where it sees it directly (IPFrustumCapture)
+        if (IPFrustumCapture.isCulling()) {
+            Portal rim = IPFrustumCapture.rimPortal();
+            if (rim != null) {
+                innerCulling = true;
+                return rim.getPortalShape().getInnerFrustumCullingFunc(rim, new Vec3(cameraX, cameraY, cameraZ));
+            }
+            if (PortalRendering.isRendering()) {
+                return null;
+            }
+        }
+        
         if (PortalRendering.isRendering()) {
             Portal renderingPortal = PortalRendering.getRenderingPortal();
             
             // do inner frustum culling
             
+            innerCulling = true;
             return renderingPortal.getPortalShape().getInnerFrustumCullingFunc(
                 renderingPortal, new Vec3(cameraX, cameraY, cameraZ)
             );
@@ -111,7 +152,11 @@ public class FrustumCuller {
             
             // do outer frustum culling
             
-            Portal portal = getCurrentNearestVisibleCullablePortal();
+            // Immersive Aeronautics: with a frustum captured (F3+U), the portal nearest the captured camera
+            Portal portal = getCurrentNearestVisibleCullablePortal(
+                IPFrustumCapture.isCulling() ? new Vec3(cameraX, cameraY, cameraZ) :
+                    Minecraft.getInstance().gameRenderer.getMainCamera().getPosition()
+            );
             if (portal != null) {
                 return portal.getPortalShape().getOuterFrustumCullingFunc(
                     portal, new Vec3(cameraX, cameraY, cameraZ)
@@ -123,12 +168,11 @@ public class FrustumCuller {
     }
     
     @Nullable
-    private static Portal getCurrentNearestVisibleCullablePortal() {
+    private static Portal getCurrentNearestVisibleCullablePortal(Vec3 cameraPos) {
         if (TransformationManager.isIsometricView) {
             return null;
         }
         
-        Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
         return CHelper.getClientNearbyPortals(16).filter(
             portal -> portal.isInFrontOfPortal(cameraPos)
         ).filter(

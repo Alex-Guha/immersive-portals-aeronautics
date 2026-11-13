@@ -20,7 +20,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.slf4j.Logger;
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
@@ -52,7 +52,7 @@ public final class IPHandlePortals {
      *                 or null
      * @param frame    maps the player's world ({@code playerDim}) into the ship's world
      */
-    public record Hold(UUID ship, BlockPos pos, @Nullable BlockPos stalePos, ResourceKey<Level> playerDim, IPPortalIsometry frame) {
+    public record Hold(UUID ship, BlockPos pos, @Nullable BlockPos stalePos, ResourceKey<Level> playerDim, IPPortalSimilarity frame) {
         boolean names(final BlockPos packetPos) {
             return packetPos.equals(this.pos) || packetPos.equals(this.stalePos);
         }
@@ -162,14 +162,14 @@ public final class IPHandlePortals {
         if (hold == null) {
             return;
         }
-        if (!IPPhysicsStaffPortals.isRigid(portal) || !hold.playerDim().equals(from)) {
+        if (!IPPhysicsStaffPortals.isMappable(portal) || !hold.playerDim().equals(from)) {
             HOLDS.remove(player.getUUID());
             LOGGER.info("[IPHandle] {} went through portal {} while holding a handle on ship {}: let go ({})",
                 player.getGameProfile().getName(), portal.getUUID(), hold.ship(),
-                IPPhysicsStaffPortals.isRigid(portal) ? "not in the hold's world" : "scaled or mirror portal");
+                IPPhysicsStaffPortals.isMappable(portal) ? "not in the hold's world" : "mirror");
             return;
         }
-        final IPPortalIsometry through = IPPortalIsometry.of(portal);
+        final IPPortalSimilarity through = IPPhysicsStaffPortals.mapOf(portal);
         HOLDS.put(player.getUUID(), new Hold(hold.ship(), hold.pos(), hold.stalePos(), portal.getDestDim(), through.inverse().then(hold.frame())));
         LOGGER.info("[IPHandle] {} went through portal {} ({} -> {}) while holding a handle on ship {}", player.getGameProfile().getName(),
             portal.getUUID(), from.location(), portal.getDestDim().location(), hold.ship());
@@ -191,16 +191,16 @@ public final class IPHandlePortals {
                 continue;
             }
             final ServerPlayer player = src.getServer().getPlayerList().getPlayer(entry.getKey());
-            if (player == null || !IPPhysicsStaffPortals.isRigid(portal)) {
+            if (player == null || !IPPhysicsStaffPortals.isMappable(portal)) {
                 // the client lets go once the ship is gone from where it held it
                 it.remove();
                 continue;
             }
-            final IPPortalIsometry through = IPPortalIsometry.of(portal);
+            final IPPortalSimilarity through = IPPhysicsStaffPortals.mapOf(portal);
             entry.setValue(new Hold(shipId, hold.pos().offset(moved.shift()), hold.pos(), hold.playerDim(), hold.frame().then(through)));
             final Quaterniondc q = through.rotation();
             McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "onShipMoved", shipId, dst.dimension(), moved.shift(),
-                through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+                through.origin(), through.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()), through.scale());
             LOGGER.info("[IPHandle] {}'s hold of a handle on ship {} follows it to {}", player.getGameProfile().getName(), shipId,
                 dst.dimension().location());
         }
@@ -225,9 +225,9 @@ public final class IPHandlePortals {
             if (shipLevel == null || !IPPhysicsStaffPortals.hasShip(shipLevel, ship) || links.size() > IPPhysicsStaffPortals.MAX_LINKS) {
                 return;
             }
-            final IPPortalIsometry frame;
+            final IPPortalSimilarity frame;
             if (links.isEmpty()) {
-                frame = shipLevel == player.level() ? IPPortalIsometry.IDENTITY : null;
+                frame = shipLevel == player.level() ? IPPortalSimilarity.IDENTITY : null;
             } else {
                 frame = IPPhysicsStaffPortals.resolve(player, shipLevel, links);
             }

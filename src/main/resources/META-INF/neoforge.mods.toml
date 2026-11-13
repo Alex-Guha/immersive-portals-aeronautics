@@ -130,8 +130,7 @@ config="imm_ptl_create_compat.mixins.json"
 [[mixins]]
 config="imm_ptl_dh_compat.mixins.json"
 
-[[mixins]]
-config="imm_ptl_voxy_compat.mixins.json"
+${voxy_mixins}
 
 # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.
 [[dependencies.immersive_portals_core]] #optional

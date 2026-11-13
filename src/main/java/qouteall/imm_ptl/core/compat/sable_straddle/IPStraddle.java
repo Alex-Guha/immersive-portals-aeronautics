@@ -11,7 +11,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
-import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsPipelineProvider;
+import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,11 +32,36 @@ public final class IPStraddle {
     private static volatile boolean enabled = !"false".equalsIgnoreCase(System.getProperty(ENABLE_PROPERTY));
     private static volatile boolean debugOutline;
 
+    /**
+     * Test switch ({@code -Dip_aeronautics.debug.scaledImages=true}, headless tests only): ships straddle fixed scaled
+     * portals with scaled images without Create: Pocket Sized, and the hand-off does not resize the ship
+     * (docs/lessons/scaled-ships.md).
+     */
+    public static final boolean SCALED_IMAGES_TEST = Boolean.getBoolean("ip_aeronautics.debug.scaledImages");
+
     private IPStraddle() {
     }
 
+    /**
+     * Whether ships straddle {@code portal}, a portal that changes size (docs/lessons/scaled-ships.md): a fixed one
+     * that resizes what goes through ({@code teleportChangesScale}), with Create: Pocket Sized to resize the ship at the
+     * hand-off. One that keeps sizes is crossed in one step at the ship's size (a straddle would show the far half
+     * resized, then shrink it back). A portal on a ship Create: Pocket Sized scaled is one too, and straddled.
+     */
+    public static boolean straddlesScaledPortal(final qouteall.imm_ptl.core.portal.Portal portal) {
+        return SCALED_IMAGES_TEST || (qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat.isLoaded()
+                && portal.isTeleportChangesScale());
+    }
+
+    /**
+     * @return whether {@code ship} straddles a portal now (has a session)
+     */
+    public static boolean straddles(final dev.ryanhcode.sable.sublevel.SubLevel ship) {
+        return IPStraddleSessions.anyOfShip(ship.getUniqueId());
+    }
+
     public static boolean isAvailable() {
-        return enabled && IPPhysicsPipelineProvider.isOwnBackendActive();
+        return enabled && IPPhysicsBackend.isOwnBackendActive();
     }
 
     public static boolean isEnabled() {
@@ -87,7 +112,7 @@ public final class IPStraddle {
 
     /** A server's first tick. */
     public static void onServerStarted() {
-        if (!IPPhysicsPipelineProvider.isOwnBackendActive()) {
+        if (!IPPhysicsBackend.isOwnBackendActive()) {
             LOGGER.info("[IPStraddle] ships cannot straddle portals: the ipa_rapier physics backend is not active");
         } else {
             LOGGER.info("[IPStraddle] ships straddling portals: {} (/ip_aeronautics straddle on|off)", enabled ? "on" : "off");
@@ -112,7 +137,7 @@ public final class IPStraddle {
         final List<AABB> regions = new ArrayList<>();
         IPStraddleSessions.forEach(session -> {
             if (session.dest == level && !session.ship.isRemoved()) {
-                regions.add(mapBounds(session.isometry, session.ship.boundingBox()).inflate(2.0));
+                regions.add(mapBounds(session.map, session.ship.boundingBox()).inflate(2.0));
             }
         });
         return regions;
@@ -128,7 +153,7 @@ public final class IPStraddle {
             if (session.ship != ship || session.dest == session.source) {
                 return;
             }
-            final AABB area = mapBounds(session.isometry, ship.boundingBox()).inflate(FAR_HALF_VIEW_DISTANCE);
+            final AABB area = mapBounds(session.map, ship.boundingBox()).inflate(FAR_HALF_VIEW_DISTANCE);
             for (final net.minecraft.server.level.ServerPlayer player : session.dest.players()) {
                 if (area.contains(player.position())) {
                     viewer.accept(player);
@@ -140,7 +165,7 @@ public final class IPStraddle {
     /** How far from a ship's far half players get the ship synced. */
     private static final double FAR_HALF_VIEW_DISTANCE = 96.0;
 
-    private static AABB mapBounds(final IPPortalIsometry isometry, final BoundingBox3dc box) {
+    private static AABB mapBounds(final IPPortalSimilarity isometry, final BoundingBox3dc box) {
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < 8; i++) {

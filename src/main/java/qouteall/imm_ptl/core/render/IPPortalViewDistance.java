@@ -404,7 +404,7 @@ public final class IPPortalViewDistance {
      * Where the terrain fog of the pass in progress ends: the cut, or the reach of a distant portal's view
      * ({@link #lodReaches}); NaN where it is not clamped. Past the render distance the terrain ends there by itself,
      * but Distant Horizons turns vanilla's fog off wherever it draws LODs, so without the clamp the far world's terrain
-     * showed unfogged up to its end (user, 2.8.8.2 and 2.8.8.3, render distance 12: from 166 blocks).
+     * showed unfogged up to its end (at render distance 12: from 166 blocks).
      */
     private static double fogReach() {
         if (fogMode != FogRenderer.FogMode.FOG_TERRAIN) {

@@ -152,7 +152,7 @@ public final class IPStraddleDynLights {
                     if (dest != null) {
                         LampKey key = new LampKey(shipKey.ship(), shipKey.shipDim(), session.portal(), lamp.plotPos().asLong());
                         seen.add(key);
-                        put(key, dest, session.isometry().mapPoint(pos), luminance);
+                        put(key, dest, session.map().mapPoint(pos), luminance);
                     }
                 }
                 if (far && createDynLightsCoversShip) {

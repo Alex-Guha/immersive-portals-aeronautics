@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core;
@@ -117,10 +117,12 @@ public class IPModMain {
             qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors.init();
             qouteall.imm_ptl.core.compat.sable_integration.IPShipPortalTraversal.init();
             NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
-                event -> qouteall.imm_ptl.core.compat.IPMixinReport.report());
-            NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
                 event -> qouteall.imm_ptl.core.compat.sable_integration.IPShipLoadGuard.audit());
         }
+
+        // Immersive Aeronautics: names hooks into other mods that stopped matching, with or without Sable
+        NeoForge.EVENT_BUS.addListener(ServerStartedEvent.class,
+            event -> qouteall.imm_ptl.core.compat.IPMixinReport.report());
 
         // Immersive Aeronautics: Create shafts through portals
         qouteall.imm_ptl.core.compat.IPStallRecorder.init();
@@ -130,8 +132,6 @@ public class IPModMain {
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEdges.init();
             // portal blocks in framed plain portals (Create Teleporters'), so tracks, shafts and pipes bridge them
             qouteall.imm_ptl.core.compat.IPFramedPortalBlocks.init();
-            // test jars: riders' seats on carriages on both sides ([IPSeatSync])
-            qouteall.imm_ptl.core.compat.create_integration.IPSeatSyncTrace.init();
             // pipes through portals under Pipes 'n Physics' engine (portal blocks as relay endpoints)
             if (net.neoforged.fml.ModList.get().isLoaded("pipesnphysics")) {
                 qouteall.imm_ptl.core.compat.create_integration.IPPnpPortalRelay.init(eventBus);

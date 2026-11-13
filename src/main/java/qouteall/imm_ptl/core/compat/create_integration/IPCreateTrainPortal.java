@@ -68,11 +68,6 @@ public final class IPCreateTrainPortal {
         return portal;
     }
 
-    /** Whether the track on this side is on a ship. */
-    public boolean isOnShip() {
-        return near != null;
-    }
-
     /** Whether the track on either side is on a ship. */
     public boolean isThroughShip() {
         return near != null || far != null;
@@ -129,7 +124,7 @@ public final class IPCreateTrainPortal {
      * player had the chunks around that point tracked and ticketed by IP's teleport, the ship's plot chunks, and when
      * those went a few seconds later the client unloaded the ship (its carriage, and so its rider, stopped ticking: no
      * sneak, no controls) and the server dropped Sable's plot chunks into vanilla's unload queue, which they never
-     * leave (2.8.8.2).
+     * leave.
      */
     public Vec3 riderThrough(final Vec3 seat) {
         final boolean inPlot = near != null && IPCreatePortalEnds.SABLE

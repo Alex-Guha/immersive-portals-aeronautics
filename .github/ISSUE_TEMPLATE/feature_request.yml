@@ -1,0 +1,11 @@
+name: Feature request
+description: "Something Immersive Portals: Aeronautics could do, or a mod it could work with"
+labels: [enhancement]
+body:
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What would you like?
+      description: What you want to do in game, and what gets in the way today. For compatibility with another mod, link the mod and say what goes wrong or what you'd expect.
+    validations:
+      required: true

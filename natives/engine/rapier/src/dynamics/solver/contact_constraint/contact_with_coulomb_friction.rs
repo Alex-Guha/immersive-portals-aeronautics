@@ -1,7 +1,8 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
 // frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
-// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
+// the frame velocity of moving portals' images (`portal_frame_*`) and scaled portals (`portal_scale`, 2.9.0),
+// PolyForm Shield License 1.0.0; see NOTICE.
 
 use super::{ContactConstraintNormalPart, ContactConstraintTangentPart};
 use crate::dynamics::integration_parameters::BLOCK_SOLVER_ENABLED;
@@ -63,6 +64,11 @@ pub(crate) struct ContactWithCoulombFrictionBuilder {
     portal_rot1: <SimdReal as ScalarType>::Rotation,
     portal_rot2: <SimdReal as ScalarType>::Rotation,
     portal_any_rot: bool,
+    /// Immersive Portals: Aeronautics, scaled portals: per-lane portal scales (1 for un-imaged lanes and portals
+    /// that keep sizes) + a skip flag, so ordinary contacts stay bit-identical.
+    portal_scale1: SimdReal,
+    portal_scale2: SimdReal,
+    portal_any_scale: bool,
 }
 
 impl ContactWithCoulombFrictionBuilder {
@@ -145,6 +151,32 @@ impl ContactWithCoulombFrictionBuilder {
             let identity = na::UnitQuaternion::identity();
             (identity, identity)
         };
+
+        // Immersive Portals: Aeronautics, scaled portals: the image is S(x) = k R x + t of its body, so on top of the
+        // rotation map above: com -> k R com, v -> k R v (w unchanged), inverse mass -> k^2 im (the body takes
+        // k R^T J for an impulse J of the image's frame; virtual work), inverse inertia unchanged.
+        #[cfg(feature = "simd-is-enabled")]
+        let portal_any_scale = (0..SIMD_WIDTH).any(|ii| {
+            manifolds[ii].data.portal_scale1 != 1.0 || manifolds[ii].data.portal_scale2 != 1.0
+        });
+        #[cfg(not(feature = "simd-is-enabled"))]
+        let portal_any_scale = false;
+        #[cfg(feature = "simd-is-enabled")]
+        let (portal_scale1, portal_scale2) = if portal_any_scale {
+            let k1 = super::ipl_widen(array![|ii| manifolds[ii].data.portal_scale1]);
+            let k2 = super::ipl_widen(array![|ii| manifolds[ii].data.portal_scale2]);
+            vels1.linear = vels1.linear * k1;
+            poses1.translation = poses1.translation * k1;
+            poses1.im = poses1.im * (k1 * k1);
+            vels2.linear = vels2.linear * k2;
+            poses2.translation = poses2.translation * k2;
+            poses2.im = poses2.im * (k2 * k2);
+            (k1, k2)
+        } else {
+            (SimdReal::splat(1.0), SimdReal::splat(1.0))
+        };
+        #[cfg(not(feature = "simd-is-enabled"))]
+        let (portal_scale1, portal_scale2) = (1.0, 1.0);
 
         // IPL atlas, moving portals (Immersive Portals: Aeronautics): an image of a moving portal moves with the
         // portal's frame. That motion is a surface velocity of the image at each contact point,
@@ -320,6 +352,12 @@ impl ContactWithCoulombFrictionBuilder {
         out_builder.portal_shift2 = portal_shift2;
         out_builder.portal_any_rot = portal_any_rot;
         out_constraint.portal_any_rot = portal_any_rot;
+        out_builder.portal_scale1 = portal_scale1;
+        out_builder.portal_scale2 = portal_scale2;
+        out_builder.portal_any_scale = portal_any_scale;
+        out_constraint.portal_scale1 = portal_scale1;
+        out_constraint.portal_scale2 = portal_scale2;
+        out_constraint.portal_any_scale = portal_any_scale;
         #[cfg(feature = "simd-is-enabled")]
         {
             out_builder.portal_rot1 = portal_rot1;
@@ -408,6 +446,12 @@ impl ContactWithCoulombFrictionBuilder {
             poses2.rotation = self.portal_rot2 * poses2.rotation;
             poses2.translation = self.portal_rot2 * poses2.translation;
         }
+        // Immersive Portals: Aeronautics, scaled portals: the com maps to k R com (anchors are stored k times the
+        // body's own offsets, so the rotation alone places them).
+        if self.portal_any_scale {
+            poses1.translation = poses1.translation * self.portal_scale1;
+            poses2.translation = poses2.translation * self.portal_scale2;
+        }
         let all_infos = &self.infos[..constraint.num_contacts as usize];
         let normal_parts = &mut constraint.normal_part[..constraint.num_contacts as usize];
         let tangent_parts = &mut constraint.tangent_part[..constraint.num_contacts as usize];
@@ -487,6 +531,11 @@ pub(crate) struct ContactWithCoulombFriction<N: ScalarType> {
     pub portal_rot1: N::Rotation,
     pub portal_rot2: N::Rotation,
     pub portal_any_rot: bool,
+    /// Immersive Portals: Aeronautics, scaled portals: per-lane portal scales for the same boundary (linear
+    /// velocity k R v in, R^T v / k out) + a skip flag.
+    pub portal_scale1: N,
+    pub portal_scale2: N,
+    pub portal_any_scale: bool,
 }
 
 impl ContactWithCoulombFriction<SimdReal> {
@@ -503,6 +552,10 @@ impl ContactWithCoulombFriction<SimdReal> {
             solver_vel2.linear = self.portal_rot2 * solver_vel2.linear;
             solver_vel2.angular = self.portal_rot2 * solver_vel2.angular;
         }
+        if self.portal_any_scale {
+            solver_vel1.linear = solver_vel1.linear * self.portal_scale1;
+            solver_vel2.linear = solver_vel2.linear * self.portal_scale2;
+        }
     }
 
     /// IPL atlas Tier 2: map solved velocities back into the bodies' home frames.
@@ -512,6 +565,10 @@ impl ContactWithCoulombFriction<SimdReal> {
         solver_vel1: &mut crate::dynamics::solver::solver_body::SolverVel<SimdReal>,
         solver_vel2: &mut crate::dynamics::solver::solver_body::SolverVel<SimdReal>,
     ) {
+        if self.portal_any_scale {
+            solver_vel1.linear = solver_vel1.linear / self.portal_scale1;
+            solver_vel2.linear = solver_vel2.linear / self.portal_scale2;
+        }
         if self.portal_any_rot {
             let inv1 = self.portal_rot1.inverse();
             let inv2 = self.portal_rot2.inverse();

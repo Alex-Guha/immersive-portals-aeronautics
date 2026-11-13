@@ -33,7 +33,11 @@ final class IPMountedStraddle {
         if (mount == null || destScene == 0L || session.imageHandle < 0L) {
             return;
         }
-        final IPPortalIsometry iso = session.isometry;
+        // k is a similarity of the portal's scale: a carrier Create: Pocket Sized scaled has a metric native body frame,
+        // so its pose's position and orientation are its body frame and only the portal scales
+        final IPPortalSimilarity iso = session.map;
+        final boolean scaled = iso.isScaled() || session.scaledImage;
+        session.scaledImage = iso.isScaled();
         if (mount.source() != null && mount.destination() != null) {
             // k = D⁻¹ ∘ P ∘ S: the source carrier's body frame into the destination carrier's
             final Pose3dc source = mount.source().logicalPose();
@@ -42,8 +46,13 @@ final class IPMountedStraddle {
             final Vector3d t = inverse.transform(toVector(iso.mapPoint(toVec3(new Vector3d(source.position())))
                     .subtract(toVec3(new Vector3d(dest.position())))));
             final Quaterniond q = new Quaterniond(inverse).mul(iso.rotation()).mul(source.orientation()).normalize();
-            RapierExt.setImageAnchorBetween(destScene, session.imageHandle, mount.source().getRuntimeId(),
-                    mount.destination().getRuntimeId(), t.x, t.y, t.z, q.x, q.y, q.z, q.w);
+            if (scaled) {
+                RapierExt.setImageAnchorBetweenScaled(destScene, session.imageHandle, mount.source().getRuntimeId(),
+                        mount.destination().getRuntimeId(), t.x, t.y, t.z, q.x, q.y, q.z, q.w, iso.scale());
+            } else {
+                RapierExt.setImageAnchorBetween(destScene, session.imageHandle, mount.source().getRuntimeId(),
+                        mount.destination().getRuntimeId(), t.x, t.y, t.z, q.x, q.y, q.z, q.w);
+            }
             return;
         }
         final boolean carrierIsSource = mount.source() != null;
@@ -65,9 +74,14 @@ final class IPMountedStraddle {
             q = inverse.mul(iso.rotation());
         }
         q.normalize();
-        RapierExt.setImageAnchor(destScene, session.imageHandle, carrier.getRuntimeId(),
-                carrierIsSource ? RapierExt.ANCHOR_CARRIER_IS_SOURCE : RapierExt.ANCHOR_CARRIER_IS_DESTINATION,
-                t.x, t.y, t.z, q.x, q.y, q.z, q.w);
+        final int mode = carrierIsSource ? RapierExt.ANCHOR_CARRIER_IS_SOURCE : RapierExt.ANCHOR_CARRIER_IS_DESTINATION;
+        if (scaled) {
+            RapierExt.setImageAnchorScaled(destScene, session.imageHandle, carrier.getRuntimeId(), mode,
+                    t.x, t.y, t.z, q.x, q.y, q.z, q.w, iso.scale());
+        } else {
+            RapierExt.setImageAnchor(destScene, session.imageHandle, carrier.getRuntimeId(), mode,
+                    t.x, t.y, t.z, q.x, q.y, q.z, q.w);
+        }
     }
 
     /** Re-expresses world clip regions ({@link RapierExt#CLIP_REGION_DOUBLES} doubles each) in the carrier's body frame. */
@@ -101,7 +115,7 @@ final class IPMountedStraddle {
      * velocities at a point, zero for a fixed side; {@code x} the ship's position, {@code q} its arrival position);
      * spins likewise.
      */
-    static Vector3d[] handoffVelocity(final IPShipPortalAnchors.Mount mount, final IPPortalIsometry iso,
+    static Vector3d[] handoffVelocity(final IPShipPortalAnchors.Mount mount, final IPPortalSimilarity map,
                                       final Vec3 position, final Vec3 arrival, final Vector3d linear, final Vector3d angular) {
         final Vector3d relativeLinear = new Vector3d(linear);
         final Vector3d relativeAngular = new Vector3d(angular);
@@ -110,8 +124,8 @@ final class IPMountedStraddle {
             relativeLinear.sub(pointVelocity(carrier[0], carrier[1], new Vector3d(mount.source().logicalPose().position()), position));
             relativeAngular.sub(carrier[1]);
         }
-        final Vector3d outLinear = toVector(iso.mapVec(toVec3(relativeLinear)));
-        final Vector3d outAngular = toVector(iso.mapVec(toVec3(relativeAngular)));
+        final Vector3d outLinear = toVector(map.mapDisplacement(toVec3(relativeLinear)));
+        final Vector3d outAngular = toVector(map.mapDirection(toVec3(relativeAngular)));
         if (mount.destination() != null) {
             final Vector3d[] carrier = velocityOf(mount.destination());
             outLinear.add(pointVelocity(carrier[0], carrier[1], new Vector3d(mount.destination().logicalPose().position()), arrival));

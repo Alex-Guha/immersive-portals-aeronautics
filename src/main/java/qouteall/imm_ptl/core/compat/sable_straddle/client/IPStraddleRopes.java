@@ -18,7 +18,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.Vector3f;
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 
 /**
  * Ropes of straddling ships (Create Aeronautics / Simulated). A rope is drawn by its owner holder's block entity
@@ -161,7 +161,7 @@ public final class IPStraddleRopes {
             if (plane != null) {
                 Vec3 a = new Vec3(from.x(), from.y(), from.z());
                 Vec3 b = new Vec3(to.x(), to.y(), to.z());
-                final IPPortalIsometry isometry = IPStraddleRender.projectionIsometry(ship);
+                final IPPortalSimilarity isometry = IPStraddleRender.projectionIsometry(ship);
                 if (isometry != null) {
                     a = isometry.mapPoint(a);
                     b = isometry.mapPoint(b);

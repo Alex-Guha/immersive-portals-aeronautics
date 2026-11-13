@@ -8,12 +8,12 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_sable;
 
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import com.mojang.blaze3d.shaders.Uniform;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.joml.Matrix4f;
-import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -91,9 +91,8 @@ public class MixinSableChunkedRenderData_ClipSpace {
                 clipUniform.upload();
                 return;
             }
-            Quaterniondc orientation = this.subLevel.renderPose().orientation();
-            Vector3d rotatedNormal = orientation.transformInverse(
-                new Vector3d(clipEquation[0], clipEquation[1], clipEquation[2])
+            Vector3d rotatedNormal = IPShipScale.clipNormal(
+                this.subLevel.renderPose(), clipEquation[0], clipEquation[1], clipEquation[2]
             );
             clipUniform.set(
                 (float) rotatedNormal.x, (float) rotatedNormal.y, (float) rotatedNormal.z,

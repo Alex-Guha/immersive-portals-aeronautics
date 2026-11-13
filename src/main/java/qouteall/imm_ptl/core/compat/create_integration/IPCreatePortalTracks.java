@@ -20,7 +20,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
+import net.minecraft.world.phys.AABB;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -290,6 +292,93 @@ public final class IPCreatePortalTracks {
         track.getPersistentData().remove(OWN);
         LOGGER.info(TAG + "the portal at the track at {} in {} is gone: an ordinary track again", pos, level.dimension().location());
         return straight(state);
+    }
+
+    /**
+     * Whether trains go through {@code portal} from a track in a frame of {@code nearScale} (a scaled ship's, 1 in the
+     * world): when it takes one track block to one track block ({@link IPCreatePortalEnds#blockForBlock}). A portal on a
+     * ship scaled by Create: Pocket Sized does, so a train leaving the ship's tracks (drawn at the ship's size by Pym,
+     * which scales contraptions by the ship they are on) comes out at the size of the tracks it arrives on. A scaled
+     * portal between two unscaled sides does not: a track block there faces half a block or two.
+     */
+    public static boolean trainsCross(final Portal portal, final double nearScale) {
+        return IPCreatePortalEnds.blockForBlock(portal, nearScale);
+    }
+
+    /** {@link #trainsCross(Portal, double)} from the portal's own side. */
+    public static boolean trainsCross(final Portal portal) {
+        return trainsCross(portal, qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.sideScale(portal, true));
+    }
+
+    /** Cells walked around a portal's side when its scale changes; a portal larger than this keeps its pairs as they are. */
+    private static final int MAX_SCALE_CELLS = 16384;
+
+    /**
+     * {@code portal}'s scale became 1 or stopped being 1 ({@link Portal#SCALE_UNIT_CHANGED}, server). Our track ends
+     * facing it on its own side: linked ones become waiting bridges (their other ends too) when trains no longer cross
+     * it, waiting ones link again when they do. Each portal of a cluster handles its own side; on a ship that is the
+     * carrier's plot.
+     */
+    public static void onPortalScaleChanged(final Portal portal) {
+        if (!(portal.level() instanceof final ServerLevel level) || !portal.isTeleportable()) {
+            return;
+        }
+        final boolean cross = trainsCross(portal);
+        final AABB around = portal.getBoundingBox().inflate(1.5);
+        final java.util.UUID carrier = qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.ownSideCarrier(portal);
+        AABB cells = around;
+        if (carrier != null) {
+            final IPCreatePortalShafts.Frame frame = IPCreatePortalEnds.SABLE ? IPCreateShaftShips.frameOf(level, carrier) : null;
+            if (frame == null) {
+                return;
+            }
+            AABB local = null;
+            for (int i = 0; i < 8; i++) {
+                final Vec3 corner = frame.toLocal(new Vec3((i & 1) == 0 ? around.minX : around.maxX,
+                    (i & 2) == 0 ? around.minY : around.maxY, (i & 4) == 0 ? around.minZ : around.maxZ));
+                local = local == null ? new AABB(corner, corner) : local.minmax(new AABB(corner, corner));
+            }
+            cells = local;
+        }
+        final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
+        final BlockPos max = BlockPos.containing(cells.maxX, cells.maxY, cells.maxZ);
+        if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_SCALE_CELLS) {
+            return;
+        }
+        for (final BlockPos cell : BlockPos.betweenClosed(min, max)) {
+            final BlockState state = level.getBlockState(cell);
+            if (!(state.getBlock() instanceof TrackBlock) || !state.getValue(TrackBlock.SHAPE).isPortal() || !isOwn(level, cell)
+                || !(level.getBlockEntity(cell) instanceof final TrackBlockEntity track)) {
+                continue;
+            }
+            final Direction toPortal = portalSide(state.getValue(TrackBlock.SHAPE));
+            if (toPortal == null || level.getBlockState(cell.relative(toPortal)).getBlock() != PortalPlaceholderBlock.instance) {
+                continue;
+            }
+            final BlockPos pos = cell.immutable();
+            if (!cross && track.boundLocation != null) {
+                LOGGER.info(TAG + "the portal at the track at {} in {} changes size now (scale {}): trains no longer cross it",
+                    pos, level.dimension().location(), String.format("%.3f", portal.getScale()));
+                unlinkPartner(level, pos, track);
+                waitAgain(level, pos, state);
+            } else if (cross && track.boundLocation == null) {
+                final IPCreatePortalTrackProvider.ExitSpot spot = IPCreatePortalTrackProvider.exitSpot(level, new BlockFace(pos, toPortal));
+                final BlockState other = spot == null ? null : spot.level().getBlockState(spot.pos());
+                if (spot != null && isLinkable(spot.level(), spot.pos(), other, spot.towardPortal())) {
+                    link(level, pos, state, toPortal, spot, other);
+                }
+            }
+        }
+    }
+
+    /** The side a portal-shaped track reaches into its portal, or null. */
+    private static @Nullable Direction portalSide(final TrackShape shape) {
+        for (final Direction direction : Direction.Plane.HORIZONTAL) {
+            if (TrackShape.asPortal(direction) == shape) {
+                return direction;
+            }
+        }
+        return null;
     }
 
     private static boolean isOwn(final ServerLevel level, final BlockPos pos) {

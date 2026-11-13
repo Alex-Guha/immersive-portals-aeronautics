@@ -1,8 +1,7 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.Rapier3D.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026.
 
 use crate::config::{JOINT_SPRING_DAMPING_RATIO, JOINT_SPRING_FREQUENCY};
 use crate::scene::{LevelColliderID, PhysicsScene};
@@ -138,7 +137,7 @@ const AXES: [JointAxis; 6] = [
 ];
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintMotor<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setConstraintMotor<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -179,7 +178,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintMotor<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintLimit<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setConstraintLimit<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -209,7 +208,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintLimit<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_lockConstraintAxes<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_lockConstraintAxes<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -237,7 +236,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_lockConstraintAxes<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_isConstraintValid<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_isConstraintValid<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -256,7 +255,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_isConstraintValid<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getConstraintImpulses<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_getConstraintImpulses<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -287,7 +286,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_getConstraintImpulses<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintContactsEnabled<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setConstraintContactsEnabled<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -308,7 +307,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintContactsE
 
 // removes a constraint
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeConstraint<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_removeConstraint<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -326,7 +325,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeConstraint<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addRotaryConstraint<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addRotaryConstraint<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -415,7 +414,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addRotaryConstraint<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addFixedConstraint<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addFixedConstraint<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -507,7 +506,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addFixedConstraint<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addFreeConstraint<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addFreeConstraint<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -596,7 +595,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addFreeConstraint<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addGenericConstraint<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addGenericConstraint<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -700,7 +699,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addGenericConstraint<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setConstraintFrame<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setConstraintFrame<
     'local,
 >(
     _env: JNIEnv<'local>,

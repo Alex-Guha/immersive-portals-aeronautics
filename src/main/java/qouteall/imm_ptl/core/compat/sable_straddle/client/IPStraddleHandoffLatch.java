@@ -24,7 +24,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.ClientWorldLoader;
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -49,11 +49,11 @@ import java.util.UUID;
 public final class IPStraddleHandoffLatch {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long MAX_MILLIS = 3000L;
-    private static final boolean TRACE = qouteall.imm_ptl.core.compat.IPStallRecorder.isTestJar();
     /** Snapshots of the two copies are one server tick when their positions agree this well [blocks] through the portal. */
     private static final double MATCH_TOLERANCE = 1.0e-3;
 
-    private record Pending(ClientLevel level, int x, int z, ClientSubLevel ship, long deadline) {
+    /** @param scale the ship's scale when it was held (Create: Pocket Sized's client must not change it, below) */
+    private record Pending(ClientLevel level, int x, int z, ClientSubLevel ship, long deadline, double scale) {
     }
 
     private static final Map<ClientSubLevel, Pending> PENDING = new IdentityHashMap<>();
@@ -62,7 +62,7 @@ public final class IPStraddleHandoffLatch {
      * once ({@link #buildAtOnce}). Between levels the latch waits for the new copy's meshes; within one level it cannot
      * (the copies cannot share Sable's map by UUID), and Sable builds a ship's sections in the background unless they
      * are near the camera with the "nearby" chunk update option: the new copy was missing for a frame or more, a
-     * flicker as it came out of the far end towards the player (user, 2026-11-04).
+     * flicker as it came out of the far end towards the player.
      */
     private static final Map<UUID, Long> BUILD_AT_ONCE_UNTIL = new java.util.HashMap<>();
     private static final long BUILD_AT_ONCE_MILLIS = 1000L;
@@ -73,14 +73,14 @@ public final class IPStraddleHandoffLatch {
      */
     private static final class Link {
         final ClientSubLevel replacement;
-        final IPPortalIsometry isometry;
+        final IPPortalSimilarity isometry;
         final Vector3dc plotShift;
         final long linkedAt = System.currentTimeMillis();
         int followedFrames;
         float cachedPartialTick = Float.NaN;
         final Pose3d cached = new Pose3d();
 
-        Link(final ClientSubLevel replacement, final IPPortalIsometry isometry, final Vector3dc plotShift) {
+        Link(final ClientSubLevel replacement, final IPPortalSimilarity isometry, final Vector3dc plotShift) {
             this.replacement = replacement;
             this.isometry = isometry;
             this.plotShift = plotShift;
@@ -138,7 +138,8 @@ public final class IPStraddleHandoffLatch {
                 || container.getSubLevel(ship.getUniqueId()) != ship) {
             return false;
         }
-        PENDING.put(ship, new Pending(clientLevel, x, z, ship, System.currentTimeMillis() + MAX_MILLIS));
+        PENDING.put(ship, new Pending(clientLevel, x, z, ship, System.currentTimeMillis() + MAX_MILLIS,
+                qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale.of(ship.logicalPose())));
         // the new copy may have arrived first (a ship sent to portal viewers right at the hand-off)
         tryLink(ship);
         return true;
@@ -150,7 +151,7 @@ public final class IPStraddleHandoffLatch {
      * another plot of the same level ({@code IPSableBridge.reloadInDestination}): its old copy is held until then and
      * goes here, before Sable adds the new one, so the two never share Sable's map by UUID. Within one level the old
      * copy was removed at once and Sable sends the new one at its next tracking pass, 40-60 ms later: the ship
-     * vanished for those frames (user, 2026-11-04). It is not linked ({@link #tryLink}): it holds still meanwhile.
+     * vanished for those frames. It is not linked ({@link #tryLink}): it holds still meanwhile.
      */
     public static void releaseSlot(final Level level, final int x, final int z, final UUID id) {
         for (final Pending pending : List.copyOf(PENDING.values())) {
@@ -181,6 +182,27 @@ public final class IPStraddleHandoffLatch {
             return false;
         }
         return true;
+    }
+
+    /**
+     * @return the scale {@code ship} had when held as the old copy of a hand-off (until its replacement is drawn), or
+     * NaN when it is not held
+     */
+    /**
+     * @return whether a copy of {@code ship} plays on its old copy's timeline (a hand-off just happened)
+     */
+    public static boolean onBorrowedTimeline(final UUID ship) {
+        for (final ClientSubLevel copy : TIMELINES.keySet()) {
+            if (copy.getUniqueId().equals(ship)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static double heldScale(final ClientSubLevel ship) {
+        final Pending pending = PENDING.get(ship);
+        return pending == null ? Double.NaN : pending.scale();
     }
 
     public static boolean isPending(final UUID ship) {
@@ -218,17 +240,11 @@ public final class IPStraddleHandoffLatch {
     private static void release(final Pending pending) {
         PENDING.remove(pending.ship());
         final Link link = LINKS.remove(pending.ship());
-        final String message = "[IPStraddle] client: hand-off latch of ship {} released after {} ms ({}){}";
-        final Object[] args = {
+        LOGGER.debug("[IPStraddle] client: hand-off latch of ship {} released after {} ms ({}){}",
                 pending.ship().getUniqueId(), System.currentTimeMillis() - (pending.deadline() - MAX_MILLIS),
                 replacementReady(pending.ship()) ? "new copy compiled" : "no compiled new copy",
                 link == null ? ", never linked to the new copy"
-                        : ", linked " + (System.currentTimeMillis() - link.linkedAt) + " ms, followed it for " + link.followedFrames + " pose reads"};
-        if (TRACE) {
-            LOGGER.info(message, args);
-        } else {
-            LOGGER.debug(message, args);
-        }
+                        : ", linked " + (System.currentTimeMillis() - link.linkedAt) + " ms, followed it for " + link.followedFrames + " pose reads");
         final SubLevelContainer container = SubLevelContainer.getContainer(pending.level());
         if (container != null && container.getSubLevel(pending.x(), pending.z()) == pending.ship()) {
             container.removeSubLevel(pending.x(), pending.z(), SubLevelRemovalReason.REMOVED);
@@ -267,7 +283,7 @@ public final class IPStraddleHandoffLatch {
             final ClientSubLevelContainer container = destLevel == null ? null : ClientSubLevelContainer.getContainer(destLevel);
             if (container != null && container.getSubLevel(held.getUniqueId()) instanceof final ClientSubLevel replacement
                     && !replacement.isRemoved()) {
-                link(held, replacement, session.isometry(), container);
+                link(held, replacement, session.map(), container);
                 return;
             }
         }
@@ -276,11 +292,13 @@ public final class IPStraddleHandoffLatch {
     /**
      * Pairs a snapshot of the replacement with the held copy's snapshot at the same pose through the portal (the
      * latest such pair; the two copies' snapshot clocks are per dimension), then gives the replacement the held copy's
-     * older snapshots, mapped. A replacement sent right at the hand-off starts with two snapshots of one pose (Sable's
-     * start-tracking: last pose and pose, equal for a ship just loaded); the second goes, or the interpolator would
-     * drop the next real snapshot as a duplicate tick and the ship would stand still for a tick.
+     * older snapshots, mapped. A replacement sent right at the hand-off starts with two snapshots of one pose under two
+     * ticks (Sable's start-tracking: last pose and pose, equal for a ship just loaded). The later tick is the pose's: the
+     * next snapshot is one physics step after it (ticks 310 and 311 at the hand-off pose, 312 one step
+     * on). The first goes; keeping it instead paired the held copy's last tick with the earlier
+     * one, and the first step spread over two ticks: half speed for two ticks, then full, a jolt at every hand-off.
      */
-    private static void link(final ClientSubLevel held, final ClientSubLevel replacement, final IPPortalIsometry isometry,
+    private static void link(final ClientSubLevel held, final ClientSubLevel replacement, final IPPortalSimilarity isometry,
                              final ClientSubLevelContainer container) {
         final SubLevelSnapshotInterpolator interpolator = replacement.getInterpolator();
         final List<SubLevelSnapshotInterpolator.Snapshot> history;
@@ -294,7 +312,7 @@ public final class IPStraddleHandoffLatch {
         synchronized (interpolator.buffer) {
             final List<SubLevelSnapshotInterpolator.Snapshot> buffer = interpolator.buffer;
             if (buffer.size() == 2 && samePose(buffer.get(0).pose(), buffer.get(1).pose())) {
-                buffer.remove(1);
+                buffer.remove(0);
                 droppedDuplicate = true;
             }
             search:
@@ -344,7 +362,7 @@ public final class IPStraddleHandoffLatch {
      * @param offset the replacement's snapshot tick minus the held copy's for one server tick
      */
     private static void continueTimeline(final ClientSubLevel held, final ClientSubLevel replacement,
-                                         final IPPortalIsometry isometry, final int offset) {
+                                         final IPPortalSimilarity isometry, final int offset) {
         final ClientSubLevelContainer heldContainer = ClientSubLevelContainer.getContainer((ClientLevel) held.getLevel());
         if (heldContainer == null || !(held.lastPose() instanceof final Pose3d heldLast)
                 || !(replacement.lastPose() instanceof final Pose3d replacementLast)) {

@@ -87,7 +87,7 @@ public class IPShipRenderWatchdog {
      * Flywheel made a new manager for {@code level} (any thread): rebuilds every ship of it at its container's next
      * tick. Ship sections compiled while the old manager held their parts' visuals do not draw those parts themselves,
      * so after Flywheel reset the level (its backend switched on or off with a shader pack, F3+A, IP reloading a
-     * world's renderer) they were drawn by neither until the ship was synced again (BUGS #8). Recompiling hands them
+     * world's renderer) they were drawn by neither until the ship was synced again (bugs.md #8). Recompiling hands them
      * to the new manager, or to their renderer when Flywheel cannot take them in that compile.
      */
     public static void onFlywheelManagerCreated(Object level) {

@@ -21,7 +21,8 @@ import org.slf4j.Logger;
  */
 public final class IPSablePortalSync {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final ThreadLocal<Boolean> FORCE_REDIRECT = ThreadLocal.withInitial(() -> Boolean.FALSE);
+    /** Depth of nested begin/end pairs: a top-up inside the tracking tick's wrapper must not end the outer one. */
+    private static final ThreadLocal<int[]> FORCE_REDIRECT = ThreadLocal.withInitial(() -> new int[1]);
     private static boolean clientErrorLogged;
     private static volatile boolean clientHalfAbsent;
 
@@ -67,15 +68,18 @@ public final class IPSablePortalSync {
     }
 
     public static void beginForceRedirect() {
-        FORCE_REDIRECT.set(Boolean.TRUE);
+        FORCE_REDIRECT.get()[0]++;
     }
 
     public static void endForceRedirect() {
-        FORCE_REDIRECT.set(Boolean.FALSE);
+        final int[] depth = FORCE_REDIRECT.get();
+        if (depth[0] > 0) {
+            depth[0]--;
+        }
     }
 
     public static boolean isForceRedirect() {
-        return FORCE_REDIRECT.get();
+        return FORCE_REDIRECT.get()[0] > 0;
     }
 
     public static void tickPortalSideWorlds() {

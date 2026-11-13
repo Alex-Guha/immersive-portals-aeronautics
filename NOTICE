@@ -33,9 +33,9 @@ This product is a derivative work of:
    https://github.com/ryanhcode/sable
    PolyForm Shield License 1.0.0 (see LICENSE,
    https://polyformproject.org/licenses/shield/1.0.0).
-   The Java classes in the package ipaeronautics.rapier and the native library ipa_rapier
-   (natives/ipa_rapier/ in this jar) are a modified copy of Sable 2.0.6's Rapier physics
-   backend. They are not covered by the Apache License, and are only used when Sable itself
+   The native library ipa_rapier (natives/ipa_rapier/ in this jar) is a modified copy of
+   Sable 2.0.6's Rapier physics library, loaded in place of Sable's and driven by Sable's own
+   Java classes. It is not covered by the Apache License, and is only used when Sable itself
    is installed.
 
 4. Rapier by Dimforge, as modified by RyanHCode

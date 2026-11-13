@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core.render.renderer;
@@ -32,6 +32,7 @@ import qouteall.imm_ptl.core.compat.iris_compatibility.IrisPortalRenderer;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
+import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
 import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
@@ -97,6 +98,10 @@ public abstract class PortalRenderer {
     
     protected List<Portal> getPortalsToRender(Matrix4f modelView) {
         Supplier<Frustum> frustumSupplier = Helper.cached(() -> {
+            // Immersive Aeronautics: with a frustum captured (F3+U), portals are chosen by the captured camera
+            if (IPFrustumCapture.isCulling()) {
+                return IPFrustumCapture.cullingFrustum();
+            }
             Frustum frustum = new Frustum(
                 modelView,
                 RenderSystem.getProjectionMatrix()
@@ -148,9 +153,14 @@ public abstract class PortalRenderer {
             return true;
         }
         
-        Vec3 cameraPos = TransformationManager.getIsometricAdjustedCameraPos();
+        // Immersive Aeronautics: with a frustum captured (F3+U), the captured camera decides (IPFrustumCapture)
+        Vec3 cameraPos = IPFrustumCapture.isCulling() ?
+            IPFrustumCapture.cullingPos() : TransformationManager.getIsometricAdjustedCameraPos();
         
-        if (!portal.isRoughlyVisibleTo(cameraPos)) {
+        // Immersive Aeronautics: a portal back along the captured camera's path is seen from the other side
+        boolean leadsBack = IPFrustumCapture.isCulling() && IPFrustumCapture.leadsBack(portal);
+        
+        if (!leadsBack && !portal.isRoughlyVisibleTo(cameraPos)) {
             return true;
         }
         
@@ -172,7 +182,7 @@ public abstract class PortalRenderer {
             return true;
         }
 
-        if (IPCGlobal.earlyFrustumCullingPortal) {
+        if (IPCGlobal.earlyFrustumCullingPortal && !leadsBack) {
             // frustum culling does not work when portal is very close
             if (distance > 0.1) {
                 Frustum frustum = frustumSupplier.get();

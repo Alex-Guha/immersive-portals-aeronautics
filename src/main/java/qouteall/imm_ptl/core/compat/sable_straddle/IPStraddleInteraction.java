@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
+import qouteall.imm_ptl.core.portal.Portal;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -161,10 +162,28 @@ public final class IPStraddleInteraction {
         points.add(new Tuple<>(world.dimension(), worldPos));
         IPStraddleSessions.forEach(session -> {
             if (session.ship == ship && session.source == world && session.dest != world) {
-                points.add(new Tuple<>(session.dest.dimension(), session.isometry.mapPoint(worldPos)));
+                points.add(new Tuple<>(session.dest.dimension(), session.map.mapPoint(worldPos)));
             }
         });
         return points;
+    }
+
+    /**
+     * @return whether a portal is at the block {@code pos} of a ship's plot in {@code level}, where the ship is (by the
+     * pose its raycasts use): IP's test for a portal block's outline, with the block's world box on its ship
+     */
+    public static boolean isShipPortalBlock(final Level level, final BlockPos pos) {
+        final SubLevel ship = IPStraddleCut.shipAt(level, pos);
+        if (ship == null) {
+            return false;
+        }
+        final Pose3dc pose = raycastPose(level, ship);
+        final Vec3 centre = pose.transformPosition(Vec3.atCenterOf(pos));
+        // the block's box turned with the ship: within its circumscribed cube
+        final double half = 0.87 * IPShipScale.of(pose);
+        return qouteall.imm_ptl.core.McHelper.traverseEntitiesByBox(Portal.class, level,
+            new AABB(centre, centre).inflate(half), qouteall.imm_ptl.core.IPGlobal.maxNormalPortalRadius,
+            portal -> qouteall.imm_ptl.core.McHelper.placeholder) != null;
     }
 
     /**

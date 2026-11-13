@@ -2,7 +2,7 @@
  * Immersive Portals: Aeronautics - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
  * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
- * in the code and summarised in changelog.md. This project's changes are licensed under the
+ * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 package qouteall.imm_ptl.core.render;
@@ -240,6 +240,8 @@ public class MyGameRenderer {
         // Immersive Aeronautics: the pass gets the viewed world's current sky colour, not BadOptimizations' cached one
         Object boSkyColor = qouteall.imm_ptl.core.compat.IPBadOptimizationsCompat.beforePortalPass(newWorld);
         
+        // Immersive Aeronautics: a frustum captured with F3+U culls this pass from the captured camera (IPFrustumCapture)
+        IPFrustumCapture.beginPass(worldRenderer);
         //invoke rendering
         invokeWrapper.accept(() -> {
             client.getProfiler().push("render_portal_content");
@@ -249,6 +251,7 @@ public class MyGameRenderer {
             client.getProfiler().pop();
         });
         
+        IPFrustumCapture.endPass(worldRenderer);
         qouteall.imm_ptl.core.compat.IPBadOptimizationsCompat.afterPortalPass(newWorld, boSkyColor);
         qouteall.imm_ptl.core.compat.IPDatabankCompat.afterPortalPass(databankViewMatrix);
         

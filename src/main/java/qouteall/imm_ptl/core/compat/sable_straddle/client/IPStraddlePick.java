@@ -24,6 +24,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -34,7 +35,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3dc;
 import qouteall.imm_ptl.core.block_manipulation.BlockManipulationClient;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction;
-import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleInteraction;
 import qouteall.imm_ptl.core.portal.Mirror;
@@ -60,7 +61,7 @@ public final class IPStraddlePick {
      * A far half: {@code ship} straddles {@code portal} (an entity of the ship's own dimension) and is drawn in
      * {@code destDim} with {@code isometry}.
      */
-    public record FarHalf(SubLevel ship, IPPortalIsometry isometry, ResourceKey<Level> destDim, java.util.UUID portal) {
+    public record FarHalf(SubLevel ship, IPPortalSimilarity map, ResourceKey<Level> destDim, java.util.UUID portal) {
     }
 
     /**
@@ -158,10 +159,14 @@ public final class IPStraddlePick {
         if (!(ship instanceof final ClientSubLevel clientShip) || !(ship.getLevel() instanceof final ClientLevel shipLevel)) {
             return null;
         }
-        if (!projection.mappedBounds().inflate(0.5).clip(from, to).isPresent() && !projection.mappedBounds().contains(from)) {
+        // a ray starting within the margin found nothing (AABB.clip from inside a box is empty) and was not inside the
+        // bounds themselves: within half a block of a far half it was never tried (a 0.5x player on a far half; every
+        // ray through a portal starts on the plane, a far half's own face: seats were not clickable)
+        final AABB reach = projection.mappedBounds().inflate(0.5);
+        if (!reach.contains(from) && reach.clip(from, to).isEmpty()) {
             return null;
         }
-        final IPPortalIsometry isometry = projection.isometry();
+        final IPPortalSimilarity isometry = projection.map();
         final Vec3 shipFrom = isometry.unmapPoint(from);
         final Vec3 shipTo = isometry.unmapPoint(to);
         final Pose3dc pose = new Pose3d(clientShip.renderPose(partialTick));
@@ -175,7 +180,10 @@ public final class IPStraddlePick {
             return null;
         }
         final Vec3 location = pose.transformPosition(hit.getLocation());
-        return new Hit(new IPShipBlockInteraction.Target(shipLevel.dimension(), hit), shipFrom.distanceTo(location),
+        // measured where the far half is seen, in the caller's world: through a portal of scale k the ship's own world
+        // is 1/k times as large, and a far half picked by its own distance lost to terrain behind it (the physics staff
+        // went through the far half of a ship in a portal of scale 0.5 unless held right up to it)
+        return new Hit(new IPShipBlockInteraction.Target(shipLevel.dimension(), hit), from.distanceTo(isometry.mapPoint(location)),
             new FarHalf(ship, isometry, level.dimension(), projection.portal()));
     }
 
@@ -216,7 +224,7 @@ public final class IPStraddlePick {
             return;
         }
         final VoxelShape shape = state.getShape(shipLevel, pos, CollisionContext.of(camera.getEntity()));
-        final Pose3dc pose = far.isometry().mapPose(ship.renderPose());
+        final Pose3dc pose = far.map().mapPose(ship.renderPose());
         final Vec3 cameraPos = camera.getPosition();
         final Vector3dc position = pose.position();
         final Vector3dc rotationPoint = pose.rotationPoint();

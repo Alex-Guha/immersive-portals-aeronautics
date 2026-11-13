@@ -76,7 +76,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * <p>
  * Flywheel (Create's {@code BeltVisual}, {@code MixinBeltVisual_PortalBelts}) and Create's block entity renderer when
  * Flywheel's backend is off ({@code MixinBeltRenderer_PortalBelts}). Horizontal belts only. Belts on ships at their own
- * mounted portal too (2.6.12.8): the portal blocks on the ship are found in its plot, and a loop on the ship's side is
+ * mounted portal too: the portal blocks on the ship are found in its plot, and a loop on the ship's side is
  * drawn through the ship's pose as drawn.
  */
 public final class IPCreatePortalBeltLook {

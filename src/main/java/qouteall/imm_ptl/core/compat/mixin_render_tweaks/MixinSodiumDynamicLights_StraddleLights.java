@@ -26,7 +26,7 @@ import java.util.function.Consumer;
  * <p>
  * The light at a block also skips sources out of range before SDL asks for their luminance. SDL does that last, and
  * this runs per source for every light lookup: Create Dynamic Lights' sources read their config for each answer, 9.6%
- * of the render thread with a 19x24 portal on a ship (spark, 2026-10-31).
+ * of the render thread with a 19x24 portal on a ship (measured with spark).
  */
 @Mixin(value = SodiumDynamicLights.class, remap = false)
 public abstract class MixinSodiumDynamicLights_StraddleLights implements IPSodiumDynamicLightsExt {

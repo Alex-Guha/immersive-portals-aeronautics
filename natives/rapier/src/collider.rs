@@ -23,6 +23,10 @@ pub struct LevelCollider {
     /// chart) — the dispatcher's terrain-vs-convex path has only the shapes in
     /// scope, so the shape itself must know which chart's chunk maps to read.
     pub chart: crate::scene::ChartId,
+    /// Immersive Portals: Aeronautics, scaled portals: the image of a body through a portal of scale k is k times
+    /// the body: a point at `p` (plot coordinates relative to the centre of mass) is at `k p` in this shape's
+    /// frame. 1 for every collider but such images (`RapierExt.createScaledImageCollider`).
+    pub scale: Real,
 }
 
 impl LevelCollider {
@@ -33,6 +37,7 @@ impl LevelCollider {
             is_static,
             cached_aabb: None,
             chart,
+            scale: 1.0,
         }
     }
 
@@ -114,8 +119,13 @@ impl Shape for LevelCollider {
                 Vec3::new(WORLD_SIZE, WORLD_SIZE, WORLD_SIZE),
             )
         } else {
-            self.cached_aabb
-                .expect("compute_local_aabb called before bounds were set")
+            let aabb = self.cached_aabb
+                .expect("compute_local_aabb called before bounds were set");
+            if self.scale != 1.0 {
+                Aabb::new(aabb.mins * self.scale, aabb.maxs * self.scale)
+            } else {
+                aabb
+            }
         }
     }
 

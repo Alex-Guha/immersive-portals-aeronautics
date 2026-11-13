@@ -1,7 +1,7 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026: scaled images.
 
 use std::cmp::min;
 
@@ -30,6 +30,11 @@ pub fn find_collision_pairs(
     // Atlas: which chart's STATIC octree to query when there is no other body.
     // For an image collider this is the far chart, not the body's own chart.
     static_chart: crate::scene::ChartId,
+    // Immersive Portals: Aeronautics, scaled portals: the shape scales of `sable_body`'s and the other side's
+    // colliders (`LevelCollider::scale`; `isometry` maps the first's shape frame into the second's). The walk runs
+    // in the other side's plot units: a node of the first is `rho = scale / other_scale` of them wide.
+    scale: Real,
+    other_scale: Real,
 ) -> Vec<(IVec3, IVec3)> {
     struct StackObject {
         index: u32,
@@ -52,8 +57,10 @@ pub fn find_collision_pairs(
     );
     let offset = Vec3::new(offset.x as Real, offset.y as Real, offset.z as Real);
 
-    let offset = isometry.rotation.mul_vec3(offset.into());
-    let translation = isometry.translation + offset;
+    let rho = scale / other_scale;
+    let inv_other = 1.0 / other_scale;
+    let offset = isometry.rotation.mul_vec3((offset * rho).into());
+    let translation = isometry.translation * inv_other + offset;
 
     // start with the root node
     let mut current_level = Vec::with_capacity(128);
@@ -85,8 +92,8 @@ pub fn find_collision_pairs(
 
             // Calculate the center and radius for this node
             let node_center = entry.min.as_vec3() + node_size as f32 / 2.0;
-            let transformed_center = isometry.rotation.mul_vec3(node_center) + translation;
-            let radius = node_size as Real / 2.0 * 1.7321 + prediction;
+            let transformed_center = isometry.rotation.mul_vec3(node_center * rho) + translation;
+            let radius = node_size as Real / 2.0 * 1.7321 * rho + prediction * inv_other;
 
             let (has_any_intersections, blocks_opt) = get_overlapping_nodes(
                 other_sable_body,
@@ -97,6 +104,9 @@ pub fn find_collision_pairs(
                 static_chart,
                 node >= 0,
                 liquid,
+                // a leaf wider than a block of the other side (rho above about 1.15) would ask for 2^3 cells, of which
+                // the pairing tests one block: ask for blocks
+                rho != 1.0,
             );
 
             if !has_any_intersections {
@@ -163,9 +173,14 @@ fn get_overlapping_nodes(
     chart: crate::scene::ChartId,
     cancel_early: bool,
     liquid: bool,
+    blocks_for_leaves: bool,
 ) -> (bool, Option<Vec<IVec3>>) {
     // biggest power of two that doesn't go over radius
-    let log2 = ((dist * 2.0).simd_ln() / 2.0f32.simd_ln()).floor() as i32;
+    let log2 = if blocks_for_leaves && !cancel_early {
+        0
+    } else {
+        ((dist * 2.0).simd_ln() / 2.0f32.simd_ln()).floor() as i32
+    };
 
     let log2 = if let Some(other_handle) = other_handle {
         let Some(oct) = &other_handle.octree else {

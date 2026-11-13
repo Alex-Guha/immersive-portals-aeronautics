@@ -16,10 +16,11 @@ import org.joml.Quaterniond;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalIsometry;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPPortalSimilarity;
+import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import qouteall.q_misc_util.my_util.DQuaternion;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,20 +39,21 @@ public final class IPStraddleClientSessions {
      * @param shipDim the dimension the ship belongs to (its client sub-level lives in that client level)
      * @param origin  a point of the portal plane, in the ship's dimension
      * @param normal  the source-to-destination unit normal of the plane
-     * @param isometry maps the ship's dimension into {@code destDim} through the portal
+     * @param halfW   half the opening's width, in the ship's dimension ({@code map.mapLength} for the destination)
+     * @param map     maps the ship's dimension into {@code destDim} through the portal, scale included
      */
     public record Session(UUID ship, ResourceKey<Level> shipDim, UUID portal, ResourceKey<Level> destDim, Vec3 origin,
-                          Vec3 normal, Vec3 axisW, Vec3 axisH, double halfW, double halfH, IPPortalIsometry isometry) {
+                          Vec3 normal, Vec3 axisW, Vec3 axisH, double halfW, double halfH, IPPortalSimilarity map) {
         /**
          * @return the plane in the destination, as a point and the normal pointing into the destination world (away
          * from the portal, towards where the far half is)
          */
         public Vec3 destOrigin() {
-            return this.isometry.mapPoint(this.origin);
+            return this.map.mapPoint(this.origin);
         }
 
         public Vec3 destNormal() {
-            return this.isometry.mapVec(this.normal);
+            return this.map.mapDirection(this.normal);
         }
     }
 
@@ -64,7 +66,8 @@ public final class IPStraddleClientSessions {
      */
     private record Mount(boolean hasSource, UUID source, ResourceKey<Level> sourceDim,
                          boolean hasDest, UUID dest, ResourceKey<Level> destDim, Vec3 plotOrigin,
-                         Vec3 plotNormal, Vec3 plotAxisW, Vec3 plotAxisH, Vec3 kDest, Quaterniond kRotation) {
+                         Vec3 plotNormal, Vec3 plotAxisW, Vec3 plotAxisH, Vec3 kDest, Quaterniond kRotation,
+                         double plotScale, double plotHalfW, double plotHalfH) {
     }
 
     private static final Map<Key, Mount> MOUNTS = new HashMap<>();
@@ -92,11 +95,19 @@ public final class IPStraddleClientSessions {
         rotation.normalize();
         final Vec3 origin = source == null ? mount.plotOrigin() : source.transformPosition(mount.plotOrigin());
         final Vec3 far = dest == null ? mount.kDest() : dest.transformPosition(mount.kDest());
+        // a carrier Create: Pocket Sized scales: its pose's normals come out s long, and the portal's scale is the
+        // plot-space one times the two sides' scales as drawn (both follow Pym's client scale as it changes)
+        final double sourceScale = source == null ? 1.0 : IPShipScale.of(source);
+        final double destScale = dest == null ? 1.0 : IPShipScale.of(dest);
         return new Session(session.ship(), session.shipDim(), session.portal(), session.destDim(), origin,
-                source == null ? mount.plotNormal() : source.transformNormal(mount.plotNormal()),
-                source == null ? mount.plotAxisW() : source.transformNormal(mount.plotAxisW()),
-                source == null ? mount.plotAxisH() : source.transformNormal(mount.plotAxisH()),
-                session.halfW(), session.halfH(), new IPPortalIsometry(origin, far, rotation));
+                source == null ? mount.plotNormal() : source.transformNormal(mount.plotNormal()).normalize(),
+                source == null ? mount.plotAxisW() : source.transformNormal(mount.plotAxisW()).normalize(),
+                source == null ? mount.plotAxisH() : source.transformNormal(mount.plotAxisH()).normalize(),
+                // the opening grows and shrinks with its carrier (Create: Pocket Sized): half sizes in the carrier's
+                // units times its scale as drawn (the session's were the size when it began)
+                source == null ? session.halfW() : mount.plotHalfW() * sourceScale,
+                source == null ? session.halfH() : mount.plotHalfH() * sourceScale,
+                new IPPortalSimilarity(new IPPortalIsometry(origin, far, rotation), mount.plotScale() * destScale / sourceScale));
     }
 
     /** A carrier's render pose on this client, or null when it is not here. */
@@ -137,14 +148,11 @@ public final class IPStraddleClientSessions {
      * hand-off within one level reloads the ship there with the same UUID in another plot
      * ({@code IPSableBridge.reloadInDestination}); every user of the sessions finds the ship by UUID, so the session
      * would cut the new copy and draw it as a far half, through the portal once more, a portal's distance from where it
-     * is: for the second a retired session lasts (user, 2026-11-04), and for the moment between the arrival of the new
+     * is: for the second a retired session lasts, and for the moment between the arrival of the new
      * copy and our end message, which come by separate paths (a flicker as the ship went fully through). Such a session
      * is drawn only while the ship's copy here is in that plot; Sable tracking the ship again keeps the plot.
      */
     private static final Map<Key, ChunkPos> STRADDLING_PLOT = new HashMap<>();
-    private static final boolean TRACE = qouteall.imm_ptl.core.compat.IPStallRecorder.isTestJar();
-    /** Test jars: sessions whose moved-on copy was logged. */
-    private static final java.util.Set<Key> TRACED = new java.util.HashSet<>();
 
     private IPStraddleClientSessions() {
     }
@@ -158,7 +166,6 @@ public final class IPStraddleClientSessions {
             HANDED_OFF.clear();
             HANDED_OFF_FROM.clear();
             STRADDLING_PLOT.clear();
-            TRACED.clear();
             IPStraddleHandoffLatch.clear();
         });
         NeoForge.EVENT_BUS.addListener(IPGlobal.PostClientTickEvent.class, e -> IPStraddleHandoffLatch.tick());
@@ -233,7 +240,7 @@ public final class IPStraddleClientSessions {
             final dev.ryanhcode.sable.sublevel.SubLevel ship = container == null ? null : container.getSubLevel(session.ship());
             if (ship != null && !ship.isRemoved()) {
                 result.add(new qouteall.imm_ptl.core.compat.sable_straddle.IPStraddleCut.Projection(
-                        ship, session.isometry(), session.destOrigin(), session.destNormal(), session.portal()));
+                        ship, session.map(), session.destOrigin(), session.destNormal(), session.portal()));
             }
         }
         return result;
@@ -285,8 +292,6 @@ public final class IPStraddleClientSessions {
             RETIRED.remove(entry.getKey());
             if (!SESSIONS.containsKey(entry.getKey())) {
                 STRADDLING_PLOT.remove(entry.getKey());
-            }
-            if (!SESSIONS.containsKey(entry.getKey())) {
                 MOUNTS.remove(entry.getKey());
             }
             return true;
@@ -319,52 +324,7 @@ public final class IPStraddleClientSessions {
         if (straddled.equals(plot)) {
             return false;
         }
-        if (TRACE && TRACED.add(key)) {
-            LOGGER.info("[IPStraddle] client: ship {} is out of portal {} in plot {} (straddled in {}); session {}", key.ship(),
-                    key.portal(), plot, straddled, SESSIONS.containsKey(key) ? "still open: its end has not arrived" : "ended");
-        }
         return true;
-    }
-
-    public static Collection<Session> all() {
-        if (MOUNTS.isEmpty()) {
-            return SESSIONS.values();
-        }
-        final List<Session> result = new ArrayList<>(SESSIONS.size());
-        addCurrent(result, SESSIONS);
-        return result;
-    }
-
-    /**
-     * @return the sessions of a ship (it may straddle several portals), empty when it straddles none
-     */
-    public static List<Session> ofShip(final UUID ship) {
-        if (SESSIONS.isEmpty()) {
-            return List.of();
-        }
-        final List<Session> result = new ArrayList<>(1);
-        for (final Map.Entry<Key, Session> entry : SESSIONS.entrySet()) {
-            if (entry.getValue().ship().equals(ship)) {
-                result.add(current(entry.getKey(), entry.getValue()));
-            }
-        }
-        return result;
-    }
-
-    /**
-     * @return the sessions whose far half is in {@code dimension}
-     */
-    public static List<Session> into(final ResourceKey<Level> dimension) {
-        if (SESSIONS.isEmpty()) {
-            return List.of();
-        }
-        final List<Session> result = new ArrayList<>(1);
-        for (final Map.Entry<Key, Session> entry : SESSIONS.entrySet()) {
-            if (entry.getValue().destDim().equals(dimension)) {
-                result.add(current(entry.getKey(), entry.getValue()));
-            }
-        }
-        return result;
     }
 
     public static final class RemoteCallables {
@@ -374,15 +334,14 @@ public final class IPStraddleClientSessions {
         public static void begin(final UUID ship, final ResourceKey<Level> shipDim, final UUID portal,
                                  final ResourceKey<Level> destDim, final Vec3 origin, final Vec3 normal,
                                  final Vec3 axisW, final Vec3 axisH, final double halfW, final double halfH,
-                                 final Vec3 dest, final DQuaternion rotation) {
-            final IPPortalIsometry isometry = new IPPortalIsometry(origin, dest,
-                    new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize());
+                                 final Vec3 dest, final DQuaternion rotation, final double scale) {
+            final IPPortalSimilarity map = new IPPortalSimilarity(new IPPortalIsometry(origin, dest,
+                    new Quaterniond(rotation.x, rotation.y, rotation.z, rotation.w).normalize()), scale);
             RETIRED.remove(new Key(ship, portal));
             RETIRED_UNTIL.remove(new Key(ship, portal));
             STRADDLING_PLOT.remove(new Key(ship, portal));
-            TRACED.remove(new Key(ship, portal));
             SESSIONS.put(new Key(ship, portal),
-                    new Session(ship, shipDim, portal, destDim, origin, normal, axisW, axisH, halfW, halfH, isometry));
+                    new Session(ship, shipDim, portal, destDim, origin, normal, axisW, axisH, halfW, halfH, map));
             LOGGER.debug("[IPStraddle] client: ship {} straddles portal {} ({} -> {})", ship, portal, shipDim.location(), destDim.location());
         }
 
@@ -390,10 +349,12 @@ public final class IPStraddleClientSessions {
                                  final boolean hasSource, final UUID source, final ResourceKey<Level> sourceDim,
                                  final boolean hasDest, final UUID dest, final ResourceKey<Level> destDim,
                                  final Vec3 plotOrigin, final Vec3 plotNormal,
-                                 final Vec3 plotAxisW, final Vec3 plotAxisH, final Vec3 kDest, final DQuaternion kRotation) {
+                                 final Vec3 plotAxisW, final Vec3 plotAxisH, final Vec3 kDest, final DQuaternion kRotation,
+                                 final double plotScale, final double plotHalfW, final double plotHalfH) {
             MOUNTS.put(new Key(ship, portal), new Mount(hasSource, source, sourceDim, hasDest, dest, destDim, plotOrigin,
                     plotNormal, plotAxisW, plotAxisH, kDest,
-                    new Quaterniond(kRotation.x, kRotation.y, kRotation.z, kRotation.w).normalize()));
+                    new Quaterniond(kRotation.x, kRotation.y, kRotation.z, kRotation.w).normalize(), plotScale,
+                    plotHalfW, plotHalfH));
         }
 
         public static void end(final UUID ship, final UUID portal, final boolean handedOff) {

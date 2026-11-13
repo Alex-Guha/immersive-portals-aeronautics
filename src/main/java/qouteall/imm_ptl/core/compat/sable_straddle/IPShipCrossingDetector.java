@@ -456,16 +456,19 @@ final class IPShipCrossingDetector {
 
     /**
      * {@code out} = the pose {@code pose} (taken when the carrier was at {@code then}) carried along with the carrier to
-     * {@code now}: {@code now ∘ then⁻¹ ∘ pose}, keeping the ship's rotation point.
+     * {@code now}: {@code now ∘ then⁻¹ ∘ pose}, keeping the ship's rotation point. A carrier's pose may carry a scale
+     * (Create: Pocket Sized): the carry is then a similarity, by {@code k = s_now / s_then}.
      */
     private static void relativeTo(final Pose3dc pose, final Pose3dc then, final Pose3dc now, final Pose3d out) {
+        final double k = IPShipScale.of(now) / IPShipScale.of(then);
         final Quaterniond carry = new Quaterniond(now.orientation()).mul(new Quaterniond(then.orientation()).conjugate());
-        final Vector3d shift = new Vector3d(then.rotationPoint()).sub(now.rotationPoint());
+        final Vector3d shift = new Vector3d(then.rotationPoint()).sub(now.rotationPoint()).mul(IPShipScale.of(now));
         now.orientation().transform(shift);
-        shift.add(now.position()).sub(carry.transform(new Vector3d(then.position())));
+        shift.add(now.position()).sub(carry.transform(new Vector3d(then.position())).mul(k));
         out.set(pose);
-        carry.transform(out.position()).add(shift);
+        carry.transform(out.position()).mul(k).add(shift);
         new Quaterniond(carry).mul(pose.orientation(), out.orientation());
+        out.scale().mul(k);
     }
 
     private static Trail trail(final ServerSubLevel ship) {
@@ -492,6 +495,8 @@ final class IPShipCrossingDetector {
         final Quaterniond rotation = new Quaterniond(from.orientation());
         rotation.slerp(new Quaterniond(to.orientation()), Math.clamp(t, 0.0, 1.0));
         out.orientation().set(rotation);
+        // a ship being resized (Create: Pocket Sized) does not straddle, but keep the scale of the segment
+        new Vector3d(from.scale()).lerp(to.scale(), Math.clamp(t, 0.0, 1.0), out.scale());
         return out;
     }
 

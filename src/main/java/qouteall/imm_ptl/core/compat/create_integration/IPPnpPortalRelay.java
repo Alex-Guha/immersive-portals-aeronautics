@@ -54,7 +54,7 @@ import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
  * Not ours long term: the buffers and the one-way rules make up for Pipes 'n Physics having no coupled relay (both
  * ends of a pair are solved as unrelated sinks and sources), and {@link #engineOn()} reads its config by reflection.
  * Each such part is marked "Upstream (Pipes 'n Physics)" below; what they would add instead is in
- * docs/upstream-reports.md. Ours for good: the capability on portal block faces, {@link #handlerAt}'s checks and the
+ * docs/trackers/upstream-reports.md. Ours for good: the capability on portal block faces, {@link #handlerAt}'s checks and the
  * link to the far pipe ({@link End#far()}).
  */
 public final class IPPnpPortalRelay {
@@ -63,7 +63,7 @@ public final class IPPnpPortalRelay {
     /** {@code -Dip_aeronautics.debug.portalPipes=true} also logs relay links. */
     private static final boolean DEBUG = Boolean.getBoolean("ip_aeronautics.debug.portalPipes");
     /** What one pipe end holds for the far network to drain, in mB. */
-    // Upstream (Pipes 'n Physics): CAPACITY and the holds below go with a coupled relay (docs/upstream-reports.md).
+    // Upstream (Pipes 'n Physics): CAPACITY and the holds below go with a coupled relay (docs/trackers/upstream-reports.md).
     static final int CAPACITY = 1000;
     private static final int LINK_REFRESH_TICKS = 20;
     /** Ticks an end takes nothing in after the far side last fed it. */
@@ -115,7 +115,7 @@ public final class IPPnpPortalRelay {
     /**
      * Pipes 'n Physics' {@code enableEngine}; false when it cannot be read (not loaded yet, renamed).
      * Upstream (Pipes 'n Physics): a public engine-enabled query in its {@code api} package would replace the
-     * reflection on its config class (docs/upstream-reports.md).
+     * reflection on its config class (docs/trackers/upstream-reports.md).
      */
     private static boolean engineOn() {
         if (!engineLookedUp) {

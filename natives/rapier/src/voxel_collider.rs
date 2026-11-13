@@ -1,8 +1,7 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.Rapier3D.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026.
 
 use std::collections::HashMap;
 
@@ -46,7 +45,7 @@ impl VoxelColliderMap {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_newVoxelCollider<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_newVoxelCollider<
     'local,
 >(
     mut env: JNIEnv<'static>,
@@ -102,7 +101,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_newVoxelCollider<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addVoxelColliderBox<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addVoxelColliderBox<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -129,7 +128,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addVoxelColliderBox<
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_clearVoxelColliderBoxes<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_clearVoxelColliderBoxes<
     'local,
 >(
     _env: JNIEnv<'local>,

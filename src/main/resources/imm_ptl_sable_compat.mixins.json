@@ -8,6 +8,7 @@
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "MixinPymScaleNetwork_PortalViewers",
     "MixinEntity_SeatProxyRider",
     "MixinServerPlayer_SeatInOtherLevel",
     "MixinSableSeatPositionDimStamp",
@@ -22,8 +23,13 @@
     "MixinSableFullSync_RopeResend",
     "IPSubLevelPhysicsSystemAccessor",
     "MixinSablePhysicsSystem_FusedStep",
+    "MixinSableRapier3D_LoadLibrary",
+    "MixinSableRapierPipeline_OwnBackend",
+    "MixinSableRapierBakery_LevelBound",
     "IPSubLevelContainerAccessor",
     "IPLevelPlotAccessor",
+    "IPServerChunkCacheInvoker",
+    "MixinSableLevelPlot_ChunkCache",
     "MixinSableServerContainer_FusedTick",
     "IPLevelAcceleratorAccessor",
     "MixinSableEntityCollision_StraddleCut",
@@ -42,6 +48,9 @@
     "MixinServerLevel_CrossDimensionParticles"
   ],
   "client": [
+    "MixinPymScaleHandshake_AllLevels",
+    "MixinPymScaleState_HeldCopy",
+    "MixinPymScaleState_HandoffSnap",
     "MixinAcsCameraController_PortalPass",
     "MixinFlywheelCompat_PosesPerLevel",
     "MixinRenderSection_GlobalBlockEntitiesPerLevel",

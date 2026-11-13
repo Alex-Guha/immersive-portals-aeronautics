@@ -173,11 +173,6 @@ public final class IPCreateTrainControls {
      */
     public static void onStop(final CarriageContraptionEntity entity, final BlockPos controlsPos) {
         final Optional<UUID> driver = entity.getControllingPlayer();
-        if (driver.isEmpty() && IPSeatSyncTrace.ON && !entity.level().isClientSide()) {
-            // test jars: Create stops a copy no driver is bound to without telling anyone ([IPDrive])
-            LOGGER.info("[IPDrive] carriage {} (entity {}) stopped with no driver bound to it{}: {}", carriageId(entity),
-                entity.getId(), IPDriveTrace.copyOf(entity), caller());
-        }
         if (driver.isEmpty() || !(entity.level() instanceof final ServerLevel level)) {
             return;
         }

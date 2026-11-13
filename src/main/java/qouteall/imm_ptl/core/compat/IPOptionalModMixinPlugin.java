@@ -5,8 +5,10 @@ package qouteall.imm_ptl.core.compat;
 
 import net.neoforged.fml.loading.LoadingModList;
 import org.objectweb.asm.tree.ClassNode;
+import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import qouteall.imm_ptl.core.compat.sable_physics.IPSableBackendVersion;
 
 import java.util.List;
 import java.util.Map;
@@ -42,7 +44,9 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("com.euphoriapatches.euphoria_patcher.", "euphoria_patcher"),
         Map.entry("net.karto.mc2.mc2_interactivefoliage.", "mc2_interactivefoliage"),
         Map.entry("com.github.razorplay01.sway.", "sway"),
-        Map.entry("com.terraformersmc.mod_menu.", "mod_menu")
+        Map.entry("com.terraformersmc.mod_menu.", "mod_menu"),
+        Map.entry("dev.djefrey.colorwheel.", "colorwheel"),
+        Map.entry("com.misterblusky9.pym.", "pym")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(
@@ -66,8 +70,23 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         "qouteall.imm_ptl.core.compat.mixin_voxy.MixinVoxyRenderPipelineFactory_OwnDimension"
     );
 
+    /**
+     * Sable's Rapier backend: our mixins there drive our physics library under Sable's JNI names, so they apply only to
+     * the exact Sable versions it matches (IPSableBackendVersion).
+     */
+    private static final String SABLE_RAPIER_PACKAGE = "dev.ryanhcode.sable.physics.impl.rapier.";
+    private static boolean warnedSableVersion;
+
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (targetClassName.startsWith(SABLE_RAPIER_PACKAGE) && isLoaded("sable") && !IPSableBackendVersion.isSupported()) {
+            if (!warnedSableVersion) {
+                warnedSableVersion = true;
+                LoggerFactory.getLogger("IPPhysics").warn(
+                    "[IPPhysics] using Sable's stock physics, ships cannot straddle portals: {}", IPSableBackendVersion.unsupportedReason());
+            }
+            return false;
+        }
         if (VOXY_MIXINS_NEEDING_IRIS.contains(mixinClassName) && !isLoaded("iris")) {
             return false;
         }

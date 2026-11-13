@@ -21,7 +21,7 @@ import qouteall.imm_ptl.core.compat.create_integration.IPCreateTrainSides;
  * is written straight into the carriage's shared wheel points. The client's carriage runs a little behind the
  * server's (it approaches each snapshot over a few ticks), so when Create creates the other dimension's copy while a
  * carriage crosses a portal, that first sync snapped the whole carriage, the copy already on screen included, forward
- * to the server's position; the approach then settled it again (user: "a very brief jump ahead stutter" at the front
+ * to the server's position; the approach then settled it again (a very brief stutter, a jump ahead at the front
  * as the carriage enters). If another live copy of the carriage is already initialised, the new copy joins it: its
  * sync data only becomes its approach target, which only the copy driving the carriage uses
  * ({@code IPCreateClientCarriageDriver}).

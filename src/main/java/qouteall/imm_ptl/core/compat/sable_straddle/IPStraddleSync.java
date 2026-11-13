@@ -79,12 +79,12 @@ final class IPStraddleSync {
 
     private static void sendBegin(final ServerPlayer player, final IPStraddleSessions.Session session) {
         final Portal portal = session.portal;
-        final Quaterniondc q = session.isometry.rotation();
+        final Quaterniondc q = session.map.rotation();
         McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "begin",
                 session.key.ship(), session.source.dimension(), session.key.portal(), session.dest.dimension(),
                 session.origin, session.normal, portal.getAxisW(), portal.getAxisH(),
                 portal.getWidth() * 0.5, portal.getHeight() * 0.5,
-                session.isometry.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()));
+                session.map.dest(), new DQuaternion(q.x(), q.y(), q.z(), q.w()), session.map.scale());
         if (session.mount != null) {
             sendMount(player, session);
         }
@@ -105,10 +105,10 @@ final class IPStraddleSync {
         final Vec3 plotNormal = source == null ? session.normal : source.transformNormalInverse(session.normal);
         final Vec3 plotAxisW = source == null ? session.portal.getAxisW() : source.transformNormalInverse(session.portal.getAxisW());
         final Vec3 plotAxisH = source == null ? session.portal.getAxisH() : source.transformNormalInverse(session.portal.getAxisH());
-        final Vec3 far = session.isometry.mapPoint(session.origin);
+        final Vec3 far = session.map.mapPoint(session.origin);
         final Vec3 kDest = dest == null ? far : dest.transformPositionInverse(far);
         final Quaterniond kRotation = dest == null ? new Quaterniond() : new Quaterniond(dest.orientation()).conjugate();
-        kRotation.mul(session.isometry.rotation());
+        kRotation.mul(session.map.rotation());
         if (source != null) {
             kRotation.mul(source.orientation());
         }
@@ -120,6 +120,11 @@ final class IPStraddleSync {
                 mount.source() != null, sourceShip.getUniqueId(), sourceShip.getLevel().dimension(),
                 mount.destination() != null, destShip.getUniqueId(), destShip.getLevel().dimension(),
                 plotOrigin, plotNormal, plotAxisW, plotAxisH,
-                kDest, new DQuaternion(kRotation.x, kRotation.y, kRotation.z, kRotation.w));
+                kDest, new DQuaternion(kRotation.x, kRotation.y, kRotation.z, kRotation.w),
+                // the portal's scale without its carriers' (Create: Pocket Sized) scales, which the client takes as drawn
+                session.map.scale() * (source == null ? 1.0 : IPShipScale.of(source)) / (dest == null ? 1.0 : IPShipScale.of(dest)),
+                // the opening's half sizes in the source carrier's units, which the client scales as it draws the carrier
+                session.portal.getWidth() * 0.5 / (source == null ? 1.0 : IPShipScale.of(source)),
+                session.portal.getHeight() * 0.5 / (source == null ? 1.0 : IPShipScale.of(source)));
     }
 }

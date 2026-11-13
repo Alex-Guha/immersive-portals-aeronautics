@@ -1,8 +1,7 @@
 // From IPSable 0.5.0 by r2smith141 (https://github.com/r2smith141/IPSable), natives/rapier: Sable's sable_rapier
 // crate by RyanHCode (https://github.com/ryanhcode/sable, 2.0.3) with IPSable's changes (Apache License 2.0).
 // Sable's code is licensed under the PolyForm Shield License 1.0.0 (see natives/LICENSE.md), as are
-// this project's changes to it. Rebased on Sable 2.0.6 and modified for Immersive Portals: Aeronautics, 2026:
-// JNI symbols renamed for ipaeronautics.rapier.Rapier3D.
+// this project's changes to it. Rebased on Sable 2.0.6 for Immersive Portals: Aeronautics, 2026.
 
 use std::collections::HashMap;
 
@@ -49,7 +48,7 @@ fn get_kinematic_collider_info(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_createKinematicContraption<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_createKinematicContraption<
     'local,
 >(
     _env: JNIEnv<'local>,
@@ -115,7 +114,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_createKinematicContrap
 
 /// Set the transform (position/orientation) of a kinematic sub-level's center of mass relative to its parent
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setKinematicContraptionTransform<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_setKinematicContraptionTransform<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -197,7 +196,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_setKinematicContraptio
 
 /// Add a chunk to a kinematic sub-level (4096 blocks, each as packed int)
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addKinematicContraptionChunkSection<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_addKinematicContraptionChunkSection<
     'local,
 >(
     env: JNIEnv<'local>,
@@ -232,7 +231,7 @@ pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_addKinematicContraptio
 
 /// Remove a kinematic sub-level from a scene
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_ipaeronautics_rapier_Rapier3D_removeKinematicContraption<
+pub extern "system" fn Java_dev_ryanhcode_sable_physics_impl_rapier_Rapier3D_removeKinematicContraption<
     'local,
 >(
     _env: JNIEnv<'local>,

@@ -1,7 +1,8 @@
 // Modified by IPSable 0.5.0 (r2smith141, https://github.com/r2smith141/IPSable, Apache License 2.0) from
 // Rapier as forked by RyanHCode (https://github.com/ryanhcode/rapier @ 38e92f1): portal-image colliders and
 // frame-mapped contacts (diff against 38e92f1 to see them). Modified for Immersive Portals: Aeronautics, 2026:
-// the frame velocity of moving portals' images (`portal_frame_*`, PolyForm Shield License 1.0.0; see NOTICE).
+// the frame velocity of moving portals' images (`portal_frame_*`) and scaled portals (`portal_scale`, 2.9.0),
+// PolyForm Shield License 1.0.0; see NOTICE.
 
 use crate::alloc_prelude::*;
 use crate::dynamics::{CoefficientCombineRule, MassProperties, RigidBodyHandle, RigidBodySet};
@@ -411,6 +412,21 @@ impl Collider {
         if let Some(parent) = self.parent.as_mut() {
             self.changes.insert(ColliderChanges::PARENT);
             parent.portal_prefix = prefix;
+        }
+    }
+
+    /// Immersive Portals: Aeronautics, scaled portals: the scale of this image's portal map (1 without one;
+    /// see [`ColliderParent::portal_scale`]).
+    pub fn portal_scale(&self) -> Real {
+        self.parent.as_ref().map_or(1.0, |p| p.portal_scale)
+    }
+
+    /// Immersive Portals: Aeronautics, scaled portals: set the scale of this image's portal map. Marks the
+    /// parent linkage changed like [`Self::set_portal_prefix`]. Does nothing for standalone colliders.
+    pub fn set_portal_scale(&mut self, scale: Real) {
+        if let Some(parent) = self.parent.as_mut() {
+            self.changes.insert(ColliderChanges::PARENT);
+            parent.portal_scale = scale;
         }
     }
 

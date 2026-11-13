@@ -12,7 +12,6 @@ import com.simibubi.create.content.trains.entity.CarriageContraption;
 import com.simibubi.create.content.trains.entity.CarriageContraptionEntity;
 import dev.engine_room.flywheel.api.backend.RenderContext;
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
-import dev.engine_room.flywheel.backend.engine.embed.EmbeddedEnvironment;
 import java.lang.ref.WeakReference;
 import java.util.BitSet;
 import java.util.List;
@@ -68,7 +67,7 @@ public final class IPCreateCarriageCrossingClient {
     /** The carriage copy whose bogeys are being placed on this thread ({@code translateBogey} has no entity). */
     private static final ThreadLocal<CarriageContraptionEntity> BOGEY_COPY = new ThreadLocal<>();
     /** Flywheel embeddings of carriages (the carriage's own and its bogeys'), by embedding. Flywheel's worker threads add them. */
-    private static final Map<EmbeddedEnvironment, WeakReference<CarriageContraptionEntity>> EMBEDDINGS =
+    private static final Map<VisualEmbedding, WeakReference<CarriageContraptionEntity>> EMBEDDINGS =
         java.util.Collections.synchronizedMap(new WeakHashMap<>());
     /** Copies reaching through a portal with no copy on the other side: their far halves are drawn there. */
     private static final Map<CarriageContraptionEntity, IPCreateCarriageCrossing.Crossing> FAR_HALVES = new WeakHashMap<>();
@@ -115,7 +114,7 @@ public final class IPCreateCarriageCrossingClient {
         holder.ip_setCrossing(crossing);
         refreshRendered(entity);
         if (crossing == null && contraption instanceof final CarriageContraption carriageContraption
-            && !carriageContraption.notInPortal() && !usesCreateCut(contraption)) {
+            && !carriageContraption.notInPortal() && !IPCreateCarriageCrossing.STOCK) {
             final long key = ((long) carriageContraption.portalCutoffMin << 32) ^ (carriageContraption.portalCutoffMax & 0xffffffffL);
             final Long previousKey = CUT_LOGGED.put(entity, key);
             if (previousKey == null || previousKey != key) {
@@ -224,33 +223,22 @@ public final class IPCreateCarriageCrossingClient {
             || !(contraption instanceof final IPCarriageCrossingHolder holder)) {
             return;
         }
-        final long key = renderedKey(carriageContraption);
-        holder.ip_setRenderedKey(key);
-        if (key != Long.MIN_VALUE && !IPCreateCarriageCrossing.STOCK
-            && carriageContraption.entity instanceof final CarriageContraptionEntity entity) {
-            // Create's own cut (whole-block, purple glass seam) is built: say why ours does not apply
-            LOGGER.debug("[IPTrainCrossing] carriage {} in {} built with Create's cut {}..{}: {}", entity.getId(),
-                entity.level().dimension().location(), carriageContraption.portalCutoffMin,
-                carriageContraption.portalCutoffMax, describe(entity));
-        }
+        holder.ip_setRenderedKey(renderedKey(carriageContraption));
     }
 
+    /**
+     * What a copy's model should be built for: {@link Long#MIN_VALUE} for the whole carriage, else Create's cut with its
+     * cutoffs. Create's own whole-block cut (and purple glass) applies on the client only with
+     * {@code -Dip_aeronautics.stockTrains=true} ({@link IPCreateCarriageCrossing#STOCK},
+     * {@code MixinCarriageContraption_SeamlessCrossing}); otherwise copies are drawn whole, cut at the plane by a
+     * crossing of ours, at portals into another dimension and within one alike.
+     */
     private static long renderedKey(final CarriageContraption contraption) {
-        // on the client Create's cut applies only with stockTrains (MixinCarriageContraption_SeamlessCrossing)
-        return !usesCreateCut(contraption)
+        return !IPCreateCarriageCrossing.STOCK
             || contraption instanceof final IPCarriageCrossingHolder holder && holder.ip_getCrossing() != null
             || contraption.notInPortal()
             ? Long.MIN_VALUE
             : ((long) contraption.portalCutoffMin << 32) ^ (contraption.portalCutoffMax & 0xffffffffL);
-    }
-
-    /**
-     * Whether Create's own whole-block cut (and purple glass) applies to a copy on the client: only with
-     * {@code -Dip_aeronautics.stockTrains=true}. Otherwise copies are drawn whole, cut at the plane by a crossing of
-     * ours, at portals into another dimension and within one alike.
-     */
-    public static boolean usesCreateCut(final Contraption contraption) {
-        return IPCreateCarriageCrossing.STOCK;
     }
 
     public static void beginBogey(@Nullable final Entity entity) {
@@ -297,8 +285,9 @@ public final class IPCreateCarriageCrossingClient {
 
     /** Remembers a Flywheel embedding drawing (part of) a carriage. */
     public static void registerEmbedding(@Nullable final VisualEmbedding embedding, @Nullable final Entity entity) {
-        if (embedding instanceof final EmbeddedEnvironment environment && entity instanceof final CarriageContraptionEntity carriage) {
-            EMBEDDINGS.put(environment, new WeakReference<>(carriage));
+        // Flywheel's or Colorwheel's embedding (IPFlywheelEmbeddings)
+        if (embedding != null && IPFlywheelEmbeddings.isEnvironment(embedding) && entity instanceof final CarriageContraptionEntity carriage) {
+            EMBEDDINGS.put(embedding, new WeakReference<>(carriage));
         }
     }
 
@@ -307,7 +296,7 @@ public final class IPCreateCarriageCrossingClient {
      * @return the cut of a carriage embedding for this Flywheel pass, relative to the engine's render origin, or null
      * if the environment draws no crossing carriage
      */
-    static float @Nullable [] flywheelPlane(final EmbeddedEnvironment environment, final EmbeddedEnvironment root,
+    static float @Nullable [] flywheelPlane(final VisualEmbedding environment, final VisualEmbedding root,
                                             final Vec3i renderOrigin) {
         if (EMBEDDINGS.isEmpty()) {
             return null;
@@ -441,7 +430,8 @@ public final class IPCreateCarriageCrossingClient {
         final Vec3 worldMiddle = frame == null ? middle : frame.toWorld(middle);
         final List<Portal> portals = IPPortalLookup.touching(entity.level(), frame == null ? box.inflate(0.5)
                 : new AABB(worldMiddle, worldMiddle).inflate(box.getSize() + 0.5),
-            p -> !(p instanceof Mirror) && p.getTeleportable() && Math.abs(p.getScale() - 1.0) < 1.0E-6
+            p -> !(p instanceof Mirror) && p.getTeleportable()
+                && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
                 && (frame == null || IPCreatePortalShafts.onOwnSide(p, frame)));
         IPCreateTrainPortal best = null;
         Vec3 bestHit = null;
@@ -607,7 +597,8 @@ public final class IPCreateCarriageCrossingClient {
         double bestDistance = 1.0;
         for (final Portal candidate : IPPortalLookup.touching(level, new AABB(world, world).inflate(1.5),
             p -> !(p instanceof Mirror) && p.getTeleportable() && leaderDim.equals(p.getDestDim())
-                && IPCreatePortalShafts.onOwnSide(p, frame))) {
+                && IPCreatePortalShafts.onOwnSide(p, frame)
+                && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale()))) {
             final double distance = candidate.getDistanceToNearestPointInPortal(world);
             final IPCreateTrainPortal via = distance < bestDistance ? IPCreateTrainPortal.of(candidate, frame) : null;
             if (via != null) {
@@ -786,14 +777,14 @@ public final class IPCreateCarriageCrossingClient {
                 }
                 return plane;
             };
-            if (!IPFlywheelFarHalf.draw(context, source, rotation, camera, selection)) {
+            if (!IPFlywheelFarHalf.draw(context, source, rotation, (float) portal.getScale(), camera, selection)) {
                 return;
             }
         }
     }
 
     @Nullable
-    private static CarriageContraptionEntity ownerOf(final EmbeddedEnvironment environment, final EmbeddedEnvironment root) {
+    private static CarriageContraptionEntity ownerOf(final VisualEmbedding environment, final VisualEmbedding root) {
         WeakReference<CarriageContraptionEntity> reference = EMBEDDINGS.get(environment);
         if (reference == null) {
             reference = EMBEDDINGS.get(root);

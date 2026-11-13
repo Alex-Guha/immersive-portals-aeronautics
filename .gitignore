@@ -61,6 +61,7 @@ src/main/resources/immersive_portals.timestamp
 /natives/target/
 /natives/.cargo-cache/
 /src/main/resources/natives/ipa_rapier/ipa_rapier_*
+/src/main/resources/natives/ipa_rapier/SOURCE-HASH
 __pycache__/
 
 # Private: the notes repository (ipa-notes) and its links; only for the public repository, where docs/ is not tracked

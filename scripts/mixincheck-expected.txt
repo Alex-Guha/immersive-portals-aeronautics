@@ -1,0 +1,17 @@
+# Problems scripts/mixincheck.py reports that are known and accepted (scripts/check.sh, check "mixins"). One per line, as
+# printed; each group says why. A line that stops occurring is reported as stale: delete it.
+
+# Hooks for Neo Voxy builds, which the Roxy-patched Voxy we compile against lacks; @Pseudo or require = 0, so they apply
+# to whichever Voxy has them. Only checked when the jar has the Voxy compat (not with -PwithoutVoxy).
+imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantExtras_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.create.DistantKineticRenderer
+imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantExtras_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.create.DistantTrackRenderer
+imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantExtras_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.core.beacon.DistantBeaconRenderer
+imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantLaserRenderer_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.simulated.DistantLaserRenderer
+imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantTrackRenderer_PortalEdges  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.create.DistantTrackRenderer
+imm_ptl_voxy_compat.mixins.json  MixinVoxyKineticSnapshots_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.create.KineticSnapshots
+imm_ptl_voxy_compat.mixins.json  MixinVoxyMDICSectionRenderer_OwnLevel  AT OWNER NOT FOUND  me.cortex.voxy.client.compat.LodPipelineHooks
+imm_ptl_voxy_compat.mixins.json  MixinVoxyRenderSystem_PortalView  METHOD NOT FOUND  me.cortex.voxy.client.core.VoxyRenderSystem#renderOpaqueNow
+imm_ptl_voxy_compat.mixins.json  MixinVoxySableParentChunkLightSync_IPChunkTracking  TARGET CLASS NOT FOUND  me.cortex.voxy.commonImpl.compat.sable.SableParentChunkLightSync
+
+# Roxy's own patch class, present only in a Roxy install's Voxy (require = 0)
+imm_ptl_voxy_compat.mixins.json  MixinVoxyRenderGenerationService_PortalSideResults  AT OWNER NOT FOUND  net.rasanovum.roxy.patch.RoxyVoxyRenderPatch

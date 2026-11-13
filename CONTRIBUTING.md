@@ -27,8 +27,9 @@ See "Building from source" in the [README](README.md). For work that doesn't tou
 | `src/main/java/qouteall/imm_ptl/core/compat/` | Compatibility with other mods. The Sable work is in `sable_integration`, `mixin_sable`, `sable_physics` and `sable_straddle`; Create's in `create_integration` and `mixin_create`; portals on ships in `ship_portals` |
 | `src/main/java/ipaeronautics/rapier/` | Java bindings for the physics library's functions beyond Sable's |
 | `natives/` | The physics library (Rust): Sable's, with IPSable's changes and ours, and a vendored copy of the Rapier engine |
-| `scripts/` | Build helpers: physics libraries, nested dependencies, licence list, file headers, mixin target check |
+| `scripts/` | Build helpers and checks: physics libraries, nested dependencies, licence list, file headers, mixin targets, the static checks (`check.sh`), the weekly dependency check |
 | `changelog/` | Changes per release, one file per minor version |
+| `.github/workflows/` | CI: the build and checks on every push and pull request, the maintainer's headless test suite, the weekly dependency check |
 
 Some code comments cite `docs/...`: those are the maintainer's notes, which are not public. Every comment should explain itself without them.
 
@@ -38,15 +39,17 @@ The git history is upstream Immersive Portals up to tag `v6.0.7`, then one commi
 
 Test in game, with the built jar in a normal game install rather than `runClient` or `runServer`. Ships need Sable and Create Aeronautics, and ships crossing portals smoothly needs a jar with the physics libraries. In the pull request, say what you tried, with which mods, and whether in single player or on a server. The maintainer may run further tests before merging.
 
-Checks you can run:
-- `python3 scripts/stamp-headers.py --check`: every Java file has its origin header (below).
-- `scripts/mixincheck.py`, after changing a dependency's version: every class, method and field the mixins name exists in the jars (its docstring says how to run it).
-- `python3 scripts/native-licenses.py --check`, after changing `natives/Cargo.lock`. Without `--check`, it rewrites the licence list of the Rust crates shipped in the jar.
+After a build, `scripts/check.sh` runs the static checks, which CI also runs on every push and pull request:
+- `headers`: every Java file has its origin header (below; `python3 scripts/stamp-headers.py` writes them).
+- `native-licences`, when `natives/Cargo.lock` changed: the licence list of the Rust crates shipped in the jar is current (`python3 scripts/native-licenses.py` rewrites it; needs cargo).
+- `mixins`: every class, method and field our mixins name exists in the jars we build against, and every mixin into another mod is skipped without that mod (`IPOptionalModMixinPlugin`, below). Known exceptions are in `scripts/mixincheck-expected.txt`.
+- `hooks`: the mixins and reflection other mods have into our classes (`scripts/hooks-into-us.txt`) still find what they need. If a change of yours breaks one, say so in the pull request: that mod's players would crash.
+- `version` and `tests`: the version fits the branch, and the unit tests passed.
 
 ## Code conventions
 
 - **File headers.** Every Java file starts with a comment saying where it comes from and its licence. After adding files, run `python3 scripts/stamp-headers.py`. For code ported from or modelled on IPSable, add the header line and table row that `LICENSING.md` describes. Changes to upstream Immersive Portals files are marked `Immersive Aeronautics:` in the code.
-- **Mixins on other mods** go in one of the compat configs (`imm_ptl_*_compat.mixins.json`, `imm_ptl_render_tweaks.mixins.json`), with string `targets`, `remap = false` and `require = 0`. Add the package to `IPOptionalModMixinPlugin.MOD_BY_PACKAGE`, or players without that mod crash. Check that the injection applies with `-Dmixin.debug.export=true`.
+- **Mixins on other mods** go in one of the compat configs (`imm_ptl_*_compat.mixins.json`, `imm_ptl_render_tweaks.mixins.json`), with string `targets`, `remap = false` and `require = 0`. Add the package to `IPOptionalModMixinPlugin.MOD_BY_PACKAGE`, or players without that mod crash (`scripts/check.sh` catches a missing one). Check that the injection applies with `-Dmixin.debug.export=true`.
 - **Server-side mixins** go in a config's `mixins` section, never `client`.
 - **A new mixin config** is registered in `build.gradle` (`mixin {}`) and `META-INF/neoforge.mods.toml`, is `required: false`, and sets `"overwrites": {"conformVisibility": true}`. Other mods can widen a method we `@Overwrite`, and without that setting Mixin then refuses to load the class.
 - **Comments** say what the code does and why, in terms of the game and the other mods involved.

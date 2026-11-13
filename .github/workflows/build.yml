@@ -1,0 +1,69 @@
+# Builds from a clean clone and runs the static checks (scripts/check.sh) on every push and pull request, and on every
+# release tag v<x.y.z>, where check.sh also requires mod_version to equal the tag and changelog/ to have its dated entry.
+# The jar built here has no physics libraries and no Voxy compat, so it is never one to play with: releases are built
+# by the maintainer.
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # stamp-headers.py classifies files against the upstream tag v6.0.7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Cache the nested jars of the mods we compile against
+        id: deps
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: deps-${{ hashFiles('build.gradle', 'scripts/extract-nested-deps.sh') }}
+
+      - name: Extract the nested jars
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew downloadModJars --console=plain
+          scripts/extract-nested-deps.sh
+
+      - name: Build and run the unit tests
+        run: ./gradlew build --console=plain -PallowMissingNatives -PwithoutVoxy
+
+      - name: Checks
+        run: scripts/check.sh
+
+      - name: Machine details in the pushed commits
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then range=$BEFORE..HEAD; else range=origin/main..HEAD; fi
+          scripts/check-commits.sh --identities "$range"
+
+      - name: Machine details in the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-commits.sh "$BASE..$HEAD"

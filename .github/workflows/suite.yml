@@ -1,0 +1,230 @@
+# The full headless regression suite: dedicated Minecraft servers run scripted scenarios on a test world, with our jar
+# and with stock physics, and each result is compared with the last green run on main. On every push of a branch (the
+# newest commit of each branch; a newer push cancels a run still going) and by hand (Actions, "Run workflow", with
+# optional suites or a test pattern).
+#
+# The test scenarios, the world and the scripts that drive them are the maintainer's and private: they come from the
+# maintainer's notes repository with the NOTES_TOKEN secret (read-only), so this runs only in this repository, never on
+# forks or pull requests.
+name: Suite
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      suites:
+        description: Suites to run, comma-separated (empty for all)
+        default: ''
+      only:
+        description: Only the tests matching this regular expression
+        default: ''
+
+permissions:
+  contents: read
+  actions: read   # the baseline: the last green run's results
+
+concurrency:
+  group: suite-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NOTES_REPO: Alex-Guha/ipa-notes
+  SHARDS: 10
+
+jobs:
+  jar:
+    name: Jar with the Linux physics library
+    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      baseline: ${{ steps.baseline.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Cache the nested jars of the mods we compile against
+        id: deps
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: deps-${{ hashFiles('build.gradle', 'scripts/extract-nested-deps.sh') }}
+
+      - name: Extract the nested jars
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          ./gradlew downloadModJars --console=plain
+          scripts/extract-nested-deps.sh
+
+      - name: Source hash of the physics library
+        id: natives
+        run: echo "hash=$(scripts/natives-hash.sh)" >> "$GITHUB_OUTPUT"
+
+      # Without our native library a jar falls back to Sable's stock physics, and the physics tests would compare
+      # stock with stock. Only linux-x86_64 is built; the Gradle build refuses a library stamped with another source.
+      - name: Cache the Linux physics library
+        id: native-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            src/main/resources/natives/ipa_rapier/ipa_rapier_x86_64_linux.so
+            src/main/resources/natives/ipa_rapier/SOURCE-HASH
+          key: natives-linux-x86_64-${{ steps.natives.outputs.hash }}
+
+      - name: Build the Linux physics library
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: scripts/build-natives.sh linux-x86_64
+
+      - name: Build the jar
+        run: ./gradlew build -x test --console=plain -PallowMissingNatives -PwithoutVoxy
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: suite-jar
+          path: |
+            build/libs/ip_aeronautics-*.jar
+            !build/libs/*-all.jar
+          retention-days: 7
+
+      - name: The last green run on main
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow suite.yml --branch main --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "baseline: ${run:-none yet}"
+
+  shard:
+    name: Shard ${{ matrix.shard }}
+    needs: jar
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      SUITES: ${{ inputs.suites }}
+      ONLY: ${{ inputs.only }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Notes repository (test scenarios and scripts)
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.NOTES_REPO }}
+          token: ${{ secrets.NOTES_TOKEN }}
+          path: docs
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: suite-jar
+          path: build/libs
+
+      - name: The baseline's durations, to balance the shards
+        if: needs.jar.outputs.baseline != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: suite-results
+          run-id: ${{ needs.jar.outputs.baseline }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/regression/results/base
+
+      - name: Test world
+        env:
+          GH_TOKEN: ${{ secrets.NOTES_TOKEN }}
+        run: docs/scripts/suite-ci.py fetch-world
+
+      - name: Run shard ${{ matrix.shard }} of ${{ env.SHARDS }}
+        run: docs/scripts/suite-ci.py shard ${{ matrix.shard }}/$SHARDS
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: suite-shard-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/regression/results/head
+            !${{ runner.temp }}/regression/results/head/*.jar
+          retention-days: 7
+
+  report:
+    name: Verdicts
+    needs: [jar, shard]
+    if: always() && needs.jar.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      BEFORE: ${{ github.event.before }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the earlier commits of the push, to find the first one a failure appears on
+
+      - name: Notes repository (test scenarios and scripts)
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.NOTES_REPO }}
+          token: ${{ secrets.NOTES_TOKEN }}
+          path: docs
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - uses: actions/cache/restore@v6
+        with:
+          path: deps
+          key: deps-${{ hashFiles('build.gradle', 'scripts/extract-nested-deps.sh') }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: suite-jar
+          path: build/libs
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: suite-shard-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/regression/results/head
+
+      - name: The baseline
+        if: needs.jar.outputs.baseline != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: suite-results
+          run-id: ${{ needs.jar.outputs.baseline }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/regression/results/base
+
+      - name: Test world (for reruns)
+        env:
+          GH_TOKEN: ${{ secrets.NOTES_TOKEN }}
+        run: docs/scripts/suite-ci.py fetch-world
+
+      - name: Compare, rerun failures, find the commit they start on
+        run: docs/scripts/suite-ci.py report
+
+      # On main, this is the next run's baseline once the run is green
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: suite-results
+          path: ${{ runner.temp }}/regression/results/head
+          retention-days: 90

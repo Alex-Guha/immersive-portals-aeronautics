@@ -166,12 +166,46 @@ dependencies {
     compileOnly "maven.modrinth:sable-ragdolls:CyKh8XSr"        // Sable Player Ragdoll 0.7.5
     compileOnly "maven.modrinth:sodium-dynamic-lights:XI0WLXdn" // SodiumDynamicLights 1.0.10 (NeoForge 1.21.1)
     compileOnly "maven.modrinth:colorwheel:lV874ox8"            // Colorwheel 1.3.2+mc1.21.1 (NeoForge): Flywheel under Iris packs
+    compileOnly "maven.modrinth:create-teleporters:WHTovylv"    // Create: Teleporters 3.0.1b
+    compileOnly "maven.modrinth:create-pipes-n-physics:kH90vhqN" // Create: Pipes'n physics 3.2.1
+
+    // Unit tests (./gradlew test, part of build): plain JUnit on classes that need no running game
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 
     // Nested jar-in-jar classes of Sodium/Iris/Sable, extracted by scripts/extract-nested-deps.sh
     compileOnly fileTree(dir: 'deps', include: '*.jar')
 }
 
 tasks.named('build').configure { dependsOn('jarJar') }
+
+// Downloads the mods we compile against from Modrinth into Gradle's cache, without the rest of the build, so that
+// scripts/extract-nested-deps.sh finds their jars on a fresh machine (CI): `./gradlew downloadModJars`
+tasks.register('downloadModJars') {
+    doLast {
+        def mods = configurations.compileClasspath.allDependencies.findAll { it.group == 'maven.modrinth' }*.copy()
+        def jars = configurations.detachedConfiguration(*mods).tap { transitive = false }.files
+        logger.lifecycle("${jars.size()} mod jars in Gradle's cache")
+    }
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+// The compile classpath as one colon-separated line in build/ipa/compile-classpath.txt, for scripts/check.sh: mixincheck.py
+// checks our mixin targets against exactly these jars (NeoGradle's named Minecraft+NeoForge jar among them). Written by
+// every build, so check.sh needs no Gradle run of its own.
+def writeCompileClasspath = tasks.register('writeCompileClasspath') {
+    def out = layout.buildDirectory.file('ipa/compile-classpath.txt')
+    def classpath = sourceSets.main.compileClasspath
+    inputs.files(classpath)
+    outputs.file(out)
+    doLast {
+        out.get().asFile.text = classpath.files.findAll { it.name.endsWith('.jar') }*.absolutePath.join(':') + '\n'
+    }
+}
+tasks.named('jar').configure { finalizedBy(writeCompileClasspath) }
 
 // build/libs keeps only the jars of the version being built: a version bump leaves no old jar behind
 def removeOldJars = tasks.register('removeOldJars', Delete) {
@@ -223,6 +257,7 @@ tasks.withType(Jar).configureEach {
 def ipaRapierNatives = ['x86_64_linux.so', 'aarch64_linux.so', 'x86_64_macos.dylib', 'aarch64_macos.dylib',
                         'x86_64_windows.dll', 'aarch64_windows.dll'].collect { "src/main/resources/natives/ipa_rapier/ipa_rapier_$it" }
 tasks.named('processResources').configure {
+    dependsOn('checkNativesSource')
     doFirst {
         def missing = ipaRapierNatives.findAll { !rootProject.file(it).exists() }
         if (!missing.isEmpty()) {
@@ -231,6 +266,48 @@ tasks.named('processResources').configure {
             } else {
                 throw new GradleException("ipa_rapier natives missing: ${missing}. Run scripts/build-natives.sh, or build with -PallowMissingNatives")
             }
+        }
+    }
+}
+
+// Natives tied to their source: scripts/build-natives.sh writes, next to the libraries, SOURCE-HASH with one line per
+// library it built, "<source hash>  <library>", the source hash being scripts/natives-hash.sh's (a sha256 over every
+// tracked file of natives/, path and contents, as they are in the working tree). The build refuses a library whose line
+// is missing or names another hash: natives/ changed and build-natives.sh was not run, so the jar would ship the old
+// physics. -PallowStaleNatives packages them anyway (a quick test of Java changes beside unbuilt native ones). The
+// same hash keys CI's natives cache.
+def nativesSourceHash = {
+    def git = ['git', 'ls-files', '-z', 'natives'].execute(null, rootProject.projectDir)
+    def listing = git.inputStream.text
+    if (git.waitFor() != 0) return null
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    // the lines of "sha256sum" over the files in byte order of their paths, as natives-hash.sh feeds them
+    listing.split('\u0000').findAll { it }.sort().each { path ->
+        def fileHash = java.security.MessageDigest.getInstance('SHA-256').digest(rootProject.file(path).bytes).encodeHex().toString()
+        digest.update("${fileHash}  ${path}\n".getBytes('UTF-8'))
+    }
+    digest.digest().encodeHex().toString()
+}
+tasks.register('checkNativesSource') {
+    outputs.upToDateWhen { false }   // cheap, and its input (natives/) is not processResources'
+    doLast {
+        def present = ipaRapierNatives.findAll { rootProject.file(it).exists() }
+        if (present.isEmpty()) return
+        def expected = nativesSourceHash()
+        if (expected == null) {
+            logger.warn('not a git checkout: the natives are not checked against natives/')
+            return
+        }
+        def stampFile = rootProject.file('src/main/resources/natives/ipa_rapier/SOURCE-HASH')
+        def stamped = stampFile.exists() ? stampFile.readLines().findAll { it.trim() }.collectEntries {
+            def (hash, name) = it.split(/\s+/, 2); [(name): hash] } : [:]
+        def stale = present.collect { rootProject.file(it).name }.findAll { stamped[it] != expected }
+        if (stale.isEmpty()) return
+        def message = "ipa_rapier natives not built from the natives/ in this checkout: ${stale}. Run scripts/build-natives.sh"
+        if (project.hasProperty('allowStaleNatives')) {
+            logger.warn("${message} (-PallowStaleNatives: packaged anyway)")
+        } else {
+            throw new GradleException("${message}, or build with -PallowStaleNatives")
         }
     }
 }

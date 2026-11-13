@@ -1,0 +1,56 @@
+# Weekly: newer releases of the mods we build against or that hook into us (scripts/dependency-check.py), each tried
+# alone: our jar built against it and the mixin and hook checks run. One issue, "Dependency updates", holds the report
+# while there is anything new, and is closed when everything is current. Nothing is bumped by this workflow.
+name: Dependencies
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Newer releases and their hooks
+    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Nested jars of the pinned versions
+        run: |
+          ./gradlew downloadModJars --console=plain
+          scripts/extract-nested-deps.sh
+
+      - name: Try each newer release
+        run: python3 scripts/dependency-check.py run "$RUNNER_TEMP/report.md"
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Dependency updates
+        run: |
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --author 'app/github-actions' \
+            --search "in:title \"$TITLE\"" --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -f "$RUNNER_TEMP/report.md" ]; then
+            if [ -n "$issue" ]; then
+              gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/report.md"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$RUNNER_TEMP/report.md"
+            fi
+          elif [ -n "$issue" ]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Every pinned dependency is current."
+          fi

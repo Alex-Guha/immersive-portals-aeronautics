@@ -2,7 +2,8 @@
 # Cross-compiles the ipa_rapier native library (natives/, copied from Sable 2.0.6's sable_rapier crate) for the six
 # platforms Sable supports and copies the results to src/main/resources/natives/ipa_rapier/, where the jar picks them
 # up. Same toolchain as Sable (sable_rapier/build.gradle): cargo-zigbuild for Linux and macOS, cargo-xwin for Windows,
-# both in Docker, Rust pinned by natives/rust-toolchain.toml.
+# both in Docker, Rust pinned by natives/rust-toolchain.toml. Each library built gets a line in SOURCE-HASH there with the
+# source hash it was built from (scripts/natives-hash.sh); the Gradle build refuses a library whose line doesn't match.
 #
 #   scripts/build-natives.sh            build the images if missing, then all six targets
 #   scripts/build-natives.sh linux-x86_64 windows-x86_64 ...   only these targets
@@ -32,10 +33,17 @@ build_image() { # name dir
         docker build -t "$1" "$NATIVES/container/$2" --build-arg "RUST_VERSION=$RUST_VERSION"
     fi
 }
-build_image $ZIG_IMAGE zigbuild
-build_image $XWIN_IMAGE xwin
+# only the images the targets need: CI builds linux-x86_64 alone
+[[ " ${targets[*]}" =~ " "(linux|macos)- ]] && build_image $ZIG_IMAGE zigbuild
+[[ " ${targets[*]}" == *" windows-"* ]] && build_image $XWIN_IMAGE xwin
 
 mkdir -p "$NATIVES/.cargo-cache/git" "$NATIVES/.cargo-cache/registry" "$OUT"
+SOURCE_HASH=$("$ROOT/scripts/natives-hash.sh")
+stamp() { # library file name: replace its line in SOURCE-HASH
+    local file=$OUT/SOURCE-HASH
+    { [ -f "$file" ] && grep -v "  $1\$" "$file" || true; echo "$SOURCE_HASH  $1"; } | LC_ALL=C sort -k2 > "$file.new"
+    mv "$file.new" "$file"
+}
 
 run() { # image args...
     local image=$1; shift
@@ -61,9 +69,12 @@ for t in "${targets[@]}"; do
         run $ZIG_IMAGE cargo zigbuild --release --target "$triple$suffix"
     fi
     cp "$NATIVES/target/$triple/release/$file" "$OUT/ipa_rapier_${arch}_${os}.$ext"
+    stamp "ipa_rapier_${arch}_${os}.$ext"
 done
 
 # The containers run as root; hand the build tree back to the current user.
-docker run --rm -v "$NATIVES:/io" $ZIG_IMAGE chown -R "$(id -u):$(id -g)" /io/target /io/.cargo-cache
+IMAGE=$ZIG_IMAGE
+docker image inspect $ZIG_IMAGE > /dev/null 2>&1 || IMAGE=$XWIN_IMAGE
+docker run --rm -v "$NATIVES:/io" $IMAGE chown -R "$(id -u):$(id -g)" /io/target /io/.cargo-cache
 
 ls -la "$OUT"

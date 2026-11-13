@@ -2,7 +2,7 @@
 
 # Immersive Portals: Aeronautics
 
-[![CurseForge Downloads](https://img.shields.io/curseforge/dt/1735987?style=flat-square&logo=curseforge&label=CurseForge&color=%23EB622B)](https://www.curseforge.com/minecraft/mc-mods/immersive-portals-aeronautics) [![Modrinth Downloads](https://img.shields.io/modrinth/dt/jkNDQMu6?style=flat-square&logo=modrinth&label=Modrinth&color=%2300AF5C)](https://modrinth.com/mod/immersive-portals-aeronautics) ![Static Badge](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-blue?style=flat-square) [![Discord](https://img.shields.io/discord/1558244213487829002?style=flat-square&logo=discord)](https://discord.gg/R6jjbqnThA)
+[![CurseForge Downloads](https://img.shields.io/curseforge/dt/1735987?style=flat-square&logo=curseforge&label=CurseForge&color=%23EB622B)](https://www.curseforge.com/minecraft/mc-mods/immersive-portals-aeronautics) [![Modrinth Downloads](https://img.shields.io/modrinth/dt/jkNDQMu6?style=flat-square&logo=modrinth&label=Modrinth&color=%2300AF5C)](https://modrinth.com/mod/immersive-portals-aeronautics) ![Static Badge](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-blue?style=flat-square) [![Build](https://img.shields.io/github/actions/workflow/status/Alex-Guha/immersive-portals-aeronautics/build.yml?branch=main&style=flat-square&logo=github&label=Build)](https://github.com/Alex-Guha/immersive-portals-aeronautics/actions/workflows/build.yml) [![Discord](https://img.shields.io/discord/1558244213487829002?style=flat-square&logo=discord)](https://discord.gg/R6jjbqnThA)
 
 </div>
 
@@ -56,15 +56,17 @@ You need JDK 21 (newer ones break NeoGradle and Mixin) and Python 3. Docker is n
 
 ```bash
 export JAVA_HOME=/path/to/jdk-21
-./gradlew build -x test --no-daemon --console=plain -PallowMissingNatives -PwithoutVoxy   # downloads the dependencies
-scripts/extract-nested-deps.sh      # unpacks the libraries nested inside other mods' jars into deps/
+./gradlew downloadModJars --no-daemon --console=plain   # downloads the mods we compile against
+scripts/extract-nested-deps.sh      # unpacks the libraries nested inside their jars into deps/
 scripts/build-natives.sh            # optional, needs Docker: the physics libraries for all six platforms (~4 min)
-./gradlew build -x test --no-daemon --console=plain -PwithoutVoxy                        # add -PallowMissingNatives if you skipped the line above
+./gradlew build --no-daemon --console=plain -PwithoutVoxy   # add -PallowMissingNatives if you skipped the line above
+scripts/check.sh                    # the checks CI runs on every push
 ```
 
-The jar is `build/libs/ip_aeronautics-<version>.jar`.
+The jar is `build/libs/ip_aeronautics-<version>.jar`. The build also runs the unit tests (`-x test` skips them).
 - `-PallowMissingNatives` builds a jar without the physics libraries. It runs, but ships cross portals in one step.
 - `-PwithoutVoxy` leaves out Voxy support, which compiles against a patched Voxy jar that isn't published.
+- The build refuses physics libraries built from another version of `natives/` than the one checked out: run `scripts/build-natives.sh` again, or build with `-PallowStaleNatives` to package them anyway.
 - If the build reports a class from another mod as missing, run `scripts/extract-nested-deps.sh` again.
 
 ## Contributing and reporting bugs

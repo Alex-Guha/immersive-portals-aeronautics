@@ -1,0 +1,48 @@
+# Other mods' hooks into our classes, which scripts/check.sh checks against our freshly built jar: a renamed or removed
+# member crashes the game for their players (required mixins) or quietly breaks their feature (reflection). Before
+# changing a member named here, keep its old form or tell the other mod's author.
+#
+# One line per mod, "mod <Modrinth slug> <version id> <version> <mixin config> <mixin package folder>": check.sh
+# downloads that release, decompiles its mixins with Vineflower and checks the ones into our packages. The weekly
+# dependency check (.github/workflows/dependencies.yml) reports newer releases: bump the line, and update the reflected
+# members below from the new jar.
+
+# Create: Simurail (github.com/Crystaelix/Create-Simurail): required mixins (defaultRequire 1) into IPStraddleSessions,
+# its Session's fields and IPStraddleRender
+mod create-simurail ecIWrCq0 0.1.1+mc1.21.1 simurail.mixins.json com/crystaelix/simurail/mixin
+
+# Create: Teleporters: required @Pseudo mixins into IPShipPortals and IPShipPortalAnchors, and the members its
+# AeronauticsPortalIntegration reaches by reflection, listed below
+mod create-teleporters TuG81a9A 3.0.2 createteleporters.mixins.json net/createteleporters/mixin
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals#isEnabled
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalDriver#<init>
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalDriver#deltaFor
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalDriver#carrier
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalDriver#plotOrigin
+qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalDriver#dimension
+qouteall.imm_ptl.core.portal.animation.DeltaUnilateralPortalState#offset
+qouteall.imm_ptl.core.portal.animation.DeltaUnilateralPortalState#rotation
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#<init>
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#dimension
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#width
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#height
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#position
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#getAxisW
+qouteall.imm_ptl.core.portal.animation.UnilateralPortalState#getAxisH
+qouteall.imm_ptl.core.portal.animation.PortalAnimation#thisSideAnimations
+qouteall.imm_ptl.core.portal.animation.PortalAnimation#otherSideAnimations
+qouteall.imm_ptl.core.portal.animation.PortalAnimation#thisSideReferenceState
+qouteall.imm_ptl.core.portal.animation.PortalAnimation#otherSideReferenceState
+qouteall.imm_ptl.core.portal.PortalManipulation#getPortalOrientationQuaternion
+qouteall.imm_ptl.core.portal.Portal#animation
+qouteall.imm_ptl.core.portal.Portal#portalTag
+qouteall.imm_ptl.core.portal.Portal#getAnimationHolder
+qouteall.imm_ptl.core.portal.Portal#getThisSideState
+qouteall.imm_ptl.core.portal.Portal#getOtherSideState
+qouteall.imm_ptl.core.portal.Portal#rectifyClusterPortals
+qouteall.imm_ptl.core.portal.Portal#reloadAndSyncClusterToClientNextTick
+qouteall.imm_ptl.core.portal.Portal#reloadAndSyncToClient
+qouteall.imm_ptl.core.portal.Portal#getTeleportable
+qouteall.imm_ptl.core.portal.Portal#setTeleportable
+qouteall.imm_ptl.core.portal.Portal#setIsVisible
+qouteall.q_misc_util.my_util.DQuaternion#<init>

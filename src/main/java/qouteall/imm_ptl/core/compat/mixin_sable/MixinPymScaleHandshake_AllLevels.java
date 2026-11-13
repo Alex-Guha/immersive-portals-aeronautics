@@ -33,6 +33,11 @@ public class MixinPymScaleHandshake_AllLevels {
     private static List<? extends SubLevel> ip_shipsOfEveryLevel(final SubLevelContainer container,
                                                                  final Operation<List<? extends SubLevel>> original) {
         final List<? extends SubLevel> own = original.call(container);
+        // IP's world list is not set up yet on the first ticks after joining, nor after a vanilla dimension change
+        // (respawn packet) until IP sets it up again: the player's own level is all there is then
+        if (!ClientWorldLoader.getIsInitialized()) {
+            return own;
+        }
         final List<SubLevel> all = new ArrayList<>(own);
         for (final ClientLevel level : ClientWorldLoader.getClientWorlds()) {
             final ClientSubLevelContainer other = SubLevelContainer.getContainer(level);

@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -77,8 +78,18 @@ public final class IPCreatePortalEndScan {
         void finish(Collection<ClientLevel> worlds, boolean important);
     }
 
-    /** Client block change in any world (main thread). Only block entities, tracks and portal blocks matter. */
-    public static void onBlockChanged(final Level level, final BlockPos pos, final BlockState oldState, final BlockState newState, final int flags) {
+    /**
+     * Client block change in any world (main thread). Only block entities, tracks and portal blocks matter.
+     * Vanilla's renderer ignores both states, so some mods pass null for one (Elevator Mod does, loading its block
+     * entity): a missing state counts as air.
+     */
+    public static void onBlockChanged(final Level level, final BlockPos pos, @Nullable BlockState oldState, @Nullable BlockState newState, final int flags) {
+        if (oldState == null) {
+            oldState = Blocks.AIR.defaultBlockState();
+        }
+        if (newState == null) {
+            newState = Blocks.AIR.defaultBlockState();
+        }
         if (oldState.hasBlockEntity() || newState.hasBlockEntity()
             || oldState.getBlock() == PortalPlaceholderBlock.instance || newState.getBlock() == PortalPlaceholderBlock.instance
             || oldState.getBlock() instanceof TrackBlock || newState.getBlock() instanceof TrackBlock) {

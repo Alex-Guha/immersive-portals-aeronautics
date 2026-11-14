@@ -63,6 +63,13 @@ public class ClientWorldLoader {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientWorldLoader.class);
     
     private static final CountDownInt LOG_LIMIT = new CountDownInt(20);
+    
+    // Immersive Aeronautics: AsyncParticles ticks the one particle engine itself, every world's particles at once
+    // (it removes IP's check in ParticleEngine.tickParticle that ticks only the current world's particles), so each
+    // extra tick of the engine for a remote world would advance every particle once more: they aged and moved
+    // several times per tick and flickered
+    private static final boolean PARTICLE_ENGINE_TICKS_ALL_WORLDS =
+        net.neoforged.fml.ModList.get().isLoaded("asyncparticles");
 
     private static final Map<ResourceKey<Level>, ClientLevel> CLIENT_WORLD_MAP =
         new Object2ObjectOpenHashMap<>();
@@ -200,7 +207,9 @@ public class ClientWorldLoader {
                 if (!CLIENT.isPaused()) {
                     // Immersive Aeronautics: the world's particles tick even with no portal to it near the player
                     // (seen from further away they froze: never aged out, and jittered between their last two positions)
-                    if (!tickRemoteWorldRandomTicksClient(newWorld, nearbyPortals)) {
+                    if (!tickRemoteWorldRandomTicksClient(newWorld, nearbyPortals)
+                        && !PARTICLE_ENGINE_TICKS_ALL_WORLDS
+                    ) {
                         ((IEParticleManager) CLIENT.particleEngine).ip_tickParticleLists();
                     }
                 }
@@ -217,7 +226,8 @@ public class ClientWorldLoader {
     
     // show nether particles through portal
     // TODO optimize it in future version?
-    // Immersive Aeronautics: returns whether the particle engine was ticked
+    // Immersive Aeronautics: returns whether a portal to the world is near (the particle engine was ticked, or
+    // AsyncParticles ticks it)
     private static boolean tickRemoteWorldRandomTicksClient(
         ClientLevel newWorld, List<Portal> nearbyPortals
     ) {
@@ -241,7 +251,9 @@ public class ClientWorldLoader {
                 );
             }
             
-            CLIENT.particleEngine.tick();
+            if (!PARTICLE_ENGINE_TICKS_ALL_WORLDS) {
+                CLIENT.particleEngine.tick();
+            }
             
             ((IECamera) camera).portal_setPos(oldCameraPos);
         });

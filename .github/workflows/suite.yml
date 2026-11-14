@@ -98,8 +98,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow suite.yml --branch main --status success --limit 1 \
-            --json databaseId --jq '.[0].databaseId // empty')
+          # the newest green run whose full results are still kept: a narrowed run (suites, only) keeps its
+          # results under another name, so it never becomes the baseline
+          run=
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow suite.yml --branch main --status success \
+              --limit 30 --json databaseId --jq '.[].databaseId'); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=suite-results" \
+                --jq '.artifacts[] | select(.expired | not) | .id' | grep -q .; then
+              run=$id
+              break
+            fi
+          done
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "baseline: ${run:-none yet}"
 
@@ -221,10 +230,10 @@ jobs:
       - name: Compare, rerun failures, find the commit they start on
         run: docs/scripts/suite-ci.py report
 
-      # On main, this is the next run's baseline once the run is green
+      # On main, a full run's results are the next run's baseline once the run is green
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: suite-results
+          name: ${{ (!inputs.suites && !inputs.only) && 'suite-results' || 'suite-results-narrowed' }}
           path: ${{ runner.temp }}/regression/results/head
           retention-days: 90

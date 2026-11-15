@@ -88,6 +88,22 @@ public class FrustumCuller {
         );
     }
     
+    /**
+     * Immersive Aeronautics: the inner culling (the cut to the opening of the portal this pass is drawn through) of a
+     * box in world coordinates; false outside portal passes, where the func is not the inner culling.
+     */
+    public boolean canInnerCullWorldBox(
+        double minX, double minY, double minZ, double maxX, double maxY, double maxZ
+    ) {
+        if (!innerCulling || canDetermineInvisibleFunc == null) {
+            return false;
+        }
+        return canDetermineInvisibleWithCameraCoord(
+            minX - camX, minY - camY, minZ - camZ,
+            maxX - camX, maxY - camY, maxZ - camZ
+        );
+    }
+    
     public boolean canDetermineInvisibleWithWorldCoord(
         double minX, double minY, double minZ, double maxX, double maxY, double maxZ
     ) {

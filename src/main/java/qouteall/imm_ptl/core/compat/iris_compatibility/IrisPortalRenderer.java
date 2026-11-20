@@ -90,8 +90,12 @@ public class IrisPortalRenderer extends PortalRenderer {
             // and redone every frame it overwrote the choice from the main framebuffer's real format below
             IPCGlobal.useSeparatedStencilFormat = !IPMcHelper.isNvidiaVideocard();
             
+            // Immersive Aeronautics: a layer's buffer is created only when one of its portals is first drawn
+            // (preparePass), so a layer never drawn has none to destroy
             for (SecondaryFrameBuffer fb : deferredFbs) {
-                fb.fb.destroyBuffers();
+                if (fb.fb != null) {
+                    fb.fb.destroyBuffers();
+                }
             }
             
             deferredFbs = new SecondaryFrameBuffer[IPGlobal.maxPortalLayer + 1];

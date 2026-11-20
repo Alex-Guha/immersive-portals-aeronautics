@@ -13,6 +13,7 @@
         "iris.MixinIrisFinalPassRenderer",
         "iris.MixinIrisIris_PortalViewFog",
         "iris.MixinIrisProgramUniforms_PortalViewDistance",
+        "iris.MixinIrisShadowRenderer_PortalCull",
         "iris.MixinIrisSodiumShader",
         "iris.MixinIrisTransformPatcher",
         "iris.MixinIrisTransformPatcher_PortalViewFog",

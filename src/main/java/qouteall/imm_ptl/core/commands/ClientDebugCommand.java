@@ -577,6 +577,11 @@ public class ClientDebugCommand {
         );
         registerSwitchCommand(
             builder,
+            "portal_shadow_cull",
+            cond -> qouteall.imm_ptl.core.compat.iris_integration.IPIrisShadowCull.enabled = cond
+        );
+        registerSwitchCommand(
+            builder,
             "cloud_optimization",
             cond -> IPGlobal.cloudOptimization = cond
         );

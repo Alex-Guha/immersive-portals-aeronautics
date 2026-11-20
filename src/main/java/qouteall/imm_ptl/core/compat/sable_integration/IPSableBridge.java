@@ -113,6 +113,7 @@ public final class IPSableBridge {
             IPShipCreateCompat.KineticSnapshot kinetics = IPShipCreateCompat.collectKinetics(srcLevel, sub);
             IPShipRiderCarry.Captured riders = IPShipRiderCarry.capture(srcLevel, sub, straddled);
             IPShipBalloonCompat.Captured balloons = IPShipBalloonCompat.capture(srcLevel, sub);
+            IPShipWireCompat.Captured wires = IPShipWireCompat.capture(srcLevel, sub);
             SubLevelData data = SubLevelSerializer.toData(sub, List.of());
             CompoundTag fullTag = data.fullTag();
             stripKineticState(fullTag.getCompound("plot"), kinetics.kineticPositions());
@@ -153,6 +154,7 @@ public final class IPSableBridge {
                 IPShipCreateCompat.reassemble(dstLevel, disassembled, loaded.shift());
                 IPShipCreateCompat.reactivateGenerators(dstLevel, kinetics.generatorPositions(), loaded.shift());
                 IPShipBalloonCompat.restore(dstLevel, loaded.sub(), balloons, loaded.shift());
+                IPShipWireCompat.restore(dstLevel, loaded.sub(), wires, loaded.shift());
                 Vec3 riderVelocity = Vec3.ZERO;
                 if (carried == null) {
                     stopOnArrival(loaded.sub());
@@ -165,7 +167,7 @@ public final class IPSableBridge {
                 IPShipTeleportJournal.delete(srcLevel.getServer(), data.uuid());
                 return new IPSableBridge.Moved(loaded.sub(), loaded.shift());
             } else {
-                if (restoreToSource(srcLevel, srcContainer, preEditCopy, data.uuid(), disassembled, glue, kinetics, riders, balloons)) {
+                if (restoreToSource(srcLevel, srcContainer, preEditCopy, data.uuid(), disassembled, glue, kinetics, riders, balloons, wires)) {
                     IPShipTeleportJournal.delete(srcLevel.getServer(), data.uuid());
                 } else {
                     LOGGER.warn(
@@ -297,7 +299,8 @@ public final class IPSableBridge {
         IPShipCreateCompat.Glue glue,
         IPShipCreateCompat.KineticSnapshot kinetics,
         IPShipRiderCarry.Captured riders,
-        IPShipBalloonCompat.Captured balloons
+        IPShipBalloonCompat.Captured balloons,
+        IPShipWireCompat.Captured wires
     ) {
         SubLevelData data = SubLevelSerializer.fromData(preEditCopy);
         if (data == null) {
@@ -318,6 +321,7 @@ public final class IPSableBridge {
                 IPShipCreateCompat.reassemble(srcLevel, disassembled, loaded.shift());
                 IPShipCreateCompat.reactivateGenerators(srcLevel, kinetics.generatorPositions(), loaded.shift());
                 IPShipBalloonCompat.restore(srcLevel, loaded.sub(), balloons, loaded.shift());
+                IPShipWireCompat.restore(srcLevel, loaded.sub(), wires, loaded.shift());
                 IPShipRiderCarry.replay(srcLevel, srcLevel, loaded.sub(), loaded.shift(), riders, arrivalVelocity(loaded.sub()));
                 LOGGER.info("[IPShipPortal] destination load failed; ship {} restored to source (move cancelled)", shipId);
                 return true;

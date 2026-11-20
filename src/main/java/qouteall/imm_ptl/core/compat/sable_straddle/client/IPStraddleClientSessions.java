@@ -256,7 +256,40 @@ public final class IPStraddleClientSessions {
             planes.add(new double[]{session.origin().x, session.origin().y, session.origin().z,
                     -session.normal().x, -session.normal().y, -session.normal().z});
         }
+        for (final Session session : arrivedThrough(ship)) {
+            final Vec3 origin = session.destOrigin();
+            final Vec3 normal = session.destNormal();
+            planes.add(new double[]{origin.x, origin.y, origin.z, normal.x, normal.y, normal.z});
+        }
         return planes;
+    }
+
+    /**
+     * The copy a hand-off brought out of a session's portal plays on the old copy's timeline, a tick or so behind the
+     * server, so it is drawn where the ship was before it came through: whole and in front of the exit plane, by as
+     * much as a tick's travel (blocks, at speed). That part is the old copy's, drawn in the world it left (its own
+     * session's cut, then its far half); the new copy keeps only what is past the exit plane, kept on the far half's
+     * side ({@link Session#destNormal}).
+     *
+     * @return the sessions (active or recently ended) {@code ship}'s copy here came out of: into its dimension from
+     * another
+     */
+    public static List<Session> arrivedThrough(final dev.ryanhcode.sable.sublevel.SubLevel ship) {
+        if (isEmpty()) {
+            return List.of();
+        }
+        final ResourceKey<Level> dimension = ship.getLevel().dimension();
+        List<Session> result = List.of();
+        for (final Session session : renderSessions()) {
+            if (session.ship().equals(ship.getUniqueId()) && session.destDim().equals(dimension)
+                    && !session.shipDim().equals(dimension)) {
+                if (result.isEmpty()) {
+                    result = new ArrayList<>(1);
+                }
+                result.add(session);
+            }
+        }
+        return result;
     }
 
     /**

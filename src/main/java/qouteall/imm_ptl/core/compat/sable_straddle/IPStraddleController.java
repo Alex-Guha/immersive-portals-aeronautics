@@ -73,6 +73,8 @@ final class IPStraddleController {
     private static final long MIN_SESSION_TICKS = 10;
     /** After a hand-off failed while loading the ship in the destination, no new attempt for this many ticks. */
     private static final long FAILED_HANDOFF_RETRY_TICKS = 100;
+    /** Hand-offs of one ship in one tick after its first, for a ship arriving wholly past the next portal. */
+    private static final int MAX_CHAINED_HANDOFFS = 3;
     /** Speed [m/s] a ship whose hand-off was refused is given back towards the plane. */
     private static final double REFUSED_PUSH_BACK_SPEED = 1.0;
     /**
@@ -120,6 +122,10 @@ final class IPStraddleController {
     private static final boolean DEBUG_REFUSE_HANDOFF = Boolean.getBoolean("ip_aeronautics.debug.refuseHandoff");
 
     private record Handoff(ServerSubLevel ship, ServerLevel level, Portal portal) {
+    }
+
+    /** A ship handed off this tick, as its new sub-level in the destination. */
+    private record Arrival(ServerLevel level, ServerSubLevel ship) {
     }
 
     /** The last refused or failed hand-off of a ship: through which portal, why, and the first tick to try again. */
@@ -188,7 +194,7 @@ final class IPStraddleController {
                 }
                 live.add(ship.getUniqueId());
                 try {
-                    considerShip(level, ship, tick, seen, handoffs);
+                    considerShip(level, ship, tick, seen, handoffs, 0);
                 } catch (final Throwable e) {
                     LOGGER.warn("[IPStraddle] ship {} failed", ship.getUniqueId(), e);
                 }
@@ -208,7 +214,27 @@ final class IPStraddleController {
         IPPortalRims.retainLetThrough(live);
         IPPortalRims.tick(tick);
 
-        handOffAll(server, handoffs, tick);
+        WAITING_SINCE.keySet().retainAll(handoffs.stream().map(h -> h.ship().getUniqueId()).collect(java.util.stream.Collectors.toSet()));
+        List<Arrival> arrivals = handOffAll(server, handoffs, tick);
+        // A ship just handed off takes its first physics step in the destination before the next detection. A fast one
+        // reaches the next portal in that step (portals stacked a few blocks apart, a loop) and, with no session for it
+        // yet, hits what is behind that portal and stops dead. Judged now, it meets that portal with its session open;
+        // one that arrived wholly past it already (a tick's travel longer than the gap) is handed on through it now, as
+        // its image would otherwise hit what is behind the portal after that one.
+        for (int hop = 1; !arrivals.isEmpty(); hop++) {
+            final List<Handoff> chained = new ArrayList<>();
+            for (final Arrival arrival : arrivals) {
+                if (arrival.ship().isRemoved()) {
+                    continue;
+                }
+                try {
+                    considerShip(arrival.level(), arrival.ship(), tick, new HashSet<>(), chained, hop);
+                } catch (final Throwable e) {
+                    LOGGER.warn("[IPStraddle] ship {} failed on arrival", arrival.ship().getUniqueId(), e);
+                }
+            }
+            arrivals = chained.isEmpty() ? List.of() : handOffAll(server, chained, tick);
+        }
     }
 
     /**
@@ -220,12 +246,12 @@ final class IPStraddleController {
      * session's reach). A ship tied only by joints or springs waits as long as they hold: its partners keep it within
      * reach of the plane, and the group sits in the portal like one straddling ship.
      */
-    private static void handOffAll(final MinecraftServer server, final List<Handoff> handoffs, final long tick) {
+    private static List<Arrival> handOffAll(final MinecraftServer server, final List<Handoff> handoffs, final long tick) {
+        final List<Arrival> arrivals = new ArrayList<>();
         final Map<UUID, Handoff> ready = new HashMap<>();
         for (final Handoff handoff : handoffs) {
             ready.put(handoff.ship().getUniqueId(), handoff);
         }
-        WAITING_SINCE.keySet().retainAll(ready.keySet());
         final Set<UUID> done = new HashSet<>();
         for (final Handoff handoff : handoffs) {
             final UUID shipId = handoff.ship().getUniqueId();
@@ -263,6 +289,7 @@ final class IPStraddleController {
                     if (moved != null) {
                         shifts.put(member, moved.shift());
                         dest = moved.sub().getLevel();
+                        arrivals.add(new Arrival(dest, moved.sub()));
                     }
                 } catch (final Throwable e) {
                     LOGGER.error("[IPStraddle] hand-off of ship {} failed", member, e);
@@ -276,6 +303,7 @@ final class IPStraddleController {
                 LOGGER.info("[IPStraddle] {} ships tied together crossed as one group", shifts.size());
             }
         }
+        return arrivals;
     }
 
     /**
@@ -504,8 +532,17 @@ final class IPStraddleController {
         }
     }
 
+    /**
+     * @param arrivalHop 0, or how many times the ship was handed off this tick (it is judged at its arrival pose,
+     *                   before its first step there). It may arrive just short of another plane, within the touching
+     *                   band, where no look-ahead of an approach saw it coming: it is predicted from there too. Handed
+     *                   off more than {@value #MAX_CHAINED_HANDOFFS} times, a ship wholly through a portal gets a session
+     *                   there instead of another hand-off (the next tick hands it off).
+     */
     private static void considerShip(final ServerLevel level, final ServerSubLevel ship, final long tick,
-                                     final Set<IPStraddleSessions.Key> seen, final List<Handoff> handoffs) {
+                                     final Set<IPStraddleSessions.Key> seen, final List<Handoff> handoffs,
+                                     final int arrivalHop) {
+        final boolean openOnly = arrivalHop > MAX_CHAINED_HANDOFFS;
         if (ship.getPlot().getBoundingBox() == BoundingBox3i.EMPTY || IPShipRagdollGuard.isRagdollSubLevel(ship)) {
             return;
         }
@@ -564,7 +601,8 @@ final class IPStraddleController {
             // remove contacts past it) and lets a fast ship meet an already open doorway.
             // Not for a ship about to hit the frame: a ship wider than the opening (its middle headed into it) opened a
             // session that its rest against the frame kept for good (2.0.7).
-            final boolean predicted = !haveSession && state.phase() == Phase.APPROACHING
+            final boolean predicted = !haveSession && (state.phase() == Phase.APPROACHING
+                    || (arrivalHop > 0 && state.phase() == Phase.STRADDLING && state.maxDistance() < 0.0))
                     && IPShipCrossingDetector.willEnter(ship, blocks, portal, normal, DETECTION_MARGIN, EARLY_OPEN_SEGMENTS)
                     && IPShipCrossingDetector.frameContactAhead(level, ship, blocks, portal, normal, EARLY_OPEN_SEGMENTS) < -FRAME_TOUCHING;
             final boolean straddling = (state.phase() == Phase.STRADDLING && (haveSession || state.sweptThroughAperture()))
@@ -645,6 +683,12 @@ final class IPStraddleController {
                 }
                 if (!haveSession && (partnerPastFace(level, ship, portal, normal) || partnerCrossesOtherFace(level, ship, portal))) {
                     declined(ship, portal, state, "wholly past the plane, but the ships tied to it are on another passage");
+                    continue;
+                }
+                if (openOnly) {
+                    if (IPStraddleSessions.openOrRefresh(ship, portal, level, normal, tick)) {
+                        seen.add(key);
+                    }
                     continue;
                 }
                 final String refusal = refusalReason(ship, level, portal, tick);
@@ -953,7 +997,10 @@ final class IPStraddleController {
         final IPPortalSimilarity isometry = IPStraddleSessions.mapOf(portal);
         final Vector3dc position = ship.logicalPose().position();
         final Vec3 destPos = isometry.mapPoint(new Vec3(position.x(), position.y(), position.z()));
-        final Vec3 arrivalDisplacement = isometry.mapDisplacement(toVec3(position).subtract(toVec3(ship.lastPose().position())));
+        // a ship handed on in the tick it arrived has not moved in this level: its step is the one it arrived with
+        final Vec3 seededStep = IPShipCrossingDetector.seededStep(ship);
+        final Vec3 arrivalDisplacement = isometry.mapDisplacement(seededStep != null ? seededStep
+                : toVec3(position).subtract(toVec3(ship.lastPose().position())));
         final Quaterniond rotation = new Quaterniond(isometry.rotation());
 
         IPSableBridge.Velocity carried = null;

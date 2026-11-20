@@ -80,6 +80,11 @@ final class IPShipCrossingDetector {
         final Pose3d end = new Pose3d();
         boolean hasOlder;
         Object owner;
+        /**
+         * A seeded arrival's whole incoming step (mapped), until its first capture: the look-ahead from the arrival pose
+         * goes this far per segment, not by the seeded segment, which is cut short at the exit plane.
+         */
+        Vector3d seedStep;
     }
 
     private record Volume(Object owner, long tick, List<BlockPos> blocks) {
@@ -132,6 +137,7 @@ final class IPShipCrossingDetector {
         trail.start.set(arrived);
         trail.end.set(arrived);
         TRAILS.put(ship.getUniqueId(), trail);
+        trail.seedStep = new Vector3d(displacement.x, displacement.y, displacement.z);
         final double outward = displacement.dot(exitNormal);
         final List<BlockPos> blocks = blocks(ship, tick);
         if (outward <= EPSILON || blocks.isEmpty()) {
@@ -143,6 +149,18 @@ final class IPShipCrossingDetector {
                 arrived.position().x() - displacement.x * back,
                 arrived.position().y() - displacement.y * back,
                 arrived.position().z() - displacement.z * back);
+    }
+
+    /**
+     * @return the incoming step of a ship seeded on arrival and not stepped since (a sub-level just loaded has no motion
+     * of its own: its last pose is its pose), or null
+     */
+    static Vec3 seededStep(final ServerSubLevel ship) {
+        final Trail trail = TRAILS.get(ship.getUniqueId());
+        if (trail == null || trail.owner != ship || trail.seedStep == null) {
+            return null;
+        }
+        return new Vec3(trail.seedStep.x, trail.seedStep.y, trail.seedStep.z);
     }
 
     /**
@@ -161,6 +179,7 @@ final class IPShipCrossingDetector {
         }
         trail.older.set(trail.start);
         trail.hasOlder = true;
+        trail.seedStep = null;
         trail.start.set(ship.lastPose());
         trail.end.set(ship.logicalPose());
     }
@@ -339,7 +358,7 @@ final class IPShipCrossingDetector {
     static double frameContactAhead(final Level level, final ServerSubLevel ship, final List<BlockPos> blocks, final Portal portal,
                                     final Vec3 normal, final double lookahead) {
         final Trail trail = trail(ship, portal);
-        return frameContact(level, blocks, portal, normal, new Frame(extrapolate(trail.start, trail.end, 1.0 + lookahead)), null);
+        return frameContact(level, blocks, portal, normal, new Frame(ahead(trail, lookahead)), null);
     }
 
     /**
@@ -425,7 +444,7 @@ final class IPShipCrossingDetector {
             return false;
         }
         final Trail trail = trail(ship, portal);
-        final Pose3d ahead = extrapolate(trail.start, trail.end, 1.0 + lookahead);
+        final Pose3d ahead = ahead(trail, lookahead);
         final Sweep predicted = sweep(portal, blocks, new Frame(trail.end), new Frame(ahead), normal, margin);
         return predicted.intersects() && predicted.direction() == Direction.TOWARD_DESTINATION;
     }
@@ -481,6 +500,19 @@ final class IPShipCrossingDetector {
         fresh.start.set(ship.lastPose());
         fresh.end.set(ship.logicalPose());
         return fresh;
+    }
+
+    /**
+     * @return the pose {@code lookahead} segments past the trail's end: along the latest segment, or along a seeded
+     * arrival's incoming step
+     */
+    private static Pose3d ahead(final Trail trail, final double lookahead) {
+        if (trail.seedStep == null) {
+            return extrapolate(trail.start, trail.end, 1.0 + lookahead);
+        }
+        final Pose3d out = new Pose3d(trail.end);
+        out.position().fma(lookahead, trail.seedStep);
+        return out;
     }
 
     /**

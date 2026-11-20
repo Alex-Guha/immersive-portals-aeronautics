@@ -30,6 +30,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import qouteall.imm_ptl.core.ClientWorldLoader;
@@ -237,12 +238,29 @@ public final class IPStraddleRender {
             return current.ship() == ship ? current.plane() : null;
         }
         final List<IPStraddleClientSessions.Session> sessions = IPStraddleClientSessions.renderSessionsOf(ship);
-        if (sessions.isEmpty()) {
+        final List<IPStraddleClientSessions.Session> arrived = IPStraddleClientSessions.arrivedThrough(ship);
+        if (sessions.isEmpty() && arrived.isEmpty()) {
             return null;
         }
         // one plane per ship (a ship straddling two portals at once is cut at the first only)
-        final IPStraddleClientSessions.Session session = sessions.get(0);
-        return new KeepPlane(session.origin(), session.normal().scale(-1.0), 1.0 / session.map().scale());
+        KeepPlane plane = sessions.isEmpty() ? null : new KeepPlane(sessions.get(0).origin(),
+                sessions.get(0).normal().scale(-1.0), 1.0 / sessions.get(0).map().scale());
+        if (!arrived.isEmpty()) {
+            // a copy just out of a portal, drawn behind the server (IPStraddleClientSessions.arrivedThrough), possibly
+            // already at the next one (portals a few blocks apart): the plane its centre is nearest on the kept side
+            final IPStraddleClientSessions.Session from = arrived.get(0);
+            final KeepPlane exit = new KeepPlane(from.destOrigin(), from.destNormal(), from.map().scale());
+            final Vector3dc centre = ship.renderPose().position();
+            if (plane == null || keptDistance(exit, centre) < keptDistance(plane, centre)) {
+                plane = exit;
+            }
+        }
+        return plane;
+    }
+
+    private static double keptDistance(final KeepPlane plane, final Vector3dc point) {
+        return plane.normal().x * (point.x() - plane.point().x) + plane.normal().y * (point.y() - plane.point().y)
+                + plane.normal().z * (point.z() - plane.point().z);
     }
 
     /**

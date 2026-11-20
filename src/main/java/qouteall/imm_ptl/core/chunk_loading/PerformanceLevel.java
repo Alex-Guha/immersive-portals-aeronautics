@@ -13,16 +13,16 @@ import net.minecraft.server.ServerTickRateManager;
 public enum PerformanceLevel {
     good, medium, bad;
     
+    // Immersive Aeronautics: by free memory only. The frame rate (under 50 fps medium, under 15 bad) also halved what
+    // portal views draw and limited loading to portals within 3 chunks, the client's own options aside; the portal
+    // frame rate target and the portal draw and view distances are the client's levers now
     public static PerformanceLevel getClientPerformanceLevel(
-        int averageFPS,
         int averageFreeMemoryMB
     ) {
-        if (averageFPS > 50 && averageFreeMemoryMB > 800) {
+        if (averageFreeMemoryMB > 800) {
             return good;
         }
-        // Immersive Aeronautics: bad shrinks what portals load to almost nothing, which raises the fps, which restores
-        // it: at the 30 fps it took before, normal for a heavy shader pack, chunks kept vanishing from portal views
-        else if (averageFPS > 15 && averageFreeMemoryMB > 300) {
+        else if (averageFreeMemoryMB > 300) {
             return medium;
         }
         else {

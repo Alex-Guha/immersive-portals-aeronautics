@@ -203,7 +203,9 @@ public abstract class PortalRenderer {
     
     public static double getRenderRange() {
         double range = client.options.getEffectiveRenderDistance() * 16;
-        if (RenderStates.isLaggy || IPGlobal.reducedPortalRendering) {
+        // Immersive Aeronautics: the last step of the portal frame rate target (was Lag Attack Proof); Reduced Portal
+        // Rendering is gone (portalDrawDistance, portalViewDistance)
+        if (IPViewGuard.nearbyOnly()) {
             range = 16;
         }
         if (PortalRendering.getPortalLayer() > 1) {
@@ -273,9 +275,6 @@ public abstract class PortalRenderer {
             radiusBlocks = Math.min(radiusBlocks, 32 * 16);
             
             return Math.max((int) (radiusBlocks / 16), mcRenderDistance);
-        }
-        if (IPGlobal.reducedPortalRendering) {
-            return mcRenderDistance / 3;
         }
         return mcRenderDistance;
     }

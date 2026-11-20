@@ -27,14 +27,20 @@ public class IPConfig {
     
     // client visible configs
     
+    // Immersive Aeronautics: while not custom, sets maxPortalLayer, portalDrawDistance, portalViewDistance,
+    // portalFrameRateTarget and simpleNestedPortalViews (IPPortalPerformancePreset)
+    public IPPortalPerformancePreset portalPerformancePreset = IPPortalPerformancePreset.custom;
     // Immersive Aeronautics: 3 instead of 5 in new configs; existing ones keep theirs
     public int maxPortalLayer = 3;
-    public boolean lagAttackProof = true;
     public boolean enableCrossPortalSound = true;
     public boolean pureMirror = false;
     public boolean renderYourselfInPortal = true;
     public boolean correctCrossPortalEntityRendering = true;
-    public boolean reducedPortalRendering = false;
+    // Immersive Aeronautics: replaced by portalDrawDistance and portalViewDistance (read once, then left out of the
+    // file). lagAttackProof is now the last step of portalFrameRateTarget, and enableClientPerformanceAdjustment is
+    // gone: the frame rate no longer limits what the server loads through portals, only free memory does
+    @Nullable
+    public Boolean reducedPortalRendering = null;
     // Immersive Aeronautics: how far away portals are drawn, in chunks (0: the render distance, 100 blocks with a
     // shader pack; past the render distance only a dimension stack's floor or ceiling, with Distant Horizons); a portal
     // fades out over the last quarter (IPPortalDrawDistance)
@@ -52,7 +58,6 @@ public class IPConfig {
     public boolean simpleNestedPortalViews = true;
     public boolean netherPortalOverlay = false;
     public boolean enableNetherPortalEffect = true;
-    public boolean enableClientPerformanceAdjustment = true;
     public boolean clientTolerantVersionMismatchWithServer = false;
     public boolean compatibilityRenderMode = false;
     
@@ -148,6 +153,20 @@ public class IPConfig {
             }
             dimensionStackViewDistance = null;
         }
+        if (Boolean.TRUE.equals(reducedPortalRendering)) {
+            // it drew portals within 16 blocks, each view a third of the render distance
+            if (portalDrawDistance == 0 || portalDrawDistance > 1) {
+                portalDrawDistance = 1;
+            }
+            if (portalViewDistance == 0 || portalViewDistance > 4) {
+                portalViewDistance = 4;
+            }
+        }
+        reducedPortalRendering = null;
+        if (portalPerformancePreset == null) {
+            portalPerformancePreset = IPPortalPerformancePreset.custom;
+        }
+        portalPerformancePreset.applyTo(this);
         portalDrawDistance = Mth.clamp(portalDrawDistance, 0, 64);
         shipPortalRangeChunks = Mth.clamp(shipPortalRangeChunks, SHIP_PORTAL_RANGE_MIN, SHIP_PORTAL_RANGE_MAX);
         if (shipPortalMode == null) {
@@ -167,7 +186,6 @@ public class IPConfig {
         IPGlobal.enableMirrorCreation = enableMirrorCreation;
         IPGlobal.doCheckGlError = doCheckGlError;
         IPGlobal.maxPortalLayer = maxPortalLayer;
-        IPGlobal.lagAttackProof = lagAttackProof;
         IPGlobal.portalRenderLimit = portalRenderLimit;
         IPGlobal.netherPortalFindingRadius = portalSearchingRange;
         IPGlobal.renderYourselfInPortal = renderYourselfInPortal;
@@ -179,7 +197,6 @@ public class IPConfig {
         IPGlobal.indirectLoadingRadiusCap = indirectLoadingRadiusCap;
         IPGlobal.netherPortalMode = netherPortalMode;
         IPGlobal.endPortalMode = endPortalMode;
-        IPGlobal.reducedPortalRendering = reducedPortalRendering;
         IPGlobal.offsetOcclusionQuery = visibilityPrediction;
         IPGlobal.netherPortalOverlay = netherPortalOverlay;
         IPGlobal.scaleLimit = scaleLimit;
@@ -191,7 +208,6 @@ public class IPConfig {
         IPGlobal.enableClippingMechanism = enableClippingMechanism;
         IPGlobal.lightVanillaNetherPortalWhenCrouching = lightVanillaNetherPortalWhenCrouching;
         IPGlobal.enableNetherPortalEffect = enableNetherPortalEffect;
-        IPGlobal.enableClientPerformanceAdjustment = enableClientPerformanceAdjustment;
         IPGlobal.enableServerPerformanceAdjustment = enableServerPerformanceAdjustment;
         IPGlobal.enableCrossPortalSound = enableCrossPortalSound;
         IPGlobal.checkModInfoFromInternet = checkModInfoFromInternet;

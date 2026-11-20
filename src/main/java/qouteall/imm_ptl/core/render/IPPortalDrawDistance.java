@@ -17,14 +17,12 @@ import net.minecraft.util.Mth;
 import net.neoforged.fml.ModList;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
-import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalView;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalTrackedPortal;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
-import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.renderer.PortalRenderer;
 
 /**
@@ -54,7 +52,7 @@ public final class IPPortalDrawDistance {
     }
 
     private static boolean fades(Portal portal) {
-        return PortalRendering.getPortalLayer() == 0 && !RenderStates.isLaggy && !IPGlobal.reducedPortalRendering;
+        return PortalRendering.getPortalLayer() == 0 && !IPViewGuard.nearbyOnly();
     }
 
     /** The distance (blocks) beyond which {@code portal} is not rendered. */

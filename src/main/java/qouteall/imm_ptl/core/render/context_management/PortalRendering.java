@@ -77,8 +77,10 @@ public class PortalRendering {
     }
     
     public static int getMaxPortalLayer() {
-        if (RenderStates.isLaggy) {
-            return 1;
+        // Immersive Aeronautics: the last step of the portal frame rate target (was Lag Attack Proof), never above the
+        // configured limit
+        if (qouteall.imm_ptl.core.render.IPViewGuard.nearbyOnly()) {
+            return Math.min(1, IPGlobal.maxPortalLayer);
         }
         return IPGlobal.maxPortalLayer;
     }

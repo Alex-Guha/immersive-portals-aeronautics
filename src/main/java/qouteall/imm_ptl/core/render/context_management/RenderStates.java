@@ -14,7 +14,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -84,8 +83,6 @@ public class RenderStates {
     
     public static String debugText;
     
-    public static boolean isLaggy = false;
-    
     public static boolean isRenderingEntities = false;
     
     public static boolean renderedScalingPortal = false;
@@ -132,8 +129,6 @@ public class RenderStates {
         basicProjectionMatrix = null;
         originalCamera = MyRenderHelper.client.gameRenderer.getMainCamera();
         
-        updateIsLaggy();
-        
         ForceMainThreadRebuild.onPreRender();
         
         debugText = "";
@@ -147,29 +142,8 @@ public class RenderStates {
         );
     }
     
-    //protect the player from mirror room lag attack
-    private static void updateIsLaggy() {
-        if (!IPGlobal.lagAttackProof) {
-            isLaggy = false;
-            return;
-        }
-        if (isLaggy) {
-            if (ClientPerformanceMonitor.getMinimumFps() > 15) {
-                isLaggy = false;
-            }
-        }
-        else {
-            if (lastPortalRenderInfos.size() > 10) {
-                if (ClientPerformanceMonitor.getAverageFps() < 8 || ClientPerformanceMonitor.getMinimumFps() < 6) {
-                    MyRenderHelper.client.gui.setOverlayMessage(
-                        Component.translatable("imm_ptl.laggy"),
-                        false
-                    );
-                    isLaggy = true;
-                }
-            }
-        }
-    }
+    // Immersive Aeronautics: the mirror room lag attack protection (isLaggy, option lagAttackProof) is the last step of
+    // the portal frame rate target (IPViewGuard)
     
     private static void updateViewBobbingFactor(Entity cameraEntity) {
 //        if (!IrisInterface.invoker.isIrisPresent()) {

@@ -40,8 +40,6 @@ public class IPGlobal {
     
     public static int indirectLoadingRadiusCap = 8;
     
-    public static boolean lagAttackProof = true;
-    
     public static RenderMode renderMode = RenderMode.normal;
     
     public static boolean doCheckGlError = true;
@@ -65,8 +63,6 @@ public class IPGlobal {
     public static int portalRenderLimit = 200;
     
     public static boolean cacheGlBuffer = true;
-    
-    public static boolean reducedPortalRendering = false;
     
     public static boolean useSecondaryEntityVertexConsumer = true;
     
@@ -117,7 +113,6 @@ public class IPGlobal {
     
     public static boolean viewBobbingReduce = true;
     
-    public static boolean enableClientPerformanceAdjustment = true;
     public static boolean enableServerPerformanceAdjustment = true;
     
     public static boolean enableCrossPortalSound = true;

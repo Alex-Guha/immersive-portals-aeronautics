@@ -1,8 +1,14 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.miscellaneous;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.chunk_loading.PerformanceLevel;
 import qouteall.imm_ptl.core.commands.PortalDebugCommands;
 import qouteall.q_misc_util.api.McRemoteProcedureCall;
@@ -71,6 +77,22 @@ public class ClientPerformanceMonitor {
         return minimumFps;
     }
     
+    /**
+     * Immersive Aeronautics: the highest frame rate of the last {@code seconds} whole seconds, or 60 while fewer were
+     * recorded (IPViewGuard).
+     */
+    public static int getHighestFpsOfLast(int seconds) {
+        if (records.size() < seconds) {
+            return 60;
+        }
+        int highest = 0;
+        java.util.Iterator<Record> newestFirst = records.descendingIterator();
+        for (int i = 0; i < seconds; i++) {
+            highest = Math.max(highest, newestFirst.next().FPS);
+        }
+        return highest;
+    }
+    
     public static int getAverageFreeMemoryMB() {
         return averageFreeMemoryMB;
     }
@@ -81,12 +103,8 @@ public class ClientPerformanceMonitor {
             return;
         }
         
-        if (!IPGlobal.enableClientPerformanceAdjustment) {
-            level = PerformanceLevel.good;
-        }
-        else {
-            level = PerformanceLevel.getClientPerformanceLevel(averageFps, averageFreeMemoryMB);
-        }
+        // Immersive Aeronautics: by free memory only (PerformanceLevel), no longer an option
+        level = PerformanceLevel.getClientPerformanceLevel(averageFreeMemoryMB);
         
         McRemoteProcedureCallClient.tellServerToInvoke(
             "qouteall.imm_ptl.core.chunk_loading.ImmPtlChunkTracking.RemoteCallables.acceptClientPerformanceInfo",

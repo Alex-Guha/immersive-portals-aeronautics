@@ -399,8 +399,7 @@ public final class IPStackFallColumns {
      * that is not drawn: the upper world's section holding it is built by its renderer and within the distance its
      * pass through the ceiling draws, measured as Sodium's culler does from that pass's camera (the camera of this pass
      * mapped through the ceiling): the section's box grown by a block, its horizontal distance and its height
-     * difference each under the render distance in blocks (a third of it with reduced portal rendering; a stack's
-     * ceiling has no portal view distance cut). Past that the fluid above is drawn by LODs or not at all.
+     * difference each under the render distance in blocks (a stack's ceiling has no portal view distance cut). Past that the fluid above is drawn by LODs or not at all.
      */
     private static List<Column> drawnAbove(final ClientLevel level, final List<Column> columns, final Vec3 camera) {
         final Portal ceiling = connector(level, VerticalConnectingPortal.ConnectorType.ceil);
@@ -409,9 +408,7 @@ public final class IPStackFallColumns {
         if (ceiling == null || upperLevel == null) {
             return List.of();
         }
-        final int chunks = IPGlobal.reducedPortalRendering
-            ? Minecraft.getInstance().options.getEffectiveRenderDistance() / 3
-            : Minecraft.getInstance().options.getEffectiveRenderDistance();
+        final int chunks = Minecraft.getInstance().options.getEffectiveRenderDistance();
         final float reach = chunks * 16.0F;
         final Vec3 eye = ceiling.transformPoint(camera);
         final int eyeX = Mth.floor(eye.x), eyeY = Mth.floor(eye.y), eyeZ = Mth.floor(eye.z);

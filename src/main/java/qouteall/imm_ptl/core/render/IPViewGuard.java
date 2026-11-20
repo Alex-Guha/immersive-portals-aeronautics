@@ -5,12 +5,15 @@ package qouteall.imm_ptl.core.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.CHelper;
+import qouteall.imm_ptl.core.miscellaneous.ClientPerformanceMonitor;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.shape.RectangularPortalShape;
@@ -42,15 +45,31 @@ import java.util.Locale;
  * target it reads the target and nothing is dropped. Nothing changes for 3 seconds after the world changes (joining,
  * crossing into another dimension) or a frame over a quarter second, and a step given back is judged 2 seconds later,
  * after the returning views' first frames.
+ * <p>
+ * The last step, {@link #NEARBY_ONLY} (once the option Lag Attack Proof), is a safety net for rooms full of mirrors
+ * or portals: with more than 10 views in the last frame (drawn or dropped) and each of the last 3 seconds under
+ * 8 fps, it is taken at once from any step. Only portals within 16 blocks are drawn then, none seen through another
+ * and without the fade ({@code PortalRenderer.getRenderRange}, {@code PortalRendering.getMaxPortalLayer},
+ * {@code IPPortalDrawDistance}), with a message on screen; it goes back to step 4 once none of the last 20 seconds
+ * was at 15 fps or under. It judges {@link ClientPerformanceMonitor}'s whole seconds, not the median: at a few fps
+ * every frame is a hitch to the median. Target 0 turns it off with the rest.
  */
 public final class IPViewGuard {
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    /** The last step of the ladder the median frame rate walks. */
     private static final int MAX_LEVEL = 4;
+    /** The safety net past the ladder: only portals within 16 blocks, none nested. */
+    private static final int NEARBY_ONLY = 5;
+    private static final int NEARBY_ONLY_MIN_VIEWS = 10;
+    private static final int NEARBY_ONLY_BELOW_FPS = 8;
+    private static final int NEARBY_ONLY_SECONDS = 3;
+    private static final int NEARBY_ONLY_LEAVE_ABOVE_FPS = 15;
     /** Per level, the screen fraction under which a nested view (layer 2 and deeper) is dropped. */
-    private static final double[] NESTED_MIN_AREA = {0, 0.02, 0.10, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
+    private static final double[] NESTED_MIN_AREA =
+        {0, 0.02, 0.10, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
     /** Per level, the screen fraction under which a direct view (layer 1) is dropped. */
-    private static final double[] DIRECT_MIN_AREA = {0, 0, 0, 0, 0.0025};
+    private static final double[] DIRECT_MIN_AREA = {0, 0, 0, 0, 0.0025, 0.0025};
 
     private static final double DROP_BELOW = 0.9;
     private static final double RESTORE_FROM = 0.97;
@@ -76,6 +95,8 @@ public final class IPViewGuard {
     private static int ringNext = 0;
     private static int ringSize = 0;
     private static long settleUntilNanos = 0;
+    /** Until when the world just changed: no {@link #NEARBY_ONLY} while chunks and pipelines load. */
+    private static long levelSettleUntilNanos = 0;
     private static @org.jetbrains.annotations.Nullable Object lastLevel = null;
     private static long lastFrameNanos = 0;
     private static long lastChangeNanos = 0;
@@ -105,6 +126,7 @@ public final class IPViewGuard {
             // joining a world or crossing into another dimension: chunks, LODs and pipelines load for a while
             lastLevel = currentLevel;
             settleUntilNanos = now + SETTLE_NANOS;
+            levelSettleUntilNanos = settleUntilNanos;
             ringSize = 0;
         }
         if (lastFrameNanos != 0) {
@@ -147,6 +169,22 @@ public final class IPViewGuard {
                 java.util.Arrays.fill(restoreDelayNanos, FIRST_RESTORE_DELAY_NANOS);
                 setLevel(0, now, "no portals in view");
             }
+            return;
+        }
+        if (level == NEARBY_ONLY) {
+            if (ClientPerformanceMonitor.getMinimumFps() > NEARBY_ONLY_LEAVE_ABOVE_FPS) {
+                setLevel(MAX_LEVEL, now, "slowest second " + ClientPerformanceMonitor.getMinimumFps() + " fps");
+            }
+            return;
+        }
+        // before the settle wait: at a few fps every frame is a hitch, which would hold it off for good
+        int highest = ClientPerformanceMonitor.getHighestFpsOfLast(NEARBY_ONLY_SECONDS);
+        if (now >= levelSettleUntilNanos && viewsLastFrame + droppedLastFrame > NEARBY_ONLY_MIN_VIEWS
+            && highest < NEARBY_ONLY_BELOW_FPS) {
+            setLevel(NEARBY_ONLY, now, (viewsLastFrame + droppedLastFrame) + " views, fastest second " + highest + " fps");
+            Minecraft.getInstance().gui.setOverlayMessage(
+                Component.translatable("imm_ptl.portal_views_nearby_only"), false
+            );
             return;
         }
         if (now < settleUntilNanos) {
@@ -233,6 +271,14 @@ public final class IPViewGuard {
             RECTS.remove(RECTS.size() - 1);
             DROPS.remove(DROPS.size() - 1);
         }
+    }
+
+    /**
+     * Whether only portals within 16 blocks are drawn, none seen through another ({@link #NEARBY_ONLY}, once Lag
+     * Attack Proof).
+     */
+    public static boolean nearbyOnly() {
+        return level == NEARBY_ONLY;
     }
 
     /** Whether the view in progress (the innermost pushed) is dropped. */

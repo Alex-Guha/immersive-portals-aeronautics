@@ -18,6 +18,7 @@ import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaSingleSubLevelRenderDa
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.world.phys.Vec3;
+import qouteall.imm_ptl.core.render.IPOuterTerrainDraw;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -42,6 +43,17 @@ public abstract class MixinSableRenderDispatcher_StraddleProjection {
     @Final
     private SequencedSet<RenderType> singleBlockLayers;
 
+    /** No ships in the player's world's terrain drawn inside a portal view: they are drawn as near ships. */
+    @Inject(method = "renderSectionLayer", at = @At("HEAD"), cancellable = true, require = 0)
+    private void ip_skipInOuterTerrainDraw(final Iterable<ClientSubLevel> sublevels, final RenderType renderType,
+                                           final ShaderInstance shader, final double cameraX, final double cameraY,
+                                           final double cameraZ, final Matrix4f modelView, final Matrix4f projection,
+                                           final float partialTicks, final CallbackInfo ci) {
+        if (IPOuterTerrainDraw.isActive()) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "renderSectionLayer", at = @At("TAIL"), require = 0)
     private void ip_drawProjections(final Iterable<ClientSubLevel> sublevels, final RenderType renderType,
                                     final ShaderInstance shader, final double cameraX, final double cameraY,
@@ -58,6 +70,11 @@ public abstract class MixinSableRenderDispatcher_StraddleProjection {
                 self.renderSectionLayer(List.of(ship), renderType, shader, cameraX, cameraY, cameraZ, modelView, projection, partialTicks);
             }
         });
+        // with a shader pack, ships' glass in front of a portal is drawn inside its view
+        if (canCut && renderType == RenderType.translucent()) {
+            IPStraddleRender.forEachNearShip(projection, modelView, new Vec3(cameraX, cameraY, cameraZ), ship ->
+                    self.renderSectionLayer(List.of(ship), renderType, shader, cameraX, cameraY, cameraZ, modelView, projection, partialTicks));
+        }
     }
 
     /**

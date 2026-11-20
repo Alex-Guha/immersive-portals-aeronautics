@@ -135,6 +135,10 @@ public class IrisPortalRenderer extends PortalRenderer {
         
         // Immersive Aeronautics: laser beams recorded for drawing over portal views
         IPLaserIrisPortals.clearAll();
+        // Immersive Aeronautics: the depths without translucents recorded for the portal areas
+        IPIrisTranslucentDepth.clearAll();
+        // Immersive Aeronautics: the passes' translucent terrain recorded for drawing inside portal views
+        qouteall.imm_ptl.core.compat.sodium_compatibility.IPNearTranslucents.clearAll();
         
         // Iris now use vanilla framebuffer's depth
         client.getMainRenderTarget().bindWrite(false);
@@ -167,6 +171,7 @@ public class IrisPortalRenderer extends PortalRenderer {
         
         // Immersive Aeronautics: this pass's laser beams are drawn in its portal views by now
         IPLaserIrisPortals.clear(portalLayer);
+        IPIrisTranslucentDepth.clear(portalLayer);
         
         if (portalLayer == 0) {
             finish();
@@ -238,8 +243,12 @@ public class IrisPortalRenderer extends PortalRenderer {
                 " Portal-in-portal wont' be rendered");
         }
         
-        // Immersive Aeronautics: laser beams do not hide the portals behind them
-        IPLaserIrisPortals.correctPortalDepth(portalLayer, mcFrameBuffer, deferredFbs[portalLayer].fb);
+        // Immersive Aeronautics: translucents (glass, water, particles) and laser beams do not hide the portals behind
+        // them; a beam is the nearest thing where it is in front of the nearest opaque thing
+        IPIrisTranslucentDepth.correctPortalDepth(portalLayer, mcFrameBuffer, deferredFbs[portalLayer].fb);
+        IPLaserIrisPortals.correctPortalDepth(
+            portalLayer, IPIrisTranslucentDepth.nearestOpaqueDepth(portalLayer, mcFrameBuffer), deferredFbs[portalLayer].fb
+        );
         
         initStencilForLayer(portalLayer);
         
@@ -469,13 +478,16 @@ public class IrisPortalRenderer extends PortalRenderer {
     
     /**
      * Immersive Aeronautics: the portal's occlusion test drawn into the main framebuffer (no colour, no depth written),
-     * for a pass whose deferred buffer is not set up yet ({@link #doRenderPortal}).
+     * for a pass whose deferred buffer is not set up yet ({@link #doRenderPortal}); against the depth without
+     * translucents when Iris gave one, as the portal area is ({@link IPIrisTranslucentDepth}).
      */
     private boolean testVisibilityInMainFrameBuffer(Portal portal, Matrix4f modelView) {
-        client.getMainRenderTarget().bindWrite(false);
+        if (!IPIrisTranslucentDepth.bindOcclusionTestTarget(PortalRendering.getPortalLayer())) {
+            client.getMainRenderTarget().bindWrite(false);
+        }
         GL11.glDisable(GL_STENCIL_TEST);
         GlStateManager._enableDepthTest();
-        return PortalRenderInfo.renderAndDecideVisibility(portal, () -> {
+        boolean visible = PortalRenderInfo.renderAndDecideVisibility(portal, () -> {
             ViewAreaRenderer.renderPortalArea(
                 portal, Vec3.ZERO,
                 modelView,
@@ -483,6 +495,8 @@ public class IrisPortalRenderer extends PortalRenderer {
                 true, false, false, true
             );
         });
+        client.getMainRenderTarget().bindWrite(false);
+        return visible;
     }
     
     @Override

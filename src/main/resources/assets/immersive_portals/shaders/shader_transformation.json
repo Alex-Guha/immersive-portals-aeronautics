@@ -46,7 +46,7 @@
       "debugOutput": false
     },
     {
-      "comment": "For iris+sodium",
+      "comment": "For iris+sodium. Immersive Aeronautics: a second plane, ipa_OuterClipEquation (eye space, like the first), for the outer world's translucent terrain drawn inside a portal view inside another (IPNearTranslucents); GL_CLIP_DISTANCE1 is on for that draw only.",
       "type": "vs",
       "affectedShaders": [
         "iris_gbuffers_terrain",
@@ -57,13 +57,13 @@
       "transformations": [
         {
           "pattern": "void ( )*main( )*\\(( )*( )*\\)( )*(\n)*\\{",
-          "replacement": "uniform vec4 iportal_ClippingEquation;\nvoid main() {"
+          "replacement": "uniform vec4 iportal_ClippingEquation;\nuniform vec4 ipa_OuterClipEquation;\nvoid main() {"
         },
         {
           "comment": "Iris's core-profile path (SodiumCoreTransformer) has no getVertexPosition: no clip there, a program that does not compile would lose the whole pack",
           "requires": "getVertexPosition",
           "pattern": "\\}(?![\\S\\s]*\\})",
-          "replacement": "gl_ClipDistance[0] = dot(\n    (iris_ModelViewMatrix * getVertexPosition()).xyz, iportal_ClippingEquation.xyz\n) + iportal_ClippingEquation.w;\n}"
+          "replacement": "gl_ClipDistance[0] = dot(\n    (iris_ModelViewMatrix * getVertexPosition()).xyz, iportal_ClippingEquation.xyz\n) + iportal_ClippingEquation.w;\ngl_ClipDistance[1] = dot(\n    (iris_ModelViewMatrix * getVertexPosition()).xyz, ipa_OuterClipEquation.xyz\n) + ipa_OuterClipEquation.w;\n}"
         }
       ],
       "debugOutput": false

@@ -18,6 +18,7 @@
         "iris.MixinIrisTransformPatcher_PortalViewFog",
         "sodium.IESodiumLevelSlice",
         "sodium.IESodiumWorldRenderer",
+        "sodium.IESodiumSortedRenderLists",
         "sodium.MixinSodiumDefaultFluidRenderer_StackFloor",
         "sodium.MixinSodiumDefaultChunkRenderer",
         "sodium.MixinSodiumDefaultShaderInterface",
@@ -28,7 +29,8 @@
         "sodium.MixinSodiumRenderSectionManager_PortalViewDistance",
         "sodium.MixinSodiumShaderLoader",
         "sodium.MixinSodiumViewport",
-        "sodium.MixinSodiumWorldRenderer"
+        "sodium.MixinSodiumWorldRenderer",
+        "sodium.MixinSodiumWorldRenderer_NearTranslucents"
     ],
     "injectors": {
         "defaultRequire": 1

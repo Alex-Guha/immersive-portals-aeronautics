@@ -145,6 +145,22 @@ public class MyRenderHelper {
             }
         });
 
+        // Immersive Aeronautics: translucents left out of the depth portal areas are decided against (IPIrisTranslucentDepth)
+        loadShaderSignal.connect((resourceManager, resultConsumer) -> {
+            try {
+                ShaderInstance shader = new ShaderInstance(
+                    getResourceFactory(resourceManager),
+                    "portal_translucent_depth",
+                    DefaultVertexFormat.BLIT_SCREEN
+                );
+                resultConsumer.accept(shader);
+                portalTranslucentDepthShader = shader;
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         // Immersive Aeronautics: a fading portal's backdrop blended back (IPPortalDrawDistance)
         loadShaderSignal.connect((resourceManager, resultConsumer) -> {
             try {
@@ -218,6 +234,8 @@ public class MyRenderHelper {
     // Immersive Aeronautics: see IPPortalDrawDistance
     public static ShaderInstance portalFadeShader;
     public static ShaderInstance portalBeamDepthShader;
+    // Immersive Aeronautics: see IPIrisTranslucentDepth
+    public static ShaderInstance portalTranslucentDepthShader;
     public static ShaderInstance blitScreenNoBlendShader;
     
     public static void drawPortalAreaWithFramebuffer(

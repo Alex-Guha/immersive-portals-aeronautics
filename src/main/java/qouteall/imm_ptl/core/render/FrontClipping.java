@@ -214,6 +214,76 @@ public class FrontClipping {
         return activeTerrainClipPlaneAfterModelView;
     }
     
+    // Immersive Aeronautics: a second plane for Sodium's terrain programs under a shader pack, eye space (null: none)
+    private static double[] outerTerrainClipEquation;
+    
+    /** Immersive Aeronautics: see {@link #setOuterTerrainClipEquation}. */
+    public static double @Nullable [] getOuterTerrainClipEquation() {
+        return outerTerrainClipEquation;
+    }
+    
+    /**
+     * Immersive Aeronautics: the second plane ({@code ipa_OuterClipEquation}, {@code gl_ClipDistance[1]}) of a shader
+     * pack's Sodium terrain programs, in eye space; null puts it back to keeping everything. GL_CLIP_DISTANCE1 is the
+     * caller's to turn on and off.
+     */
+    public static void setOuterTerrainClipEquation(double @Nullable [] equation) {
+        outerTerrainClipEquation = equation;
+    }
+    
+    /** Immersive Aeronautics: {@code plane} (kept side: where its normal points) relative to the current camera. */
+    public static double[] cameraRelativeEquation(Plane plane) {
+        return getClipEquationInner(plane.pos(), plane.normal(), 0);
+    }
+    
+    /** Immersive Aeronautics: {@code plane} in the eye space of {@code modelView}, from the current camera. */
+    public static double[] eyeSpaceEquation(Plane plane, Matrix4f modelView) {
+        return transformClipEquation(getClipEquationInner(plane.pos(), plane.normal(), 0), modelView);
+    }
+    
+    /**
+     * Immersive Aeronautics: replaces the camera-relative plane IP's clip uses for vanilla shader instances (ships' terrain
+     * rotates it into ship space, MixinSableChunkedRenderData_ClipSpace) until it is put back.
+     *
+     * @return the plane it replaced, to put back
+     */
+    public static double[] swapClipEquationBeforeModelView(double[] equation) {
+        double[] old = activeClipPlaneEquationBeforeModelView;
+        activeClipPlaneEquationBeforeModelView = equation;
+        return old;
+    }
+    
+    /**
+     * Immersive Aeronautics: turns IP's clip off for a draw kept on the other side of the active plane (ships in front of
+     * the portal drawn inside its view, IPStraddleRender.forEachNearShip); {@link #resumeClipping} turns it back on.
+     *
+     * @return whether it was on
+     */
+    public static boolean suspendClipping() {
+        boolean wasEnabled = isClippingEnabled;
+        disableClipping();
+        return wasEnabled;
+    }
+    
+    /** Immersive Aeronautics: see {@link #suspendClipping}. */
+    public static void resumeClipping(boolean wasEnabled) {
+        if (wasEnabled) {
+            enableClipping();
+        }
+    }
+    
+    /**
+     * Immersive Aeronautics: replaces the plane Sodium's terrain programs clip against
+     * ({@link #getActiveTerrainClipPlaneEquationAfterModelView}) until it is put back.
+     *
+     * @return the plane it replaced, to put back
+     */
+    public static double[] swapTerrainClipEquation(double[] equation) {
+        double[] old = activeTerrainClipPlaneAfterModelView;
+        activeTerrainClipPlaneAfterModelView = equation;
+        return old;
+    }
+    
     public static void updateClippingEquationUniformForCurrentShader(
         boolean isRenderingEntities
     ) {

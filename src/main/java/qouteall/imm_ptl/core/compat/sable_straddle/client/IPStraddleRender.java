@@ -23,12 +23,22 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+import com.mojang.blaze3d.systems.RenderSystem;
+import dev.ryanhcode.sable.sublevel.render.vanilla.VanillaChunkedSubLevelRenderData;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import qouteall.imm_ptl.core.ClientWorldLoader;
+import qouteall.imm_ptl.core.IPCGlobal;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IrisPortalRenderer;
+import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.render.IPPortalChain;
+import qouteall.imm_ptl.core.render.IPScreenRect;
 import qouteall.imm_ptl.core.render.FrontClipping;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.q_misc_util.my_util.Plane;
@@ -98,8 +108,12 @@ public final class IPStraddleRender {
         }
     }
 
+    /**
+     * A ship drawn with another pose than its own: the far half of a straddling ship, or (with {@code nearSide}) a ship
+     * of the player's world in front of a portal, drawn inside the portal's view ({@link #forEachNearShip}; no session).
+     */
     private record Projection(ClientSubLevel ship, Pose3dc pose, KeepPlane plane, IPPortalSimilarity isometry,
-                              IPStraddleClientSessions.Session session) {
+                              @Nullable IPStraddleClientSessions.Session session, boolean nearSide) {
     }
 
     @Nullable
@@ -134,7 +148,8 @@ public final class IPStraddleRender {
      */
     public static int farHalfSkyLight(final ClientSubLevel ship) {
         final Projection current = projection;
-        if (current == null || current.ship() != ship) {
+        // a ship in front of a portal is in its own world: its own sky light
+        if (current == null || current.ship() != ship || current.nearSide()) {
             return -1;
         }
         if (skyLightOf != current) {
@@ -245,7 +260,7 @@ public final class IPStraddleRender {
         if (uniform == null) {
             return false;
         }
-        if (facesPortalClipAway(plane)) {
+        if (!isProjectingNearSide() && facesPortalClipAway(plane)) {
             // In this portal view IP keeps what is beyond the portal plane and the cut keeps the ship's side before
             // that same plane: only a sliver around the plane would survive (the ship's outline). Draw nothing.
             uniform.set(0.0f, 0.0f, 0.0f, -1.0f);
@@ -428,7 +443,13 @@ public final class IPStraddleRender {
      */
     public static boolean rejectsInPortalPass(final ClientSubLevel ship) {
         final KeepPlane plane = planeFor(ship);
-        return plane != null && facesPortalClipAway(plane);
+        return plane != null && !isProjectingNearSide() && facesPortalClipAway(plane);
+    }
+
+    /** Whether a ship in front of a portal is being drawn inside its view now ({@link #forEachNearShip}). */
+    private static boolean isProjectingNearSide() {
+        final Projection current = projection;
+        return current != null && current.nearSide();
     }
 
     /** How a ship's block entity is drawn in the current pass ({@link #blockEntityCut}). */
@@ -770,7 +791,7 @@ public final class IPStraddleRender {
                 continue;
             }
             final Pose3d mapped = session.map().mapPose(ship.renderPose());
-            projections.add(new Projection(ship, mapped, new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session));
+            projections.add(new Projection(ship, mapped, new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session, false));
         }
         for (final Projection p : projections) {
             projection = p;
@@ -782,10 +803,128 @@ public final class IPStraddleRender {
         }
     }
 
+    /**
+     * Ships in front of a portal with a shader pack. The pack finishes a world's image before a portal's view is drawn
+     * over the portal ({@code IrisPortalRenderer}), and the view covers what is translucent in front of it, a ship's glass
+     * included. In a portal view this runs {@code draw} for each ship that may lie between a camera and the portal it
+     * looks through, for every layer around the view (the player's world, and the outer views' worlds when this view is
+     * inside another: a view inside a view is pasted over the outer view's image after that is finished), farthest
+     * first: with its pose mapped through the portals from there to this view, kept on the camera's side of its portal by
+     * the ship's clip plane, and by IP's clip to what its own pass kept (off for the player's world, which nothing cuts),
+     * scissored to where both the ship and this view's portal are on screen. For the translucent layer only: the rest of
+     * a ship in front of a portal is not covered by the view.
+     *
+     * @param projectionMatrix, modelView, camera those of the view's pass
+     */
+    public static void forEachNearShip(final Matrix4f projectionMatrix, final Matrix4f modelView, final Vec3 camera,
+                                       final ProjectionDraw draw) {
+        if (projection != null || IPCGlobal.renderer != IrisPortalRenderer.instance
+                || IrisInterface.invoker.isRenderingShadowMap() || !PortalRendering.isRendering()) {
+            return;
+        }
+        final int[] portalRect = IPScreenRect.ofPortalView(PortalRendering.getRenderingPortal(), projectionMatrix, modelView, camera);
+        if (IPScreenRect.isEmpty(portalRect)) {
+            return;
+        }
+        for (int j = PortalRendering.getPortalLayer() - 1; j >= 0; j--) {
+            drawNearShipsOfLayer(j, projectionMatrix, modelView, camera, portalRect, draw);
+        }
+    }
+
+    private static void drawNearShipsOfLayer(final int j, final Matrix4f projectionMatrix, final Matrix4f modelView,
+                                             final Vec3 camera, final int @Nullable [] portalRect, final ProjectionDraw draw) {
+        final List<Portal> chain = IPPortalChain.from(j);
+        final Portal through = chain.get(0);
+        if (IPPortalChain.hasMirror(chain) || !(through.getOriginWorld() instanceof final ClientLevel origin)) {
+            return;
+        }
+        final Plane nearPlane = IPPortalChain.nearPlane(j);
+        final Plane outerPlane = IPPortalChain.outerPlane(j);
+        if (nearPlane == null || outerPlane == IPPortalChain.NO_PLANE) {
+            return;
+        }
+        final SubLevelContainer container = SubLevelContainer.getContainer(origin);
+        if (container == null) {
+            return;
+        }
+        IPPortalSimilarity map = IPPortalSimilarity.IDENTITY;
+        for (final Portal portal : chain) {
+            map = map.then(IPPortalSimilarity.of(portal));
+        }
+        final IPPortalSimilarity toView = map;
+        final KeepPlane plane = new KeepPlane(nearPlane.pos(), nearPlane.normal(), toView.scale());
+        // the camera's side of the portal, in the ships' world
+        Vec3 originNormal = through.getNormal();
+        if (originNormal.dot(IPPortalChain.unmapPoint(chain, camera).subtract(through.getOriginPos())) < 0.0) {
+            originNormal = originNormal.scale(-1.0);
+        }
+        final List<Projection> near = new ArrayList<>();
+        final List<int[]> scissors = new ArrayList<>();
+        for (final SubLevel subLevel : container.getAllSubLevels()) {
+            if (!(subLevel instanceof final ClientSubLevel ship) || ship.isRemoved()
+                    || !(ship.getRenderData() instanceof VanillaChunkedSubLevelRenderData)) {
+                continue;
+            }
+            final BoundingBox3dc b = ship.boundingBox();
+            final AABB box = new AABB(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ());
+            if (!reachesSide(box, through.getOriginPos(), originNormal)) {
+                continue;
+            }
+            final int[] scissor = IPScreenRect.intersect(portalRect,
+                    IPScreenRect.of(box, toView::mapPoint, projectionMatrix, modelView, camera));
+            if (IPScreenRect.isEmpty(scissor)) {
+                continue;
+            }
+            near.add(new Projection(ship, toView.mapPose(ship.renderPose()), plane, toView, null, true));
+            scissors.add(scissor);
+        }
+        if (near.isEmpty()) {
+            return;
+        }
+        final boolean clipping = outerPlane == null && FrontClipping.suspendClipping();
+        final double[] previousClip = outerPlane != null
+                ? FrontClipping.swapClipEquationBeforeModelView(FrontClipping.cameraRelativeEquation(outerPlane)) : null;
+        try {
+            for (int i = 0; i < near.size(); i++) {
+                final int[] scissor = scissors.get(i);
+                projection = near.get(i);
+                if (scissor != null) {
+                    RenderSystem.enableScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+                }
+                try {
+                    draw.draw(near.get(i).ship());
+                } finally {
+                    if (scissor != null) {
+                        RenderSystem.disableScissor();
+                    }
+                    projection = null;
+                }
+            }
+        } finally {
+            if (outerPlane != null) {
+                FrontClipping.swapClipEquationBeforeModelView(previousClip);
+            } else {
+                FrontClipping.resumeClipping(clipping);
+            }
+        }
+    }
+
+    /** Whether some of {@code box} lies on the side of the plane through {@code point} that {@code normal} points to. */
+    private static boolean reachesSide(final AABB box, final Vec3 point, final Vec3 normal) {
+        for (int i = 0; i < 8; i++) {
+            final Vec3 corner = new Vec3((i & 1) == 0 ? box.minX : box.maxX, (i & 2) == 0 ? box.minY : box.maxY,
+                    (i & 4) == 0 ? box.minZ : box.maxZ);
+            if (normal.dot(corner.subtract(point)) > 0.0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Runs {@code draw} with {@code ship} drawn mapped through the portal of {@code session}, its far side as the cut. */
     static void withProjection(final ClientSubLevel ship, final IPStraddleClientSessions.Session session, final Runnable draw) {
         projection = new Projection(ship, session.map().mapPose(ship.renderPose()),
-                new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session);
+                new KeepPlane(session.destOrigin(), session.destNormal(), session.map().scale()), session.map(), session, false);
         try {
             draw.run();
         } finally {

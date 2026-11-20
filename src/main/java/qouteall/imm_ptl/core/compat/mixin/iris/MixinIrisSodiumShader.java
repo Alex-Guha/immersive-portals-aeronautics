@@ -30,6 +30,10 @@ public class MixinIrisSodiumShader {
     @Unique
     private GlUniformFloat4v uIPClippingEquation;
     
+    // Immersive Aeronautics: the second plane (FrontClipping.getOuterTerrainClipEquation)
+    @Unique
+    private GlUniformFloat4v ip_uOuterClipEquation;
+    
     @Inject(
         method = "<init>",
         at = @At("RETURN")
@@ -37,6 +41,7 @@ public class MixinIrisSodiumShader {
     private void onInit(IrisRenderingPipeline pipeline, SodiumPrograms.Pass pass, ShaderBindingContext context, int handle, BlendModeOverride blendModeOverride, List bufferBlendOverrides, CustomUniforms customUniforms, Supplier flipState, float alphaTest, boolean containsTessellation, CallbackInfo ci) {
         
         this.uIPClippingEquation = context.bindUniformOptional("iportal_ClippingEquation", GlUniformFloat4v::new);
+        this.ip_uOuterClipEquation = context.bindUniformOptional("ipa_OuterClipEquation", GlUniformFloat4v::new);
         if (this.uIPClippingEquation != null) {
             Helper.LOGGER.info("Found iportal_ClippingEquation in program {}", handle);
         } else {
@@ -50,6 +55,12 @@ public class MixinIrisSodiumShader {
         remap = false
     )
     private void onSetup(CallbackInfo ci) {
+        // Immersive Aeronautics: kept everywhere unless a draw sets it (GL_CLIP_DISTANCE1 is on for that draw only)
+        if (ip_uOuterClipEquation != null) {
+            double[] outer = FrontClipping.getOuterTerrainClipEquation();
+            ip_uOuterClipEquation.set(outer == null ? new float[]{0, 0, 0, 1}
+                : new float[]{(float) outer[0], (float) outer[1], (float) outer[2], (float) outer[3]});
+        }
         if (uIPClippingEquation != null) {
             if (FrontClipping.isClippingEnabled) {
                 // Immersive Aeronautics: world terrain only (Sable draws ships with vanilla shader instances), so

@@ -1,0 +1,10 @@
+{
+  "vertex": "blit_screen_noblend",
+  "fragment": "portal_translucent_depth",
+  "samplers": [
+    { "name": "IPMainDepth" },
+    { "name": "IPPreTranslucentDepth" },
+    { "name": "IPBeforeHandDepth" }
+  ],
+  "uniforms": []
+}

@@ -21,6 +21,8 @@
     "IEIrisRenderingPipeline_BlockIds",
     "MixinIrisRenderingPipeline_ViewPack",
     "MixinIrisSodiumPrograms_ViewPack",
+    "MixinIrisRenderingPipeline_TranslucentDepth",
+    "MixinIrisHandRenderer_TranslucentDepth",
     "IEInteractiveFoliageRenderer",
     "MixinInteractiveFoliageRenderer_PlayerWorldOnly",
     "MixinInteractiveFoliageSplit_PlayerWorldOnly",

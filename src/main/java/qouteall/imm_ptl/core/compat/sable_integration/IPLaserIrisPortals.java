@@ -154,10 +154,10 @@ public final class IPLaserIrisPortals {
 
     /**
      * Before the portal areas of the pass at {@code layer} are decided ({@link IrisPortalRenderer}): where one of the
-     * pass's beams is the nearest thing on screen, {@code deferred}'s depth (a copy of {@code main}'s) becomes the depth
-     * from before the pass's first beam ({@link #takeDepthSnapshot}). Everything else keeps its depth.
+     * pass's beams is in front of {@code nearestDepth} (the nearest opaque thing on screen), {@code deferred}'s depth
+     * becomes the depth from before the pass's first beam ({@link #takeDepthSnapshot}). Everything else keeps its depth.
      */
-    public static void correctPortalDepth(final int layer, final RenderTarget main, final RenderTarget deferred) {
+    public static void correctPortalDepth(final int layer, final int nearestDepth, final RenderTarget deferred) {
         final ShaderInstance shader = MyRenderHelper.portalBeamDepthShader;
         final boolean hasSnapshot = snapshotLayer == layer && snapshot != null;
         snapshotLayer = -1;
@@ -171,7 +171,7 @@ public final class IPLaserIrisPortals {
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
         RenderSystem.depthMask(true);
         RenderSystem.disableCull();
-        shader.setSampler("IPMainDepth", main.getDepthTextureId());
+        shader.setSampler("IPMainDepth", nearestDepth);
         shader.setSampler("IPBeforeBeamsDepth", snapshot.fb.getDepthTextureId());
         for (final Batch batch : BATCHES.get(layer)) {
             final int count = batch.colors().length;

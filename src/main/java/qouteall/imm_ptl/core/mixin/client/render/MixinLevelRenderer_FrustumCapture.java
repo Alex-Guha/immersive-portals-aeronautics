@@ -41,6 +41,17 @@ public abstract class MixinLevelRenderer_FrustumCapture {
         IPFrustumCapture.onCapture((LevelRenderer) (Object) this, viewMatrix, projectionMatrix, camX, camY, camZ);
     }
 
+    @Inject(
+        method = "captureFrustum(Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;DDDLnet/minecraft/client/renderer/culling/Frustum;)V",
+        at = @At("TAIL")
+    )
+    private void ip_afterCapture(
+        Matrix4f viewMatrix, Matrix4f projectionMatrix, double camX, double camY, double camZ, Frustum captured,
+        CallbackInfo ci
+    ) {
+        IPFrustumCapture.afterCapture((LevelRenderer) (Object) this);
+    }
+
     @Inject(method = "killFrustum", at = @At("HEAD"))
     private void ip_onKill(CallbackInfo ci) {
         IPFrustumCapture.onKill((LevelRenderer) (Object) this);

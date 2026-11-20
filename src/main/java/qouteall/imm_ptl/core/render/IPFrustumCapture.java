@@ -55,6 +55,12 @@ import java.util.List;
 public final class IPFrustumCapture {
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    /**
+     * How far the outline's far corners are pushed (blocks along each edge): past any live far clip, which is a few
+     * thousand blocks at most, from wherever the camera is in practice; floats keep it to a tenth of a block.
+     */
+    private static final float OUTLINE_FAR = 1 << 20;
+
     private static final Vector4f[] NDC_CORNERS = {
         new Vector4f(-1, -1, -1, 1), new Vector4f(1, -1, -1, 1), new Vector4f(1, 1, -1, 1), new Vector4f(-1, 1, -1, 1),
         new Vector4f(-1, -1, 1, 1), new Vector4f(1, -1, 1, 1), new Vector4f(1, 1, 1, 1), new Vector4f(-1, 1, 1, 1)
@@ -300,7 +306,22 @@ public final class IPFrustumCapture {
         return new View(pos, view, path.isEmpty() ? null : path.get(path.size() - 1));
     }
 
-    /** Puts {@code view} into vanilla's capture fields of {@code renderer}, as its {@code captureFrustum} would. */
+    /** Vanilla's {@code captureFrustum} has written its fields: its outline gets the far plane removed too. */
+    public static void afterCapture(LevelRenderer renderer) {
+        Capture c = capture;
+        if (c != null && fieldsOwner == renderer && outerView != null) {
+            writeFields(renderer, c, outerView);
+        }
+    }
+
+    /**
+     * Puts {@code view} into vanilla's capture fields of {@code renderer}, as its {@code captureFrustum} would, except
+     * that the outline vanilla draws from {@code frustumPoints} has no far plane: its far corners are pushed out along
+     * the frustum's edges to {@link #OUTLINE_FAR} blocks, past the live camera's far clip, so the far face is never
+     * drawn and the side faces end where the live view's clip cuts them. The far face sat at the far clip distance, on
+     * top of LODs (which go past it) and flickering against the clip; nothing is culled by it (vanilla's sections are
+     * nearer, and DH ignores it). The captured {@code Frustum} keeps its real far plane.
+     */
     private static void writeFields(LevelRenderer renderer, Capture c, View view) {
         IPLevelRendererFrustumAccessor fields = (IPLevelRendererFrustumAccessor) renderer;
         fields.ip_setCapturedFrustum(new Frustum(view.view, c.projection));
@@ -310,6 +331,18 @@ public final class IPFrustumCapture {
         for (int i = 0; i < 8; i++) {
             Vector4f corner = inverse.transform(new Vector4f(NDC_CORNERS[i]));
             points[i] = corner.div(corner.w());
+        }
+        for (int i = 0; i < 4; i++) {
+            Vector4f near = points[i];
+            Vector4f far = points[i + 4];
+            float dx = far.x() - near.x();
+            float dy = far.y() - near.y();
+            float dz = far.z() - near.z();
+            float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (length > 0 && length < OUTLINE_FAR) {
+                float scale = OUTLINE_FAR / length;
+                points[i + 4] = new Vector4f(near.x() + dx * scale, near.y() + dy * scale, near.z() + dz * scale, 1);
+            }
         }
     }
 }

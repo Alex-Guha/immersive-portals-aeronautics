@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.portal.animation.ClientPortalAnimationManagement;
 import qouteall.imm_ptl.core.render.GlQueryObject;
+import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.QueryManager;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
@@ -224,6 +225,11 @@ public class PortalRenderInfo implements AutoCloseable {
         ProfilerFiller profiler = Minecraft.getInstance().getProfiler();
         
         boolean decision;
+        // Immersive Aeronautics: with a frustum captured (F3+U), the verdicts of the capture frame (IPFrustumCapture)
+        if (!IPGlobal.offsetOcclusionQuery) {
+            boolean thisFrame = QueryManager.renderAndGetDoesAnySamplePass(queryRendering);
+            return IPFrustumCapture.occlusionDecision(portal, thisFrame, () -> thisFrame);
+        }
         if (IPGlobal.offsetOcclusionQuery) {
             PortalRenderInfo renderInfo = get(portal);
             
@@ -241,6 +247,7 @@ public class PortalRenderInfo implements AutoCloseable {
                 decision = qouteall.imm_ptl.core.render.IPPortalVisibility.decideWithoutWaiting(
                     lastFrameQuery, visibility.lastFrameRendered
                 );
+                decision = IPFrustumCapture.occlusionDecision(portal, decision, thisFrameQuery::fetchQueryResult);
                 visibility.thisFrameRendered = decision;
                 return decision;
             }
@@ -273,7 +280,11 @@ public class PortalRenderInfo implements AutoCloseable {
         else {
             decision = QueryManager.renderAndGetDoesAnySamplePass(queryRendering);
         }
-        return decision;
+        // Immersive Aeronautics: with a frustum captured (F3+U), the verdicts of the capture frame (IPFrustumCapture)
+        GlQueryObject thisFrameQuery = get(portal).getVisibility(WorldRenderInfo.getRenderingDescription()).thisFrameQuery;
+        boolean waitedDecision = decision;
+        return IPFrustumCapture.occlusionDecision(portal, decision,
+            () -> thisFrameQuery != null ? thisFrameQuery.fetchQueryResult() : waitedDecision);
     }
     
     private static final Cleaner CLEANER = Cleaner.create();

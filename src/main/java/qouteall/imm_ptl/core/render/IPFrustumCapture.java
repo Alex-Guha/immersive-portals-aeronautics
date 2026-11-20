@@ -19,10 +19,14 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.mixin.client.render.IPLevelRendererFrustumAccessor;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
+import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.imm_ptl.core.render.context_management.WorldRenderInfo;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * Vanilla's frustum capture (F3+U, Shift+F3+U releases it) carried through portals, as a debug view of what is
@@ -43,7 +47,8 @@ import java.util.List;
  * pass), so vanilla's culling, Sodium's (its viewport comes from that frustum), Veil's cull frustum and vanilla's
  * drawing of the frozen frustum follow it. IP's own checks ask {@link #isCulling}, {@link #cullingPos} and
  * {@link #rimPortal}: the choice of portals ({@code PortalRenderer}), the section search origin (vanilla
- * {@code VisibleSectionDiscovery}, Sodium's occlusion culler) and the rim culling ({@code FrustumCuller}). Not covered:
+ * {@code VisibleSectionDiscovery}, Sodium's occlusion culler) and the rim culling ({@code FrustumCuller}); portals'
+ * occlusion queries are read in the capture frame and portals hidden then stay skipped ({@link #isHeldHidden}). Not covered:
  * Flywheel's instance culling, Sable's ship culling and the Iris shadow pass (all live in vanilla's capture too), DH
  * and Voxy LODs. One path is followed: a place the captured camera sees both directly and through a portal is culled
  * by the path the player took.
@@ -74,6 +79,13 @@ public final class IPFrustumCapture {
         final Matrix4f projection;
         /** Portals the player crossed since the capture, a portal followed by its reverse cancelled out. */
         final ArrayList<Portal> crossed = new ArrayList<>();
+        /** The frame the capture was made in, drawn from the captured camera itself. */
+        final int frame = RenderStates.frameIndex;
+        /**
+         * Occlusion verdicts of that frame: the path of the view (portal ids) and then the portal tested in it, to
+         * whether any of the portal's area showed.
+         */
+        final HashMap<List<UUID>, Boolean> occlusion = new HashMap<>();
 
         Capture(ResourceKey<Level> dimension, Vec3 pos, Matrix4f view, Matrix4f projection) {
             this.dimension = dimension;
@@ -87,8 +99,11 @@ public final class IPFrustumCapture {
         }
     }
 
-    /** The culling camera of one view, in that view's world, and the portal whose rim limits it (null: none). */
-    private record View(Vec3 pos, Matrix4f view, @Nullable Portal rim) {}
+    /**
+     * The culling camera of one view, in that view's world, the portal whose rim limits it (null: none), and the ids of
+     * the path of portals from the captured camera to it.
+     */
+    private record View(Vec3 pos, Matrix4f view, @Nullable Portal rim, List<UUID> path) {}
 
     /** One portal pass: its culling camera (null: live culling) and the renderer's capture fields to put back. */
     private record Pass(
@@ -119,7 +134,7 @@ public final class IPFrustumCapture {
         }
         capture = new Capture(level.dimension(), new Vec3(x, y, z), new Matrix4f(view), new Matrix4f(projection));
         active = true;
-        outerView = new View(capture.pos, capture.view, null);
+        outerView = new View(capture.pos, capture.view, null, List.of());
         fieldsOwner = renderer;
         LOGGER.info("[IPFrustumCapture] frustum captured in {} at {} {} {}; portals and portal views now cull from there",
             level.dimension().location(), String.format("%.2f", x), String.format("%.2f", y), String.format("%.2f", z));
@@ -268,6 +283,47 @@ public final class IPFrustumCapture {
         System.arraycopy(pass.oldPoints, 0, fields.ip_getFrustumPoints(), 0, 8);
     }
 
+    /**
+     * The occlusion query's decision for {@code portal} in the view being drawn. Live, the query tests the portal's area
+     * against what the live camera drew, so a portal the captured camera saw wholly hidden (behind another portal or a
+     * wall) showed again once the player moved. In the capture frame the live camera is the captured one: there each
+     * verdict is read, waiting for the GPU once ({@code thisFrameResult}), and kept for the views reached along the
+     * same path while the capture is held ({@link #isHeldHidden}). Otherwise the live decision stands.
+     */
+    public static boolean occlusionDecision(Portal portal, boolean liveDecision, BooleanSupplier thisFrameResult) {
+        View view = currentView();
+        Capture c = capture;
+        if (view == null || c == null || RenderStates.frameIndex != c.frame) {
+            return liveDecision;
+        }
+        boolean visible = thisFrameResult.getAsBoolean();
+        c.occlusion.put(occlusionKey(view, portal), visible);
+        return visible;
+    }
+
+    /**
+     * Whether {@code portal} was wholly hidden from the captured camera in the capture frame, in the view being drawn:
+     * it is skipped where portals are chosen, before any renderer draws its area. Skipping it only after its occlusion
+     * query had drawn the area into the stencil would leave that area marked, and the next portal's view at that layer
+     * would show in it. Portals not tested in that frame stay live; a portal held visible but hidden from the live
+     * camera stays hidden, since nothing of it is on screen.
+     */
+    public static boolean isHeldHidden(Portal portal) {
+        View view = currentView();
+        Capture c = capture;
+        if (view == null || c == null || RenderStates.frameIndex == c.frame) {
+            return false;
+        }
+        return Boolean.FALSE.equals(c.occlusion.get(occlusionKey(view, portal)));
+    }
+
+    private static List<UUID> occlusionKey(View view, Portal portal) {
+        ArrayList<UUID> key = new ArrayList<>(view.path.size() + 1);
+        key.addAll(view.path);
+        key.add(portal.getUUID());
+        return key;
+    }
+
     private static @Nullable View currentView() {
         if (!active) {
             return null;
@@ -303,7 +359,11 @@ public final class IPFrustumCapture {
                 view.mul(transformation);
             }
         }
-        return new View(pos, view, path.isEmpty() ? null : path.get(path.size() - 1));
+        List<UUID> ids = new ArrayList<>(path.size());
+        for (Portal portal : path) {
+            ids.add(portal.getUUID());
+        }
+        return new View(pos, view, path.isEmpty() ? null : path.get(path.size() - 1), ids);
     }
 
     /** Vanilla's {@code captureFrustum} has written its fields: its outline gets the far plane removed too. */

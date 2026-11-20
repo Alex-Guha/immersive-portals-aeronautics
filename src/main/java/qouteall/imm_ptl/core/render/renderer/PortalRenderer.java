@@ -212,6 +212,11 @@ public abstract class PortalRenderer {
             return true;
         }
         
+        // Immersive Aeronautics: with a frustum captured (F3+U), a portal hidden from the captured camera then
+        if (IPFrustumCapture.isHeldHidden(portal)) {
+            return true;
+        }
+        
         boolean predicateTest = NeoForge.EVENT_BUS.post(new PortalRenderingPredicateEvent(portal)).canRender();
         return !predicateTest;
     }

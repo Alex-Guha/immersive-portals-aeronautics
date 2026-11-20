@@ -77,6 +77,8 @@ public final class IPStraddleHandoffLatch {
         final Vector3dc plotShift;
         final long linkedAt = System.currentTimeMillis();
         int followedFrames;
+        /** Set while {@link #followedPose} reads the replacement's pose: a re-entry draws the held copy where it is. */
+        boolean following;
         float cachedPartialTick = Float.NaN;
         final Pose3d cached = new Pose3d();
 
@@ -268,7 +270,9 @@ public final class IPStraddleHandoffLatch {
 
     /**
      * Links a held copy to its replacement in the destination of one of its (active or just ended) sessions, if that
-     * copy exists.
+     * copy exists. A copy there that is itself held is the ship's older copy, not its replacement: a ship crossing back
+     * and forth between two portals faster than the latch releases finds it, and the two copies would follow each
+     * other's pose in a loop. Since only held copies are linked and never to a held one, links cannot form a cycle.
      */
     private static void tryLink(final ClientSubLevel held) {
         if (LINKS.containsKey(held)) {
@@ -282,7 +286,7 @@ public final class IPStraddleHandoffLatch {
             }
             final ClientSubLevelContainer container = destLevel == null ? null : ClientSubLevelContainer.getContainer(destLevel);
             if (container != null && container.getSubLevel(held.getUniqueId()) instanceof final ClientSubLevel replacement
-                    && !replacement.isRemoved()) {
+                    && !replacement.isRemoved() && !PENDING.containsKey(replacement)) {
                 link(held, replacement, session.map(), container);
                 return;
             }
@@ -429,7 +433,16 @@ public final class IPStraddleHandoffLatch {
         if (link.cachedPartialTick == partialTick) {
             return link.cached;
         }
-        final Pose3dc replacementPose = currentFrame ? link.replacement.renderPose() : link.replacement.renderPose(partialTick);
+        if (link.following) {
+            return null;
+        }
+        final Pose3dc replacementPose;
+        link.following = true;
+        try {
+            replacementPose = currentFrame ? link.replacement.renderPose() : link.replacement.renderPose(partialTick);
+        } finally {
+            link.following = false;
+        }
         final Pose3d pose = link.isometry.unmapPose(replacementPose);
         pose.rotationPoint().sub(link.plotShift);
         link.cached.set(pose);

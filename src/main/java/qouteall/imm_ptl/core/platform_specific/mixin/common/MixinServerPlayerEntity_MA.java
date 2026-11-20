@@ -35,7 +35,12 @@ public class MixinServerPlayerEntity_MA {
             cir.setReturnValue(null);
             return;
         }
-        onBeforeDimensionTravel(this_);
+        // Immersive Aeronautics: since 1.21, ender pearls and end gateways teleport through changeDimension
+        // within the same dimension too (a plain teleport there); dropping the player from every chunk and entity
+        // tracker then made the client unload and reload everything in view, so do it only for a real change
+        if (dimensionTransition.newLevel() != this_.level()) {
+            onBeforeDimensionTravel(this_);
+        }
     }
     
     // update chunk visibility data

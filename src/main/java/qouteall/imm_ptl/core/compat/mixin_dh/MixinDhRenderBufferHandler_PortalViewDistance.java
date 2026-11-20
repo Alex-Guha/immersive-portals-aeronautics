@@ -11,7 +11,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
+import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 
@@ -24,6 +26,11 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
  * In every portal pass, DH's frustum is the portal camera's whole view, so LOD sections that IP's inner culling puts
  * outside the portal's opening are dropped too, as {@code MixinSodiumViewport} does for terrain. The culler is
  * Sodium's, updated per pass and empty in the shadow pass.
+ * <p>
+ * In the player's own view, LOD sections wholly hidden by the portal nearest the camera (IP's outer culling, as
+ * {@code MixinSodiumSectionCollector} for terrain) are dropped: the portal's view paints over them. Not in the shadow
+ * pass (what is behind a portal still casts shadows in front of it), nor with a frustum captured (F3+U), where DH stays
+ * live while the culler is the captured camera's.
  */
 @Mixin(value = RenderBufferHandler.class, remap = false)
 public class MixinDhRenderBufferHandler_PortalViewDistance {
@@ -47,6 +54,14 @@ public class MixinDhRenderBufferHandler_PortalViewDistance {
         if (PortalRendering.isRendering() && SodiumInterface.frustumCuller != null) {
             ClientLevel level = Minecraft.getInstance().level;
             return level == null || !SodiumInterface.frustumCuller.canInnerCullWorldBox(
+                minX, level.getMinBuildHeight(), minZ, minX + width, level.getMaxBuildHeight(), minZ + width
+            );
+        }
+        if (!PortalRendering.isRendering() && SodiumInterface.frustumCuller != null &&
+            SodiumInterface.frustumCuller.getOuterCulling() != null &&
+            !IrisInterface.invoker.isRenderingShadowMap() && !IPFrustumCapture.isCulling()) {
+            ClientLevel level = Minecraft.getInstance().level;
+            return level == null || !SodiumInterface.frustumCuller.canOuterCullWorldBox(
                 minX, level.getMinBuildHeight(), minZ, minX + width, level.getMaxBuildHeight(), minZ + width
             );
         }

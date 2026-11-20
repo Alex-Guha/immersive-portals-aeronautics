@@ -14,16 +14,19 @@ import net.neoforged.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.IPCGlobal;
+import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
 import qouteall.imm_ptl.core.portal.Mirror;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.animation.UnilateralPortalState;
 import qouteall.imm_ptl.core.render.context_management.PortalRendering;
+import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.q_misc_util.my_util.BoxPredicateF;
 import qouteall.q_misc_util.my_util.Plane;
 
 import java.util.Comparator;
+import java.util.UUID;
 
 @OnlyIn(Dist.CLIENT)
 public class FrustumCuller {
@@ -34,16 +37,42 @@ public class FrustumCuller {
     // Immersive Aeronautics: whether the func is a portal's inner culling (the cut to its opening), which Sodium's
     // section test also applies (canCullSection)
     private boolean innerCulling;
+    // Immersive Aeronautics: the portal whose outer culling the func is (what it hides in the player's own view), and
+    // the frame it was built in
+    private @Nullable OuterCullingKey outerCulling;
+    private int frameIndex = -1;
+    
+    /**
+     * Immersive Aeronautics: what an outer culling func depends on besides the camera: the portal and where it is.
+     * Sodium rebuilds its section lists only when the camera moves or chunks change, so a change of this (a portal on
+     * a moving ship, one that appears, goes or stops being cullable) must mark its graph dirty.
+     */
+    public record OuterCullingKey(UUID portal, UnilateralPortalState state) {
+    }
+    
+    /**
+     * Immersive Aeronautics: the camera must be farther than this from the portal's plane. Nearer, the near plane
+     * (0.05 along the view axis, up to about 0.1 from the camera at the screen's corners) can cut into the flat view
+     * quad, and the player's own world shows through the cut part.
+     */
+    private static final double OUTER_CULLING_MIN_PLANE_DISTANCE = 0.25;
     
     public FrustumCuller() {
     }
     
     public void update(double cameraX, double cameraY, double cameraZ) {
         innerCulling = false;
+        outerCulling = null;
+        frameIndex = RenderStates.frameIndex;
         canDetermineInvisibleFunc = getCanDetermineInvisibleFunc(cameraX, cameraY, cameraZ);
         camX = cameraX;
         camY = cameraY;
         camZ = cameraZ;
+    }
+    
+    /** Immersive Aeronautics: the outer culling this func applies, null when it is not outer culling. */
+    public @Nullable OuterCullingKey getOuterCulling() {
+        return outerCulling;
     }
     
     public boolean canDetermineInvisibleWithCameraCoord(
@@ -76,7 +105,8 @@ public class FrustumCuller {
      * Immersive Aeronautics: Sodium 0.6+'s section search tests each 16^3 section by its centre
      * ({@code Viewport.isBoxVisible}, {@code isBoxVisibleLooser}), not through the box test the inner culling was
      * hooked into, so without this a portal view drew every section in the screen's cone behind the portal. Only the
-     * inner culling: the outer culling has not run with Sodium since 0.6 and turning it on is its own change.
+     * inner culling: the outer culling drops sections from Sodium's draw lists instead (canOuterCullWorldBox), so the
+     * search still walks through the sections a portal hides to what lies beside it.
      */
     public boolean canCullSection(float centerX, float centerY, float centerZ, float halfSize) {
         if (!innerCulling || canDetermineInvisibleFunc == null) {
@@ -85,6 +115,23 @@ public class FrustumCuller {
         return canDetermineInvisibleFunc.test(
             centerX - halfSize, centerY - halfSize, centerZ - halfSize,
             centerX + halfSize, centerY + halfSize, centerZ + halfSize
+        );
+    }
+    
+    /**
+     * Immersive Aeronautics: whether a box in world coordinates is wholly hidden by the portal nearest the camera in
+     * the player's own view (the outer culling), built this frame. Sodium's draw lists and DH's LOD list ask this; the
+     * section search and Sodium's frustum tests do not, so the search still walks through what the portal hides.
+     */
+    public boolean canOuterCullWorldBox(
+        double minX, double minY, double minZ, double maxX, double maxY, double maxZ
+    ) {
+        if (outerCulling == null || canDetermineInvisibleFunc == null || frameIndex != RenderStates.frameIndex) {
+            return false;
+        }
+        return canDetermineInvisibleWithCameraCoord(
+            minX - camX, minY - camY, minZ - camZ,
+            maxX - camX, maxY - camY, maxZ - camZ
         );
     }
     
@@ -174,9 +221,13 @@ public class FrustumCuller {
                     Minecraft.getInstance().gameRenderer.getMainCamera().getPosition()
             );
             if (portal != null) {
-                return portal.getPortalShape().getOuterFrustumCullingFunc(
+                BoxPredicateF func = portal.getPortalShape().getOuterFrustumCullingFunc(
                     portal, new Vec3(cameraX, cameraY, cameraZ)
                 );
+                if (func != null) {
+                    outerCulling = new OuterCullingKey(portal.getUUID(), portal.getThisSideState());
+                }
+                return func;
             }
         }
         
@@ -188,11 +239,25 @@ public class FrustumCuller {
         if (TransformationManager.isIsometricView) {
             return null;
         }
+        // Immersive Aeronautics: only where the portal's view is sure to cover what it hides: not without portal
+        // views (render mode none, or debug), not with the portal limit at 0
+        if (IPGlobal.renderMode != IPGlobal.RenderMode.normal &&
+            IPGlobal.renderMode != IPGlobal.RenderMode.compatibility) {
+            return null;
+        }
+        if (IPGlobal.portalRenderLimit <= 0) {
+            return null;
+        }
         
         return CHelper.getClientNearbyPortals(16).filter(
-            portal -> portal.isInFrontOfPortal(cameraPos)
+            // Immersive Aeronautics: not with the camera on the plane (OUTER_CULLING_MIN_PLANE_DISTANCE)
+            portal -> portal.getDistanceToPlane(cameraPos) > OUTER_CULLING_MIN_PLANE_DISTANCE
         ).filter(
             Portal::canDoOuterFrustumCulling
+        ).filter(
+            // Immersive Aeronautics: not a portal fading out at its draw distance, whose fade blends back what was
+            // drawn behind it (IPPortalDrawDistance)
+            portal -> IPPortalDrawDistance.visibility(portal) >= 1
         ).min(
             Comparator.comparingDouble(portal -> portal.getDistanceToNearestPointInPortal(cameraPos))
         ).orElse(null);

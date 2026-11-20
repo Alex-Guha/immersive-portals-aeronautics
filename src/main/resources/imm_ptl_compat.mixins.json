@@ -27,6 +27,7 @@
         "sodium.MixinSodiumRenderRegion",
         "sodium.MixinSodiumRenderSectionManager",
         "sodium.MixinSodiumRenderSectionManager_PortalViewDistance",
+        "sodium.MixinSodiumSectionCollector",
         "sodium.MixinSodiumShaderLoader",
         "sodium.MixinSodiumViewport",
         "sodium.MixinSodiumWorldRenderer",

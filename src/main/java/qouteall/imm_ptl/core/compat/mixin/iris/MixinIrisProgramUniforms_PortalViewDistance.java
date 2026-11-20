@@ -30,6 +30,11 @@ public class MixinIrisProgramUniforms_PortalViewDistance {
     @Inject(method = "update", at = @At("HEAD"))
     private void ip_refreshOnCutChange(CallbackInfo ci) {
         double key = IPPortalViewDistance.uniformKey();
+        // without a cut, far follows the far side's terrain in a portal pass with LODs (IPDhPortalNearClip.shaderFar)
+        if (Double.isNaN(key) && qouteall.imm_ptl.core.render.context_management.PortalRendering.isRendering()
+            && net.irisshaders.iris.compat.dh.DHCompat.hasRenderingEnabled()) {
+            key = -1e6 - qouteall.imm_ptl.core.compat.dh_integration.IPDhPortalNearClip.shaderFar(Integer.MAX_VALUE, true);
+        }
         if (Double.compare(key, ip_lastKey) != 0) {
             ip_lastKey = key;
             lastFrame = -1;

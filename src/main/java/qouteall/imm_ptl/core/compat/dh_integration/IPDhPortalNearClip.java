@@ -76,6 +76,64 @@ public final class IPDhPortalNearClip {
         return Math.max(0, cameraToPortal + drawnRadius - portalRadius);
     }
 
+    /**
+     * In a portal pass, about how far from the portal camera the destination's drawn terrain reaches (blocks): the
+     * camera's distance to the far portal plus the loaded chunks along the axes from it, less the outermost ring
+     * (not meshed). Not a bound like {@link #coveredDistance} but the edge itself, as the render distance is in the
+     * player's own view. {@link Double#POSITIVE_INFINITY} outside portal passes.
+     * <p>
+     * With Distant Horizons a shader pack's {@code far} is this in a portal view
+     * ({@code MixinIrisCameraUniforms_PortalViewDistance}): packs blend vanilla terrain into LODs by {@code far}
+     * (Complementary fades LODs in at 0.4-0.6 of it and dithers terrain out near it), and through a portal the terrain
+     * ends well before the render distance, around the far portal: at {@code far} the LODs beyond that edge were
+     * still faded out, a band of sky.
+     */
+    public static double terrainReach() {
+        if (!PortalRendering.isRendering()) {
+            return Double.POSITIVE_INFINITY;
+        }
+        Portal portal = PortalRendering.getRenderingPortal();
+        int frame = qouteall.imm_ptl.core.render.context_management.RenderStates.frameIndex;
+        int layer = PortalRendering.getPortalLayer();
+        if (frame == reachFrame && layer == reachLayer && portal == reachPortal) {
+            return reach;
+        }
+        reachFrame = frame;
+        reachLayer = layer;
+        reachPortal = portal;
+        ClientLevel destWorld = ClientWorldLoader.getWorld(portal.getDestDim());
+        if (destWorld == null) {
+            reach = Double.POSITIVE_INFINITY;
+        }
+        else if (portal.isGlobalPortal) {
+            reach = Math.max(16, (loadedChunksAlongAxes(destWorld.getChunkSource(),
+                PortalRendering.getRenderingCameraPos()) - 1) * 16.0);
+        }
+        else {
+            Vec3 dest = portal.getDestPos();
+            double drawn = (loadedChunksAlongAxes(destWorld.getChunkSource(), dest) - 1) * 16.0;
+            reach = PortalRendering.getRenderingCameraPos().distanceTo(dest) + Math.max(16, drawn);
+        }
+        return reach;
+    }
+
+    private static int reachFrame = -1;
+    private static int reachLayer = -1;
+    private static @org.jetbrains.annotations.Nullable Portal reachPortal = null;
+    private static double reach = Double.POSITIVE_INFINITY;
+
+    /**
+     * Iris's {@code far} in a portal pass with Distant Horizons' LODs drawn: no farther than the destination's terrain
+     * reaches ({@link #terrainReach}), at least 32 blocks; {@code blocks} otherwise.
+     */
+    public static int shaderFar(int blocks, boolean dhRendering) {
+        if (!dhRendering || !PortalRendering.isRendering()) {
+            return blocks;
+        }
+        double terrain = terrainReach();
+        return terrain < blocks ? Math.max(32, (int) Math.ceil(terrain)) : blocks;
+    }
+
     /** The fewest consecutive loaded chunks next to {@code pos}'s chunk along +x, -x, +z and -z. */
     private static int loadedChunksAlongAxes(ChunkSource chunks, Vec3 pos) {
         int centreX = SectionPos.blockToSectionCoord(pos.x);

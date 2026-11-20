@@ -31,7 +31,8 @@ import java.util.Map;
 
 /**
  * Nested portal views (a portal seen through a portal, pass layer 2 and deeper) drawn through a small pack bundled in
- * the jar ({@code ip_view_pack/shaders}) while the player's view and the views seen directly keep the player's pack.
+ * the jar ({@code ip_view_pack/shaders}) while the player's view and the views seen directly keep the player's pack;
+ * also small direct views while the portal frame rate target asks for it ({@code IPViewGuard.simplifiesCurrent}).
  * The small pack has terrain and Distant Horizons programs of its own and no shadow, deferred or composite passes;
  * everything else falls back to Iris's built-in vanilla-like shaders. A view through it costs about what a view
  * without a pack costs.
@@ -68,6 +69,11 @@ public final class IPIrisViewPack {
     private static boolean failed = false;
     private static boolean building = false;
 
+    static {
+        // the portal frame rate target draws small direct views through this pack too
+        qouteall.imm_ptl.core.render.IPViewGuard.simpleViews = IPIrisViewPack::usable;
+    }
+
     private IPIrisViewPack() {
     }
 
@@ -80,7 +86,11 @@ public final class IPIrisViewPack {
      * In {@code PipelineManager.preparePipeline}: the small pack's pipeline for this pass, or null for the usual one.
      */
     public static @Nullable WorldRenderingPipeline pipelineOfPass(NamespacedId dimension) {
-        if (!PortalRendering.isRendering() || PortalRendering.getPortalLayer() < FIRST_LAYER || !usable()) {
+        if (!PortalRendering.isRendering() || !usable()) {
+            return null;
+        }
+        int layer = PortalRendering.getPortalLayer();
+        if (layer < FIRST_LAYER && !(layer == 1 && qouteall.imm_ptl.core.render.IPViewGuard.simplifiesCurrent())) {
             return null;
         }
         return pipelineOf(dimension);
@@ -88,7 +98,9 @@ public final class IPIrisViewPack {
     
     /** After {@code PipelineManager.preparePipeline} made a pipeline for {@code dimension}: ours for it too, now. */
     public static void onIrisPipelineMade(NamespacedId dimension) {
-        if (usable() && IPConfig.getConfig().maxPortalLayer >= FIRST_LAYER) {
+        // with the frame rate target on, direct views may be drawn through it too (IPViewGuard)
+        if (usable() && (IPConfig.getConfig().maxPortalLayer >= FIRST_LAYER
+            || IPConfig.getConfig().portalFrameRateTarget > 0)) {
             pipelineOf(dimension);
         }
     }

@@ -26,17 +26,22 @@ import java.util.Locale;
 /**
  * Portal frame rate target (client option {@code portalFrameRateTarget}, 0 = off): every portal view is a whole second
  * world render, and with a shader pack the pack's whole pipeline, so their cost adds up with each portal seen through
- * another. While the frame rate with portals in view stays below the target, views are dropped in steps, the least
- * visible first, and given back one step at a time once it recovers:
+ * another. While the frame rate with portals in view stays below the target, views are made cheaper in steps, the
+ * least visible first, and given back one step at a time once it recovers:
  * <ol>
- * <li>nested views (a portal seen through a portal) covering less than 2 % of the screen;</li>
+ * <li>with a shader pack, direct views (a portal seen directly) covering less than 2 % of the screen are drawn through
+ * the small view pack of Simple Nested Portal Views ({@code IPIrisViewPack}) instead of the player's pack;</li>
+ * <li>nested views (a portal seen through a portal) under 2 % are dropped;</li>
  * <li>nested views under 10 %;</li>
- * <li>all nested views;</li>
+ * <li>with a shader pack, direct views under 10 % drawn through the small pack;</li>
+ * <li>all nested views dropped;</li>
  * <li>also direct views under a quarter of a percent (a small, distant portal).</li>
  * </ol>
  * A dropped view looks like one past the portal layer limit: what is behind the portal shows through the nether portal
- * texture ({@code ViewAreaRenderer.renderNotDrawnViewFill}). A view's size is its portal's
- * rectangle on screen, cut to the rectangle of the view it is seen through.
+ * texture ({@code ViewAreaRenderer.renderNotDrawnViewFill}). A view drawn simple costs about what a view without a pack
+ * costs, a fraction of a pack's, and looks like vanilla: those steps come first and are skipped where the small pack is
+ * not in use ({@link #simpleViews}). A view's size is its portal's rectangle on screen, cut to the rectangle of the
+ * view it is seen through.
  * <p>
  * Giving a step back that makes the frame rate fall again doubles the wait before that step is tried again (2 to 30
  * seconds; each step its own, reset once it holds), so a scene that sits on the target does not flicker between
@@ -58,18 +63,28 @@ public final class IPViewGuard {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     /** The last step of the ladder the median frame rate walks. */
-    private static final int MAX_LEVEL = 4;
+    private static final int MAX_LEVEL = 6;
     /** The safety net past the ladder: only portals within 16 blocks, none nested. */
-    private static final int NEARBY_ONLY = 5;
+    private static final int NEARBY_ONLY = 7;
     private static final int NEARBY_ONLY_MIN_VIEWS = 10;
     private static final int NEARBY_ONLY_BELOW_FPS = 8;
     private static final int NEARBY_ONLY_SECONDS = 3;
     private static final int NEARBY_ONLY_LEAVE_ABOVE_FPS = 15;
     /** Per level, the screen fraction under which a nested view (layer 2 and deeper) is dropped. */
-    private static final double[] NESTED_MIN_AREA =
-        {0, 0.02, 0.10, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
+    private static final double[] NESTED_MIN_AREA = {
+        0, 0, 0.02, 0.10, 0.10,
+        Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
+    };
     /** Per level, the screen fraction under which a direct view (layer 1) is dropped. */
-    private static final double[] DIRECT_MIN_AREA = {0, 0, 0, 0, 0.0025, 0.0025};
+    private static final double[] DIRECT_MIN_AREA = {0, 0, 0, 0, 0, 0, 0.0025, 0.0025};
+    /** Per level, the screen fraction under which a direct view is drawn through the small view pack. */
+    private static final double[] DIRECT_SIMPLE_AREA = {0, 0.02, 0.02, 0.02, 0.10, 0.10, 0.10, 0.10};
+
+    /**
+     * Whether views can be drawn through the small view pack now (a shader pack, Simple Nested Portal Views on); set
+     * by {@code IPIrisViewPack}. Steps that only do that are skipped while it is false.
+     */
+    public static java.util.function.BooleanSupplier simpleViews = () -> false;
 
     private static final double DROP_BELOW = 0.9;
     private static final double RESTORE_FROM = 0.97;
@@ -110,10 +125,14 @@ public final class IPViewGuard {
     }
     private static int droppedThisFrame = 0;
     private static int droppedLastFrame = 0;
+    private static int simplifiedThisFrame = 0;
+    private static int simplifiedLastFrame = 0;
 
     /** Per view in progress, innermost last: its rectangle {x0, y0, x1, y1} in [0, 1] and whether it is dropped. */
     private static final List<double[]> RECTS = new ArrayList<>();
     private static final List<Boolean> DROPS = new ArrayList<>();
+    /** Per view in progress, innermost last: whether it is drawn through the small view pack. */
+    private static final List<Boolean> SIMPLES = new ArrayList<>();
 
     private IPViewGuard() {
     }
@@ -146,8 +165,11 @@ public final class IPViewGuard {
         frameSeconds = windowPercentile(now, 0.5);
         droppedLastFrame = droppedThisFrame;
         droppedThisFrame = 0;
+        simplifiedLastFrame = simplifiedThisFrame;
+        simplifiedThisFrame = 0;
         RECTS.clear();
         DROPS.clear();
+        SIMPLES.clear();
 
         int target = IPConfig.getConfig().portalFrameRateTarget;
         if (target != lastTarget) {
@@ -203,13 +225,13 @@ public final class IPViewGuard {
                     // giving this step back failed
                     restoreDelayNanos[level] = Math.min(restoreDelayNanos[level] * 2, MAX_RESTORE_DELAY_NANOS);
                 }
-                setLevel(level + 1, now, fpsText(fps, target));
+                setLevel(stepUp(level), now, fpsText(fps, target));
             }
         }
         else if (fps >= target * RESTORE_FROM) {
             if (level > 0 && now - lastChangeNanos > restoreDelayNanos[level - 1]) {
                 lastRestoreNanos = now;
-                setLevel(level - 1, now, fpsText(fps, target));
+                setLevel(stepDown(level), now, fpsText(fps, target));
             }
         }
     }
@@ -236,6 +258,27 @@ public final class IPViewGuard {
         return String.format(Locale.ROOT, "%.0f fps, target %d", fps, target);
     }
 
+    /** Steps 1 and 4 only draw direct views simple. */
+    private static boolean onlySimplifies(int step) {
+        return step == 1 || step == 4;
+    }
+
+    private static int stepUp(int from) {
+        int to = from + 1;
+        if (onlySimplifies(to) && !simpleViews.getAsBoolean()) {
+            to++;
+        }
+        return Math.min(to, MAX_LEVEL);
+    }
+
+    private static int stepDown(int from) {
+        int to = from - 1;
+        if (to > 0 && onlySimplifies(to) && !simpleViews.getAsBoolean()) {
+            to--;
+        }
+        return to;
+    }
+
     private static void setLevel(int newLevel, long now, String why) {
         if (newLevel == level) {
             return;
@@ -254,6 +297,7 @@ public final class IPViewGuard {
         boolean parentDropped = !DROPS.isEmpty() && DROPS.get(DROPS.size() - 1);
         double[] rect = level == 0 && !parentDropped ? parent : screenRect(portal, modelView, parent);
         boolean drop = parentDropped;
+        boolean simple = false;
         if (!drop && level > 0) {
             double area = Math.max(0, rect[2] - rect[0]) * Math.max(0, rect[3] - rect[1]);
             boolean nested = PortalRendering.getPortalLayer() >= 1;
@@ -261,15 +305,21 @@ public final class IPViewGuard {
             if (drop) {
                 droppedThisFrame++;
             }
+            else if (!nested && area < DIRECT_SIMPLE_AREA[level] && simpleViews.getAsBoolean()) {
+                simple = true;
+                simplifiedThisFrame++;
+            }
         }
         RECTS.add(rect);
         DROPS.add(drop);
+        SIMPLES.add(simple);
     }
 
     public static void pop() {
         if (!RECTS.isEmpty()) {
             RECTS.remove(RECTS.size() - 1);
             DROPS.remove(DROPS.size() - 1);
+            SIMPLES.remove(SIMPLES.size() - 1);
         }
     }
 
@@ -279,6 +329,11 @@ public final class IPViewGuard {
      */
     public static boolean nearbyOnly() {
         return level == NEARBY_ONLY;
+    }
+
+    /** Whether the view in progress (the innermost pushed) is a direct view drawn through the small view pack. */
+    public static boolean simplifiesCurrent() {
+        return !SIMPLES.isEmpty() && SIMPLES.get(SIMPLES.size() - 1);
     }
 
     /** Whether the view in progress (the innermost pushed) is dropped. */
@@ -335,7 +390,8 @@ public final class IPViewGuard {
         if (target <= 0) {
             return "Portal Frame Rate Target: off";
         }
-        return String.format(Locale.ROOT, "Portal Frame Rate Target: %d, %.0f fps, step %d, %d views dropped",
-            target, 1 / frameSeconds, level, droppedLastFrame);
+        return String.format(Locale.ROOT,
+            "Portal Frame Rate Target: %d, %.0f fps, step %d, %d views dropped, %d drawn simple",
+            target, 1 / frameSeconds, level, droppedLastFrame, simplifiedLastFrame);
     }
 }

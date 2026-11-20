@@ -158,10 +158,15 @@ public abstract class PortalRenderer {
         Vec3 cameraPos = IPFrustumCapture.isCulling() ?
             IPFrustumCapture.cullingPos() : TransformationManager.getIsometricAdjustedCameraPos();
         
-        // Immersive Aeronautics: a portal back along the captured camera's path is seen from the other side
+        // Immersive Aeronautics: a portal back along the captured camera's path faces away from the captured camera,
+        // so the live camera decides whether it is seen: it is after the player crossed the path's last portal
+        // (standing in front of the way back), not in a pass drawn through that portal, where the live camera is
+        // behind it too and the pass would only draw it on its own plane
         boolean leadsBack = IPFrustumCapture.isCulling() && IPFrustumCapture.leadsBack(portal);
         
-        if (!leadsBack && !portal.isRoughlyVisibleTo(cameraPos)) {
+        if (!portal.isRoughlyVisibleTo(
+            leadsBack ? TransformationManager.getIsometricAdjustedCameraPos() : cameraPos
+        )) {
             return true;
         }
         
@@ -169,6 +174,16 @@ public abstract class PortalRenderer {
             Portal outerPortal = PortalRendering.getRenderingPortal();
             
             if (outerPortal.cannotRenderInMe(portal)) {
+                return true;
+            }
+        }
+        
+        // Immersive Aeronautics: with a frustum captured (F3+U), the captured camera sees this view through the rim, so
+        // the portals the rim cannot render in are skipped as in a pass through it, also in the player's own view after
+        // a crossing: the portal on the rim's far plane facing the captured camera (the far side's back face)
+        if (IPFrustumCapture.isCulling()) {
+            Portal rim = IPFrustumCapture.rimPortal();
+            if (rim != null && rim.cannotRenderInMe(portal)) {
                 return true;
             }
         }

@@ -113,6 +113,22 @@ public class MyRenderHelper {
             }
         });
 
+        // Immersive Aeronautics: a portal view not drawn (layer limit, IPViewGuard) shows the nether portal texture
+        loadShaderSignal.connect((resourceManager, resultConsumer) -> {
+            try {
+                ShaderInstance shader = new ShaderInstance(
+                    getResourceFactory(resourceManager),
+                    "portal_area_tex",
+                    DefaultVertexFormat.POSITION_COLOR
+                );
+                resultConsumer.accept(shader);
+                portalAreaTexShader = shader;
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
         // Immersive Aeronautics: laser beams left out of the depth portal areas are decided against (IPLaserIrisPortals)
         loadShaderSignal.connect((resourceManager, resultConsumer) -> {
             try {
@@ -198,6 +214,7 @@ public class MyRenderHelper {
     public static ShaderInstance portalAreaShader;
     // Immersive Aeronautics: see IPDhLodOcclusion
     public static ShaderInstance portalAreaLodShader;
+    public static ShaderInstance portalAreaTexShader;
     // Immersive Aeronautics: see IPPortalDrawDistance
     public static ShaderInstance portalFadeShader;
     public static ShaderInstance portalBeamDepthShader;

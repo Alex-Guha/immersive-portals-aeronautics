@@ -91,6 +91,8 @@ public class IPConfigScreen extends OptionsSubScreen {
         range("maxPortalLayer", 0, 10, c.maxPortalLayer, (o, v) -> o.maxPortalLayer = v);
         range("portalDrawDistance", 0, 64, c.portalDrawDistance, (o, v) -> o.portalDrawDistance = v);
         range("portalViewDistance", 0, 32, c.portalViewDistance, (o, v) -> o.portalViewDistance = v);
+        range("portalFrameRateTarget", 0, 240, c.portalFrameRateTarget, (o, v) -> o.portalFrameRateTarget = v);
+        bool("simpleNestedPortalViews", c.simpleNestedPortalViews, (o, v) -> o.simpleNestedPortalViews = v);
         bool("reducedPortalRendering", c.reducedPortalRendering, (o, v) -> o.reducedPortalRendering = v);
         bool("lagAttackProof", c.lagAttackProof, (o, v) -> o.lagAttackProof = v);
         bool("enableClientPerformanceAdjustment", c.enableClientPerformanceAdjustment,

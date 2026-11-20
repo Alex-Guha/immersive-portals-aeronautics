@@ -27,7 +27,8 @@ public class IPConfig {
     
     // client visible configs
     
-    public int maxPortalLayer = 5;
+    // Immersive Aeronautics: 3 instead of 5 in new configs; existing ones keep theirs
+    public int maxPortalLayer = 3;
     public boolean lagAttackProof = true;
     public boolean enableCrossPortalSound = true;
     public boolean pureMirror = false;
@@ -43,6 +44,12 @@ public class IPConfig {
     // Immersive Aeronautics: how far past a portal its view shows the other side, in chunks, ending in fog
     // (0: the render distance; IPPortalViewDistance)
     public int portalViewDistance = 0;
+    // Immersive Aeronautics: below this frame rate with portals in view, the least visible views are dropped, nested
+    // ones first (0: off; IPViewGuard)
+    public int portalFrameRateTarget = 60;
+    // Immersive Aeronautics: with a shader pack, portals seen through portals are drawn with a small vanilla-like pack
+    // of ours instead of the player's (IPIrisViewPack)
+    public boolean simpleNestedPortalViews = true;
     public boolean netherPortalOverlay = false;
     public boolean enableNetherPortalEffect = true;
     public boolean enableClientPerformanceAdjustment = true;
@@ -134,6 +141,7 @@ public class IPConfig {
         scaleLimit = Mth.clamp(scaleLimit, 8, 128);
         // Immersive Aeronautics
         portalViewDistance = Mth.clamp(portalViewDistance, 0, 32);
+        portalFrameRateTarget = Mth.clamp(portalFrameRateTarget, 0, 240);
         if (dimensionStackViewDistance != null) {
             if (portalDrawDistance == 0) {
                 portalDrawDistance = dimensionStackViewDistance;

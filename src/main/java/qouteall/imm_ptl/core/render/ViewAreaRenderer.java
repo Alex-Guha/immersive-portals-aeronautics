@@ -26,6 +26,9 @@ import qouteall.imm_ptl.core.render.context_management.PortalRendering;
 import qouteall.imm_ptl.core.render.context_management.RenderStates;
 import qouteall.q_misc_util.my_util.TriangleConsumer;
 
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.world.level.block.Blocks;
 import java.util.Objects;
 
 public class ViewAreaRenderer {
@@ -146,6 +149,54 @@ public class ViewAreaRenderer {
         }
         
         CHelper.checkGlError();
+    }
+    
+    /**
+     * Immersive Aeronautics: fills the area of a portal whose view is not drawn (past the portal layer limit, or
+     * dropped for the portal frame rate target, {@link IPViewGuard}) with the nether portal texture, one tile per
+     * block, instead of leaving it black. Called with the stencil test limited to that portal's area; draws over it
+     * whatever the depth.
+     */
+    public static void renderNotDrawnViewFill(Portal portal, Matrix4f modelViewMatrix, Matrix4f projectionMatrix) {
+        ShaderInstance shader = MyRenderHelper.portalAreaTexShader;
+        if (shader == null) {
+            return;
+        }
+        Minecraft client = Minecraft.getInstance();
+        TextureAtlasSprite sprite = client.getBlockRenderer().getBlockModelShaper()
+            .getParticleIcon(Blocks.NETHER_PORTAL.defaultBlockState());
+        Vec3 cameraPos = CHelper.getCurrentCameraPos();
+        Vec3 origin = portal.getOriginPos().subtract(cameraPos);
+        Vec3 axisW = portal.getAxisW();
+        Vec3 axisH = portal.getAxisH();
+        
+        GlStateManager._disableCull();
+        GlStateManager._colorMask(true, true, true, true);
+        GlStateManager._depthMask(false);
+        GlStateManager._disableDepthTest();
+        
+        RenderSystem.setShader(() -> shader);
+        shader.setSampler("Sampler0", client.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getId());
+        shader.MODEL_VIEW_MATRIX.set(modelViewMatrix);
+        shader.PROJECTION_MATRIX.set(projectionMatrix);
+        shader.safeGetUniform("PortalOrigin").set((float) origin.x, (float) origin.y, (float) origin.z);
+        shader.safeGetUniform("PortalAxisW").set((float) axisW.x, (float) axisW.y, (float) axisW.z);
+        shader.safeGetUniform("PortalAxisH").set((float) axisH.x, (float) axisH.y, (float) axisH.z);
+        shader.safeGetUniform("SpriteBounds").set(sprite.getU0(), sprite.getV0(), sprite.getU1(), sprite.getV1());
+        shader.apply();
+        // the shader's blend mode is applied only when it differs from the last one applied, which can leave blending
+        // off after a direct GL call (without a shader pack the fill came out opaque): set it here
+        RenderSystem.enableBlend();
+        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        
+        buildPortalViewAreaTrianglesBuffer(Vec3.ZERO, portal, cameraPos, RenderStates.getPartialTick());
+        
+        shader.clear();
+        RenderSystem.disableBlend();
+        
+        GlStateManager._enableDepthTest();
+        GlStateManager._depthMask(true);
+        GlStateManager._enableCull();
     }
     
     public static void buildPortalViewAreaTrianglesBuffer(

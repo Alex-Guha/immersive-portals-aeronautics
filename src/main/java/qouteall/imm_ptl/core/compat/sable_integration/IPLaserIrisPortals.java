@@ -300,10 +300,22 @@ public final class IPLaserIrisPortals {
         return Math.round(a + (b - a) * t);
     }
 
-    /** Forgets the beams the world of {@code layer} drew, once its portals are done. */
+    /** Whether the world of {@code layer} drew beams in this pass. */
+    public static boolean hasBeams(final int layer) {
+        return layer < BATCHES.size() && !BATCHES.get(layer).isEmpty();
+    }
+
+    /**
+     * Forgets the beams the world of {@code layer} drew, once its portals are done, and its depth snapshot when no
+     * portal of the pass used it ({@link #correctPortalDepth} runs only for a pass that draws one), so the next pass
+     * takes its own.
+     */
     public static void clear(final int layer) {
         if (layer < BATCHES.size()) {
             BATCHES.get(layer).clear();
+        }
+        if (snapshotLayer == layer) {
+            snapshotLayer = -1;
         }
     }
 

@@ -17,6 +17,7 @@ import qouteall.imm_ptl.core.CHelper;
 import qouteall.imm_ptl.core.compat.IPPortingLibCompat;
 import qouteall.imm_ptl.core.compat.dh_integration.IPDhTextureGuard;
 import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
+import qouteall.imm_ptl.core.render.IPViewGuard;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalRenderInfo;
 import qouteall.imm_ptl.core.render.FrontClipping;
@@ -164,17 +165,34 @@ public class RendererUsingStencil extends PortalRenderer {
 
         client.getProfiler().push("render_view_area");
         
-        boolean anySamplePassed = PortalRenderInfo.renderAndDecideVisibility(portal, () -> {
-            renderPortalViewAreaToStencil(portal, modelView);
-        });
-        
-        client.getProfiler().pop();
-        
-        if (!anySamplePassed) {
-            setStencilStateForWorldRendering();
-            return;
+        // Immersive Aeronautics: the portal frame rate target may drop this view (IPViewGuard); a view that is not
+        // drawn keeps what is behind its portal, under the nether portal texture, so its area is not painted black
+        IPViewGuard.push(portal, modelView);
+        try {
+            boolean notDrawn = PortalRendering.getPortalLayer() + 1 > PortalRendering.getMaxPortalLayer()
+                || IPViewGuard.dropsCurrent();
+            
+            boolean anySamplePassed = PortalRenderInfo.renderAndDecideVisibility(portal, () -> {
+                renderPortalViewAreaToStencil(portal, modelView, !notDrawn);
+            });
+            
+            client.getProfiler().pop();
+            
+            if (!anySamplePassed) {
+                setStencilStateForWorldRendering();
+                return;
+            }
+            
+            renderViewOfVisiblePortal(portal, modelView, outerPortalStencilValue, fading, visibility);
         }
-        
+        finally {
+            IPViewGuard.pop();
+        }
+    }
+    
+    private void renderViewOfVisiblePortal(
+        Portal portal, Matrix4f modelView, int outerPortalStencilValue, boolean fading, float visibility
+    ) {
         PortalRendering.pushPortalLayer(portal);
         
         int thisPortalStencilValue = outerPortalStencilValue + 1;
@@ -188,6 +206,12 @@ public class RendererUsingStencil extends PortalRenderer {
         setStencilStateForWorldRendering();
         
         renderPortalContent(portal);
+
+        // Immersive Aeronautics: a view not drawn (layer limit, IPViewGuard) shows the nether portal texture
+        if (PortalRendering.getPortalLayer() > PortalRendering.getMaxPortalLayer() || IPViewGuard.dropsCurrent()) {
+            setStencilLimitation(thisPortalStencilValue);
+            ViewAreaRenderer.renderNotDrawnViewFill(portal, modelView, RenderSystem.getProjectionMatrix());
+        }
 
         if (fading) {
             IPPortalDrawDistance.endFade(visibility, thisPortalStencilValue, client.getMainRenderTarget());
@@ -209,7 +233,7 @@ public class RendererUsingStencil extends PortalRenderer {
     }
     
     private void renderPortalViewAreaToStencil(
-        Portal portal, Matrix4f modelView
+        Portal portal, Matrix4f modelView, boolean paintArea
     ) {
         int outerPortalStencilValue = PortalRendering.getPortalLayer();
         
@@ -232,7 +256,7 @@ public class RendererUsingStencil extends PortalRenderer {
             portal, Vec3.ZERO,
             modelView,
             RenderSystem.getProjectionMatrix(),
-            true, true,
+            true, paintArea,
             true, true, true
         );
     }

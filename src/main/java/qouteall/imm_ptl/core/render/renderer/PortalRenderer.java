@@ -34,6 +34,7 @@ import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.imm_ptl.core.render.IPFrustumCapture;
 import qouteall.imm_ptl.core.render.IPPortalDrawDistance;
+import qouteall.imm_ptl.core.render.IPViewGuard;
 import qouteall.imm_ptl.core.render.IPPortalViewDistance;
 import qouteall.imm_ptl.core.render.MyGameRenderer;
 import qouteall.imm_ptl.core.render.MyRenderHelper;
@@ -222,7 +223,8 @@ public abstract class PortalRenderer {
     protected final void renderPortalContent(
         Portal portal
     ) {
-        if (PortalRendering.getPortalLayer() > PortalRendering.getMaxPortalLayer()) {
+        // Immersive Aeronautics: or a view dropped for the portal frame rate target (IPViewGuard)
+        if (PortalRendering.getPortalLayer() > PortalRendering.getMaxPortalLayer() || IPViewGuard.dropsCurrent()) {
             return;
         }
         

@@ -115,6 +115,8 @@ public class RenderStates {
         
         renderedDimensions.clear();
         lastPortalRenderInfos = portalRenderInfos;
+        // Immersive Aeronautics: the portal frame rate target (IPViewGuard)
+        qouteall.imm_ptl.core.render.IPViewGuard.onFrameStart(lastPortalRenderInfos.size());
         portalRenderInfos = new ArrayList<>();
         portalsRenderedThisFrame = 0;
         
@@ -276,6 +278,8 @@ public class RenderStates {
     public static List<String> collectDebugText() {
         List<String> result = new ArrayList<>();
         result.add("Rendered Portals: " + lastPortalRenderInfos.size());
+        // Immersive Aeronautics
+        result.add(qouteall.imm_ptl.core.render.IPViewGuard.debugText());
         
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {

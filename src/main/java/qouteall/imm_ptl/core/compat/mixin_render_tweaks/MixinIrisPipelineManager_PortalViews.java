@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisPortalViewPipelines;
+import qouteall.imm_ptl.core.compat.iris_integration.IPIrisViewPack;
 
 import java.util.Map;
 
@@ -38,6 +39,9 @@ public class MixinIrisPipelineManager_PortalViews {
     private Map<NamespacedId, WorldRenderingPipeline> pipelinesPerDimension;
 
     @Shadow
+    private WorldRenderingPipeline pipeline;
+
+    @Shadow
     private void resetTextureState() {
         throw new AssertionError();
     }
@@ -46,9 +50,21 @@ public class MixinIrisPipelineManager_PortalViews {
     private WorldRenderingPipeline ip_portalViewPipeline(
         NamespacedId dimension, Operation<WorldRenderingPipeline> original
     ) {
+        // Immersive Aeronautics: a nested view drawn through the small view pack (IPIrisViewPack)
+        WorldRenderingPipeline viewPack = IPIrisViewPack.pipelineOfPass(dimension);
+        if (viewPack != null) {
+            pipeline = viewPack;
+            return viewPack;
+        }
         Map<NamespacedId, WorldRenderingPipeline> views = IPIrisPortalViewPipelines.pipelinesOfPass(dimension);
         if (views == null) {
-            return original.call(dimension);
+            boolean had = pipelinesPerDimension.containsKey(dimension);
+            WorldRenderingPipeline made = original.call(dimension);
+            if (!had && pipelinesPerDimension.get(dimension) == made) {
+                // Immersive Aeronautics: the view pack's pipeline in the same pause
+                IPIrisViewPack.onIrisPipelineMade(dimension);
+            }
+            return made;
         }
         Map<NamespacedId, WorldRenderingPipeline> own = pipelinesPerDimension;
         boolean existed = views.containsKey(dimension);
@@ -62,6 +78,7 @@ public class MixinIrisPipelineManager_PortalViews {
         }
         if (!existed && views.get(dimension) == pipeline) {
             IPIrisPortalViewPipelines.onCreated(dimension, pipeline);
+            IPIrisViewPack.onIrisPipelineMade(dimension);
         }
         return pipeline;
     }
@@ -74,5 +91,7 @@ public class MixinIrisPipelineManager_PortalViews {
             pipeline.destroy();
         }));
         IPIrisPortalViewPipelines.onDestroyed();
+        resetTextureState();
+        IPIrisViewPack.destroyAll();
     }
 }

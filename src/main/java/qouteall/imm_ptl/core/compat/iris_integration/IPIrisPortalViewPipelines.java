@@ -140,6 +140,11 @@ public final class IPIrisPortalViewPipelines {
         }
     }
 
+    /** Whether a Voxy render system binds its LODs to the pipeline of {@code level}'s dimension. */
+    static boolean voxyBinds(ClientLevel level) {
+        return VOXY && VoxyHook.bindsVoxy(level);
+    }
+
     private static int viewOfPass(NamespacedId dimension) {
         Portal portal = PortalRendering.getRenderingPortal();
         int layer = PortalRendering.getPortalLayer();

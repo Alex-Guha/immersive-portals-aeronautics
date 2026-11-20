@@ -19,6 +19,8 @@
     "IEIris_CurrentPack",
     "MixinIrisPipelineManager_PortalViews",
     "IEIrisRenderingPipeline_BlockIds",
+    "MixinIrisRenderingPipeline_ViewPack",
+    "MixinIrisSodiumPrograms_ViewPack",
     "IEInteractiveFoliageRenderer",
     "MixinInteractiveFoliageRenderer_PlayerWorldOnly",
     "MixinInteractiveFoliageSplit_PlayerWorldOnly",

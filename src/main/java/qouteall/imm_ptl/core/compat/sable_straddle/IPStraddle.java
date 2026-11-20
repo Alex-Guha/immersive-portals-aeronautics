@@ -60,6 +60,51 @@ public final class IPStraddle {
         return IPStraddleSessions.anyOfShip(ship.getUniqueId());
     }
 
+    /**
+     * The space past the plane of a portal a ship straddles, where its far half is: the box its physics body is cut by
+     * (the opening grown by the aperture margin, as deep as the ship can reach). A world point of the ship's own level
+     * in it is in {@link #dest()} at {@link #map()} of it, and nothing of the own level there touches the ship.
+     *
+     * @param region the session's clip region: point, normal (towards the far side), width axis and half width,
+     *               height axis and half height, skin, depth
+     */
+    public record FarSide(ServerLevel dest, IPPortalSimilarity map, double[] region) {
+        /**
+         * @return whether the world point (in the ship's own level) is past the plane, within the opening
+         */
+        public boolean contains(final double x, final double y, final double z) {
+            final double[] r = this.region;
+            final double dx = x - r[0], dy = y - r[1], dz = z - r[2];
+            final double depth = dx * r[3] + dy * r[4] + dz * r[5];
+            if (depth <= 0.0 || depth > r[15]) {
+                return false;
+            }
+            return Math.abs(dx * r[6] + dy * r[7] + dz * r[8]) <= r[9]
+                    && Math.abs(dx * r[10] + dy * r[11] + dz * r[12]) <= r[13];
+        }
+    }
+
+    /**
+     * @return the far sides of every portal {@code ship} straddles now (server), empty when it straddles none
+     */
+    public static List<FarSide> farSidesOf(final dev.ryanhcode.sable.sublevel.SubLevel ship) {
+        List<FarSide> sides = List.of();
+        for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
+            if (!key.ship().equals(ship.getUniqueId())) {
+                continue;
+            }
+            final IPStraddleSessions.Session session = IPStraddleSessions.get(key);
+            if (session == null || session.realClip == null || session.ship.isRemoved()) {
+                continue;
+            }
+            if (sides.isEmpty()) {
+                sides = new ArrayList<>(1);
+            }
+            sides.add(new FarSide(session.dest, session.map, session.realClip));
+        }
+        return sides;
+    }
+
     public static boolean isAvailable() {
         return enabled && IPPhysicsBackend.isOwnBackendActive();
     }

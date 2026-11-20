@@ -37,6 +37,7 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("dev.ryanhcode.sable.", "sable"),
         Map.entry("dev.simulated_team.simulated.", "simulated"),
         Map.entry("dev.eriksonn.aeronautics.", "aeronautics"),
+        Map.entry("dev.ryanhcode.offroad.", "offroad"),
         Map.entry("toni.sodiumdynamiclights.", "sodiumdynamiclights"),
         Map.entry("top.leonx.dynlight.", "createdynlight"),
         Map.entry("net.createteleporters.", "createteleporters"),

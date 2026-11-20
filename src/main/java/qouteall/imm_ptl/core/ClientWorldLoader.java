@@ -203,6 +203,9 @@ public class ClientWorldLoader {
             try {
                 newWorld.tickEntities();
                 newWorld.tick(() -> true);
+                // Immersive Aeronautics: Offroad's borehead cracks in this world (Offroad ticks them from the level
+                // tick event, which fires for the player's own world only)
+                qouteall.imm_ptl.core.compat.create_integration.IPBoreheadPortalsClient.tickRemoteWorld(newWorld);
                 
                 if (!CLIENT.isPaused()) {
                     // Immersive Aeronautics: the world's particles tick even with no portal to it near the player

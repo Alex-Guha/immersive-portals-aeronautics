@@ -61,17 +61,18 @@ public final class IPMixinReport {
     );
 
     /** The mods hooked, by package of the target class. */
-    private static final Map<String, String> MOD_BY_TARGET = Map.of(
-        "com.simibubi.create.", "Create",
-        "dev.engine_room.flywheel.", "Flywheel",
-        "dev.ryanhcode.sable.", "Sable",
-        "dev.simulated_team.simulated.", "Aeronautics",
-        "dev.eriksonn.aeronautics.", "Aeronautics",
-        "com.seibel.distanthorizons.", "Distant Horizons",
-        "me.cortex.voxy.", "Voxy",
-        "net.irisshaders.", "Iris",
-        "net.caffeinemc.mods.sodium.", "Sodium",
-        "top.leonx.dynlight.", "Create Dynamic Lights"
+    private static final Map<String, String> MOD_BY_TARGET = Map.ofEntries(
+        Map.entry("com.simibubi.create.", "Create"),
+        Map.entry("dev.engine_room.flywheel.", "Flywheel"),
+        Map.entry("dev.ryanhcode.sable.", "Sable"),
+        Map.entry("dev.simulated_team.simulated.", "Aeronautics"),
+        Map.entry("dev.eriksonn.aeronautics.", "Aeronautics"),
+        Map.entry("dev.ryanhcode.offroad.", "Aeronautics"),
+        Map.entry("com.seibel.distanthorizons.", "Distant Horizons"),
+        Map.entry("me.cortex.voxy.", "Voxy"),
+        Map.entry("net.irisshaders.", "Iris"),
+        Map.entry("net.caffeinemc.mods.sodium.", "Sodium"),
+        Map.entry("top.leonx.dynlight.", "Create Dynamic Lights")
     );
 
     private record Applied(String mod, String mixin, ClassNode target, List<String> handlers) {

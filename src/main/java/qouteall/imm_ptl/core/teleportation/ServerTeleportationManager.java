@@ -518,6 +518,11 @@ public class ServerTeleportationManager {
             McHelper.sendToTrackers(player, new net.minecraft.network.protocol.game.ClientboundSetPassengersPacket(player));
         }
 
+        // Immersive Aeronautics: vanilla's changeDimension sends the selected hotbar slot after adding the player to
+        // the new world (PlayerList.sendAllPlayerInfo). Mods that sync a slot of their own when a player joins a world
+        // (Carry On sends the one it stored with its own data) would otherwise leave the client on that older slot.
+        player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket(player.getInventory().selected));
+
         if (IPConfig.getConfig().serverTeleportLogging) {
             LOGGER.info(
                 "{} :: ({} {} {} {})->({} {} {} {})",

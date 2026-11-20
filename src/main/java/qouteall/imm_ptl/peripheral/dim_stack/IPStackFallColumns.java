@@ -39,6 +39,8 @@ import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.McHelper;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.portal.Portal;
+import qouteall.imm_ptl.core.compat.sodium_compatibility.SodiumInterface;
+import net.minecraft.util.Mth;
 import qouteall.imm_ptl.core.render.context_management.DimensionRenderHelper;
 import qouteall.imm_ptl.core.compat.iris_compatibility.IrisInterface;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
@@ -93,7 +95,7 @@ public final class IPStackFallColumns {
      */
     private record Column(Vec3[] corners, Vec3 down, int segments, int[] light, int[] sideMasks, Vec3[] normals,
                           Direction[] shadeDirections, int tint, TextureAtlasSprite sprite, AABB bounds, long seed,
-                          int upperLight, float[] upperShades, FluidState fluid, BlockPos lowerPos) {
+                          int upperLight, float[] upperShades, FluidState fluid, BlockPos lowerPos, BlockPos upperPos) {
     }
 
     /** Columns per lower dimension. Client thread only. */
@@ -345,7 +347,7 @@ public final class IPStackFallColumns {
         }
         return new Column(
             corners, down, segments, light, sideMasks, normals, shadeDirections, tint, sprite, bounds, pos.asLong(),
-            upperLight, upperShades, fluid, BlockPos.containing(middle.add(down.scale(0.5)))
+            upperLight, upperShades, fluid, BlockPos.containing(middle.add(down.scale(0.5))), pos
         );
     }
 
@@ -370,10 +372,11 @@ public final class IPStackFallColumns {
         if (bytes == null) {
             bytes = new ByteBufferBuilder(1 << 16);
         }
-        final List<Column> columns = COLUMNS.get(level.dimension());
-        if (columns == null || columns.isEmpty()) {
+        final List<Column> all = COLUMNS.get(level.dimension());
+        if (all == null || all.isEmpty()) {
             return;
         }
+        final List<Column> columns = drawnAbove(level, all, camera);
         if (pack) {
             drawPack(level, columns, camera);
             return;
@@ -389,6 +392,57 @@ public final class IPStackFallColumns {
             mesh.sortQuads(bytes, RenderSystem.getVertexSorting());
             drawAsUpperWorld(mesh, UPPER_OF.get(level.dimension()));
         }
+    }
+
+    /**
+     * The columns whose fluid above the plane is drawn through the ceiling, so an extension never hangs under fluid
+     * that is not drawn: the upper world's section holding it is built by its renderer and within the distance its
+     * pass through the ceiling draws, measured as Sodium's culler does from that pass's camera (the camera of this pass
+     * mapped through the ceiling): the section's box grown by a block, its horizontal distance and its height
+     * difference each under the render distance in blocks (a third of it with reduced portal rendering; a stack's
+     * ceiling has no portal view distance cut). Past that the fluid above is drawn by LODs or not at all.
+     */
+    private static List<Column> drawnAbove(final ClientLevel level, final List<Column> columns, final Vec3 camera) {
+        final Portal ceiling = connector(level, VerticalConnectingPortal.ConnectorType.ceil);
+        final ResourceKey<Level> upper = UPPER_OF.get(level.dimension());
+        final ClientLevel upperLevel = upper == null ? null : ClientWorldLoader.getOptionalWorld(upper);
+        if (ceiling == null || upperLevel == null) {
+            return List.of();
+        }
+        final int chunks = IPGlobal.reducedPortalRendering
+            ? Minecraft.getInstance().options.getEffectiveRenderDistance() / 3
+            : Minecraft.getInstance().options.getEffectiveRenderDistance();
+        final float reach = chunks * 16.0F;
+        final Vec3 eye = ceiling.transformPoint(camera);
+        final int eyeX = Mth.floor(eye.x), eyeY = Mth.floor(eye.y), eyeZ = Mth.floor(eye.z);
+        final float fracX = (float) (eye.x - eyeX), fracY = (float) (eye.y - eyeY), fracZ = (float) (eye.z - eyeZ);
+        final int sectionY = upperLevel.getMinSection();
+        final List<Column> drawn = new ArrayList<>(columns.size());
+        for (final Column column : columns) {
+            final int sectionX = column.upperPos().getX() >> 4, sectionZ = column.upperPos().getZ() >> 4;
+            final int ox = (sectionX << 4) - eyeX, oy = (sectionY << 4) - eyeY, oz = (sectionZ << 4) - eyeZ;
+            final float dx = nearestToZero(ox - 1, ox + 17) - fracX;
+            final float dy = nearestToZero(oy - 1, oy + 17) - fracY;
+            final float dz = nearestToZero(oz - 1, oz + 17) - fracZ;
+            if (dx * dx + dz * dz < reach * reach && Math.abs(dy) < reach
+                && SodiumInterface.invoker.isSectionBuilt(upper, sectionX, sectionY, sectionZ)
+            ) {
+                drawn.add(column);
+            }
+        }
+        return drawn;
+    }
+
+    /** Sodium's: the end of a range nearest to zero, or zero inside it. */
+    private static int nearestToZero(final int min, final int max) {
+        int result = 0;
+        if (min > 0) {
+            result = min;
+        }
+        if (max < 0) {
+            result = max;
+        }
+        return result;
     }
 
     /** Without a pack: one column's sides, fading by alpha, in the upper world's light and side shades. */
@@ -442,12 +496,12 @@ public final class IPStackFallColumns {
      */
     private static void drawPack(final ClientLevel level, final List<Column> columns, final Vec3 camera) {
         final PackMesh mesh = PACK_MESHES.computeIfAbsent(level.dimension(), dimension -> new PackMesh());
-        if (mesh.columns != columns || mesh.sortedFrom == null
+        if (!columns.equals(mesh.columns) || mesh.sortedFrom == null
             || mesh.sortedFrom.distanceToSqr(camera) > PACK_RESORT_DISTANCE * PACK_RESORT_DISTANCE
         ) {
             buildPackMesh(mesh, columns, camera);
         }
-        if (mesh.empty || mesh.buffer == null) {
+        if (mesh.empty || mesh.buffer == null || columns.isEmpty()) {
             return;
         }
         final Matrix4fStack modelView = RenderSystem.getModelViewStack();
@@ -476,6 +530,10 @@ public final class IPStackFallColumns {
     private static void buildPackMesh(final PackMesh mesh, final List<Column> columns, final Vec3 camera) {
         mesh.columns = columns;
         mesh.sortedFrom = camera;
+        if (columns.isEmpty()) {
+            mesh.empty = true;
+            return;
+        }
         mesh.origin = Vec3.atLowerCornerOf(BlockPos.containing(columns.get(0).corners()[0]));
         final BufferBuilder builder = new BufferBuilder(bytes, VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
         for (final Column column : columns) {

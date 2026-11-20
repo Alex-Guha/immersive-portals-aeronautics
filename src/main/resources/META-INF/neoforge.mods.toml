@@ -200,8 +200,8 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="simulated"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Create Aeronautics 1.3.2. Ropes, joints and handles through portals may not work on this version."
-versionRange="(1.3.2,)"
+reason="Immersive Portals: Aeronautics was tested with Create Aeronautics 1.3.3. Ropes, joints and handles through portals may not work on this version."
+versionRange="(1.3.3,)"
 ordering="NONE"
 side="BOTH"
 

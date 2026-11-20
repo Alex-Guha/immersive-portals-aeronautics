@@ -32,6 +32,20 @@ public class MixinUpdatePlayerUsingHandlePacket_Portals {
         return IPHandlePortals.packetLevel(context.player(), ((UpdatePlayerUsingHandlePacket) (Object) this).interactionPos(), original.call(context));
     }
 
+    /**
+     * Simulated 1.3.3 drops a packet whose position is not loaded before it looks up the handle: test the handle's
+     * position now, or a release naming the position from before the ship moved is dropped and the player stays held.
+     */
+    @WrapOperation(
+        method = "handle",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;isLoaded(Lnet/minecraft/core/BlockPos;)Z"),
+        require = 0
+    )
+    private boolean ip_handleLoaded(final Level level, final BlockPos pos, final Operation<Boolean> original,
+                                    @Local(argsOnly = true) final ServerPacketContext context) {
+        return original.call(level, IPHandlePortals.packetPos(context.player(), pos));
+    }
+
     @WrapOperation(
         method = "handle",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;getBlockEntity(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/entity/BlockEntity;"),

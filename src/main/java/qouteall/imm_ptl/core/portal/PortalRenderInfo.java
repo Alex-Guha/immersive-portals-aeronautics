@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.portal;
 
 import com.mojang.logging.LogUtils;
@@ -228,6 +235,15 @@ public class PortalRenderInfo implements AutoCloseable {
             GlQueryObject thisFrameQuery = visibility.acquireThisFrameQuery();
             
             thisFrameQuery.performQueryAnySamplePassed(queryRendering);
+            
+            // Immersive Aeronautics: never wait for the GPU here (IPPortalVisibility)
+            if (!qouteall.imm_ptl.core.render.IPPortalVisibility.waitForQueries) {
+                decision = qouteall.imm_ptl.core.render.IPPortalVisibility.decideWithoutWaiting(
+                    lastFrameQuery, visibility.lastFrameRendered
+                );
+                visibility.thisFrameRendered = decision;
+                return decision;
+            }
             
             boolean noPredict =
                 renderInfo.isFrequentlyMispredicted() ||

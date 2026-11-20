@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals: Aeronautics - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.render;
 
 import net.minecraft.client.Minecraft;
@@ -55,6 +62,20 @@ public class GlQueryObject {
         int result = GL15.glGetQueryObjecti(idQueryObject, GL15.GL_QUERY_RESULT);
         
         return result != 0;
+    }
+    
+    /**
+     * Immersive Aeronautics: the result if the GPU has it, without waiting: 1 a sample passed, 0 none, -1 not ready
+     * (IPPortalVisibility).
+     */
+    public int tryFetchQueryResult() {
+        if (!isValid() || !hasResult) {
+            return -1;
+        }
+        if (GL15.glGetQueryObjecti(idQueryObject, GL15.GL_QUERY_RESULT_AVAILABLE) == 0) {
+            return -1;
+        }
+        return GL15.glGetQueryObjecti(idQueryObject, GL15.GL_QUERY_RESULT) != 0 ? 1 : 0;
     }
     
     private void dispose() {

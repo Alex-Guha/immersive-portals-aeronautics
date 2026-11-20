@@ -577,6 +577,11 @@ public class ClientDebugCommand {
         );
         registerSwitchCommand(
             builder,
+            "portal_query_wait",
+            cond -> qouteall.imm_ptl.core.render.IPPortalVisibility.waitForQueries = cond
+        );
+        registerSwitchCommand(
+            builder,
             "portal_shadow_cull",
             cond -> qouteall.imm_ptl.core.compat.iris_integration.IPIrisShadowCull.enabled = cond
         );

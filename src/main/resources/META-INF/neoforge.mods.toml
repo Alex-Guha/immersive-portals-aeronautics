@@ -208,8 +208,9 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="distanthorizons"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Distant Horizons 3.3.3. LODs in portal views may not work on this version."
-versionRange="(3.3.3,)"
+reason="Immersive Portals: Aeronautics was tested with Distant Horizons 3.3.3 to 3.3.5-dev. LODs in portal views may not work on this version."
+# Maven orders 3.3.5-dev after 3.3.5, so the release 3.3.5 still warns until it is checked
+versionRange="(3.3.4,3.3.5-dev),(3.3.5-dev,)"
 ordering="NONE"
 side="CLIENT"
 

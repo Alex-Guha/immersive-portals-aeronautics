@@ -18,6 +18,7 @@
         "iris.MixinIrisTransformPatcher_PortalViewFog",
         "sodium.IESodiumLevelSlice",
         "sodium.IESodiumWorldRenderer",
+        "sodium.MixinSodiumDefaultFluidRenderer_StackFloor",
         "sodium.MixinSodiumDefaultChunkRenderer",
         "sodium.MixinSodiumDefaultShaderInterface",
         "sodium.MixinSodiumFlawlessFrames",

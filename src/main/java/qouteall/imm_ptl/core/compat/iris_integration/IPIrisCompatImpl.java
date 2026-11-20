@@ -47,4 +47,24 @@ final class IPIrisCompatImpl {
     static void endBlockEntity() {
         CapturedRenderingState.INSTANCE.setCurrentBlockEntity(0);
     }
+
+    /** Iris's {@code MixinChunkMeshBuildTask.iris$onRenderLiquid}: the fluid's block id, the fluid flag, its light. */
+    static void beginFluid(com.mojang.blaze3d.vertex.BufferBuilder builder, net.minecraft.world.level.material.FluidState fluid,
+                           net.minecraft.core.BlockPos pos) {
+        Object2IntMap<BlockState> blockStateIds = WorldRenderingSettings.INSTANCE.getBlockStateIds();
+        if (blockStateIds == null || !(builder instanceof net.irisshaders.iris.vertices.BlockSensitiveBufferBuilder sensitive)) {
+            return;
+        }
+        BlockState state = fluid.createLegacyBlock();
+        sensitive.beginBlock(blockStateIds.getInt(state), (byte) 1, (byte) state.getLightEmission(), pos.getX(), pos.getY(), pos.getZ());
+        // the vertices are camera-relative, not around pos: no mid-block offsets from it
+        sensitive.ignoreMidBlock(true);
+    }
+
+    static void endFluid(com.mojang.blaze3d.vertex.BufferBuilder builder) {
+        if (builder instanceof net.irisshaders.iris.vertices.BlockSensitiveBufferBuilder sensitive) {
+            sensitive.ignoreMidBlock(false);
+            sensitive.endBlock();
+        }
+    }
 }

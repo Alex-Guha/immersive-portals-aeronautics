@@ -125,6 +125,7 @@
     "client.render.IPLevelRendererFrustumAccessor",
     "client.render.MixinLevelRenderer_Optional",
     "client.render.MixinLevelRenderer_SkipPortalSky",
+    "client.render.MixinLiquidBlockRenderer_StackFloor",
     "client.render.MixinMultiBufferSourceBufferSource",
     "client.render.MixinRenderSection",
     "client.render.MixinRenderSystem_Clipping",

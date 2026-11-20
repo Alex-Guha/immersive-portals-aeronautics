@@ -86,6 +86,8 @@ public class IPModEntryClient {
         // The rails' purple glow follows the portal's frame (gold for glowstone, plain for non-obsidian frames)
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.client.event.ClientTickEvent.Post.class,
             event -> qouteall.imm_ptl.core.compat.IPStallRecorder.beat());
+        // Immersive Aeronautics: fluid falling into a dimension stack's floor goes on below the plane, fading out
+        qouteall.imm_ptl.peripheral.dim_stack.IPStackFallColumns.init();
         if (ModList.get().isLoaded("create")) {
             modEventBus.addListener(
                 net.neoforged.bus.api.EventPriority.LOWEST,

@@ -76,4 +76,32 @@ public final class IPIrisCompat {
             // as beginBlockEntity
         }
     }
+
+    /**
+     * Immersive Aeronautics: the vertices {@code builder} gets next are of the fluid {@code fluid} at {@code pos}, as
+     * Iris tags a fluid in a chunk (its block id, so a shader pack draws it as that fluid). End with {@link #endFluid}.
+     * Does nothing without a pack or Iris.
+     */
+    public static void beginFluid(com.mojang.blaze3d.vertex.BufferBuilder builder, net.minecraft.world.level.material.FluidState fluid,
+                                  net.minecraft.core.BlockPos pos) {
+        if (!isIrisPresent()) {
+            return;
+        }
+        try {
+            IPIrisCompatImpl.beginFluid(builder, fluid, pos);
+        } catch (Throwable t) {
+            // drawn without the id
+        }
+    }
+
+    public static void endFluid(com.mojang.blaze3d.vertex.BufferBuilder builder) {
+        if (!isIrisPresent()) {
+            return;
+        }
+        try {
+            IPIrisCompatImpl.endFluid(builder);
+        } catch (Throwable t) {
+            // as beginFluid
+        }
+    }
 }

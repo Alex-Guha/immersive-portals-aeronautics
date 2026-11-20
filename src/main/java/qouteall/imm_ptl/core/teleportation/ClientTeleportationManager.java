@@ -224,6 +224,11 @@ public class ClientTeleportationManager {
             return null;
         }
 
+        // Immersive Aeronautics: a player riding another player (Carry On) crosses with the carrier, never on their own
+        if (player.getVehicle() instanceof net.minecraft.world.entity.player.Player) {
+            return null;
+        }
+
         Vec3 thisFrameEyePos = getPlayerEyePos(partialTicks);
 
         if (lastPlayerEyePos.distanceToSqr(thisFrameEyePos) > 1600) {

@@ -287,6 +287,12 @@ public class ServerTeleportationManager {
             return "seated on a ship (the ship carries its riders through portals)";
         }
 
+        // Immersive Aeronautics: a player riding another player (Carry On) crosses with the carrier, never on their own:
+        // a player cannot be recreated in another world as a vehicle is
+        if (player.getVehicle() instanceof Player) {
+            return "riding another player (the carrier takes them through portals)";
+        }
+
         if (player.getVehicle() != null) {
             return null;
         }
@@ -452,9 +458,23 @@ public class ServerTeleportationManager {
         if (vehicle != null) {
             ((IEServerPlayerEntity) player).ip_stopRidingWithoutTeleportRequest();
         }
-        
+
+        // Immersive Aeronautics: players riding this one (Carry On) come along and keep riding. Removing the player
+        // from its world would drop them with their vehicle already removed, which skips the vehicle's dismount hook
+        // (Carry On then keeps its carrier carrying nobody, its hotbar locked). Detaching with removeVehicle skips that
+        // hook too, on purpose: the ride goes on in the new world.
+        List<ServerPlayer> riders = new ArrayList<>();
+        for (Entity passenger : player.getPassengers()) {
+            if (passenger instanceof ServerPlayer rider) {
+                rider.removeVehicle();
+                if (rider.getVehicle() == null) {
+                    riders.add(rider);
+                }
+            }
+        }
+
         Vec3 oldPos = player.position();
-        
+
         fromWorld.removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION);
         ((IEEntity) player).ip_unsetRemoved();
         
@@ -482,7 +502,22 @@ public class ServerTeleportationManager {
             ((IEServerPlayerEntity) player).ip_startRidingWithoutTeleportRequest(vehicle);
             McHelper.adjustVehicle(player);
         }
-        
+
+        for (ServerPlayer rider : riders) {
+            if (rider.isRemoved() || rider.hasDisconnected()) {
+                continue;
+            }
+            // at the carrier's feet, a place it can stand; riding puts the rider where the vehicle wants it
+            forceTeleportPlayer(rider, toWorld.dimension(), player.position());
+            ((IEServerPlayerEntity) rider).ip_startRidingWithoutTeleportRequest(player);
+            LOGGER.info("{} keeps riding {} across to {}", rider.getName().getString(), player.getName().getString(), toWorld.dimension().location());
+        }
+        if (!riders.isEmpty()) {
+            // the carrier's own client is not among its trackers, so the passenger change the tracker sends next tick
+            // never reaches it; its client dropped the riders when it changed dimension
+            McHelper.sendToTrackers(player, new net.minecraft.network.protocol.game.ClientboundSetPassengersPacket(player));
+        }
+
         if (IPConfig.getConfig().serverTeleportLogging) {
             LOGGER.info(
                 "{} :: ({} {} {} {})->({} {} {} {})",

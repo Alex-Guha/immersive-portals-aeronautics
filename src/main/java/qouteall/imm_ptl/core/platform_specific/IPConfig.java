@@ -28,7 +28,7 @@ public class IPConfig {
     // client visible configs
     
     // Immersive Aeronautics: while not custom, sets maxPortalLayer, portalDrawDistance, portalViewDistance,
-    // portalFrameRateTarget and simpleNestedPortalViews (IPPortalPerformancePreset)
+    // portalFrameRateTarget, simpleNestedPortalViews and portalViewShadows (IPPortalPerformancePreset)
     public IPPortalPerformancePreset portalPerformancePreset = IPPortalPerformancePreset.custom;
     // Immersive Aeronautics: 3 instead of 5 in new configs; existing ones keep theirs
     public int maxPortalLayer = 3;
@@ -56,6 +56,9 @@ public class IPConfig {
     // Immersive Aeronautics: with a shader pack, portals seen through portals are drawn with a small vanilla-like pack
     // of ours instead of the player's (IPIrisViewPack)
     public boolean simpleNestedPortalViews = true;
+    // Immersive Aeronautics: with a shader pack, what portal views cast shadows with: everything, terrain only (no
+    // entities or block entities), or nothing (IPPortalViewShadows)
+    public IPGlobal.PortalViewShadows portalViewShadows = IPGlobal.PortalViewShadows.full;
     public boolean netherPortalOverlay = false;
     public boolean enableNetherPortalEffect = true;
     public boolean clientTolerantVersionMismatchWithServer = false;
@@ -163,6 +166,9 @@ public class IPConfig {
             }
         }
         reducedPortalRendering = null;
+        if (portalViewShadows == null) {
+            portalViewShadows = IPGlobal.PortalViewShadows.full;
+        }
         if (portalPerformancePreset == null) {
             portalPerformancePreset = IPPortalPerformancePreset.custom;
         }

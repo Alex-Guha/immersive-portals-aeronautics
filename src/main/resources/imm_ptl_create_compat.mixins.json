@@ -93,6 +93,7 @@
     "MixinColorwheelIndirectDrawManager_MatrixBinding",
     "IPColorwheelEmbeddedAccessor",
     "MixinColorwheelEnvironment_StraddleClip",
+    "MixinColorwheelSafeFlw_PortalViewShadows",
     "MixinRopePackets_PlayerLevel",
     "MixinFlywheelGlProgram_PortalClipPlane",
     "MixinFlywheelRenderDispatcher_PortalClipState",

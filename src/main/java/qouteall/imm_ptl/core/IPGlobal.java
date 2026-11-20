@@ -158,6 +158,13 @@ public class IPGlobal {
         unlimited
     }
     
+    // Immersive Aeronautics: what a portal view draws into a shader pack's shadow map (IPPortalViewShadows)
+    public static enum PortalViewShadows {
+        full,
+        terrainOnly,
+        off
+    }
+    
     public static enum EndPortalMode {
         normal,
         toObsidianPlatform,

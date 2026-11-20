@@ -200,6 +200,8 @@ public class IPConfigScreen extends OptionsSubScreen {
         range("portalViewDistance", 0, 32, c.portalViewDistance, (o, v) -> o.portalViewDistance = v);
         range("portalFrameRateTarget", 0, 240, c.portalFrameRateTarget, (o, v) -> o.portalFrameRateTarget = v);
         bool("simpleNestedPortalViews", c.simpleNestedPortalViews, (o, v) -> o.simpleNestedPortalViews = v);
+        choice("portalViewShadows", IPGlobal.PortalViewShadows.class, c.portalViewShadows,
+            (o, v) -> o.portalViewShadows = v);
         worldNote();
         bool("enableServerPerformanceAdjustment", c.enableServerPerformanceAdjustment,
             (o, v) -> o.enableServerPerformanceAdjustment = v);

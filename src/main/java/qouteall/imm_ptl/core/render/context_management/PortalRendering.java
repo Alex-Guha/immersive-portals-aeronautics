@@ -38,6 +38,10 @@ public class PortalRendering {
     private static boolean isRenderingOddNumberOfMirrorsCache = false;
     
     public static void pushPortalLayer(Portal portal) {
+        // Immersive Aeronautics: EntityCulling's block entity culling is the player's camera's, not a portal view's
+        if (portalLayers.isEmpty()) {
+            qouteall.imm_ptl.core.compat.IPEntityCullingCompat.onPortalPassesBegin();
+        }
         portalLayers.push(portal);
         updateCache();
         // Immersive Aeronautics: DH depth captured at this layer belongs to an earlier pass
@@ -47,6 +51,10 @@ public class PortalRendering {
     public static void popPortalLayer() {
         portalLayers.pop();
         updateCache();
+        // Immersive Aeronautics: see pushPortalLayer
+        if (portalLayers.isEmpty()) {
+            qouteall.imm_ptl.core.compat.IPEntityCullingCompat.onPortalPassesEnd();
+        }
     }
     
     private static void updateCache() {

@@ -115,6 +115,7 @@
     "client.render.MixinCamera",
     "client.render.MixinClientHooks_StageClipping",
     "client.render.MixinEntityRenderDispatcher",
+    "client.render.MixinEntityRenderDispatcher_EntityCulling",
     "client.render.MixinFrustum_FixDeadLoop",
     "client.render.MixinGameRenderer",
     "client.render.MixinGameRenderer_CameraTransform",

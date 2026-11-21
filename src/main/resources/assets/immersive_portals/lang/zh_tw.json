@@ -218,7 +218,6 @@
   "imm_ptl.incompatible_shaderpack": "[Immersive Portals] 目前的著色器包與沉浸式傳送門不相容。傳送門渲染可能會非常損壞。如果您想要更好的傳送門渲染，建議嘗試其他著色器包。",
 
   "imm_ptl.item_group": "沉浸式傳送門",
-  "imm_ptl.portal_helper_deprecated": "傳送門助手現已棄用。建議使用傳送門魔杖。傳送門魔杖更容易使用且功能更強大。建議使用指令 %s 來編輯傳送門形狀。",
 
   "imm_ptl.wand.first_side_left_bottom": "使用 %s 選擇傳送門的左下角點",
   "imm_ptl.wand.first_side_right_bottom": "選擇右下角點\n（寬度：%1$s）",

@@ -263,7 +263,6 @@
   "imm_ptl.incompatible_shaderpack": "[Immersive Portals] The current shaderpack is incompatible with Immersive Portals. Portal rendering may be very broken. If you want better portal rendering, it's recommended to try another shaderpack.",
 
   "imm_ptl.item_group": "Immersive Portals",
-  "imm_ptl.portal_helper_deprecated": "Portal Helper is now deprecated. It's recommended to use portal wand. Portal wand is easier to use and more powerful. It's recommended to use command %s to edit portal shape.",
 
   "imm_ptl.wand.first_side_left_bottom": "Use %s to select the left bottom point of the portal",
   "imm_ptl.wand.first_side_right_bottom": "Select the right bottom point\n(width: %1$s)",

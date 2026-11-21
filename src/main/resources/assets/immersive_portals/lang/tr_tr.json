@@ -205,7 +205,6 @@
   "imm_ptl.message_from_server": "[Immersive Portals] Sunucudan mesaj var: ",
   "imm_ptl.incompatible_shaderpack": "[Immersive Portals] Mevcut gölgelendirici paketi Immersive Portals ile uyumsuz. Portal oluşturma çok bozuk olabilir. Daha iyi portal oluşturma istiyorsanız, başka bir gölgelendirici paketi denemeniz önerilir.",
   "imm_ptl.item_group": "Immersive Portals",
-  "imm_ptl.portal_helper_deprecated": "Portal Helper artık kullanımdan kaldırılmıştır. Portal wand kullanmanız önerilir. Portal asasının kullanımı daha kolay ve daha güçlüdür. Portal şeklini düzenlemek için %s komutunu kullanmanız önerilir.",
   "imm_ptl.wand.first_side_left_bottom": "Portalın sol alt noktasını seçmek için %s kullanın",
   "imm_ptl.wand.first_side_right_bottom": "Sağ alt noktayı seçin\n(genişlik: %1$s)",
   "imm_ptl.wand.first_side_left_up": "Sol üst noktayı seçin\n(genişlik: %1$s, yükseklik: %2$s)",

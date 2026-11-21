@@ -45,7 +45,9 @@
     "MixinShieldRegistry_StraddleMirror",
     "MixinShieldInstance_StraddleSide",
     "MixinShieldImpactPayload_PortalViewers",
-    "MixinServerLevel_CrossDimensionParticles"
+    "MixinServerLevel_CrossDimensionParticles",
+    "MixinPocketSubLevelEvents_ShatterPortals",
+    "MixinPocketedEntities_Portals"
   ],
   "client": [
     "MixinPymScaleHandshake_AllLevels",

@@ -99,7 +99,7 @@ public final class IPShipPortalAnchors {
     private static final Set<UUID> TICKED = new HashSet<>();
     /** Holder UUID -> consecutive ticks one of its carriers was missing. */
     private static final Map<UUID, Integer> MISSING = new HashMap<>();
-    /** Carriers Sable removed for good this server session. */
+    /** Carriers Sable removed this server session and has not added again (Create: Pocket Sized keeps a packed ship's UUID). */
     private static final Set<UUID> REMOVED_CARRIERS = new HashSet<>();
     /**
      * Carriers Sable removed from a level since the last tick. A ship handed off through a portal is removed from the
@@ -129,6 +129,14 @@ public final class IPShipPortalAnchors {
         SableEventPlatform.INSTANCE.onSubLevelContainerReady((level, container) -> {
             if (level instanceof ServerLevel) {
                 container.addObserver(new SubLevelObserver() {
+                    @Override
+                    public void onSubLevelAdded(final SubLevel subLevel) {
+                        if (REMOVED_CARRIERS.remove(subLevel.getUniqueId())) {
+                            LOGGER.info("[IPShipPortal] ship {} is back after its removal: portals may be mounted on it again",
+                                    subLevel.getUniqueId());
+                        }
+                    }
+
                     @Override
                     public void onSubLevelRemoved(final SubLevel subLevel, final SubLevelRemovalReason reason) {
                         if (reason == SubLevelRemovalReason.REMOVED) {
@@ -414,6 +422,17 @@ public final class IPShipPortalAnchors {
                 shatterNow(holder, reason);
             }
         }
+    }
+
+    /**
+     * A portal that comes out of a Create: Pocket Sized case packed before its portals were shattered at packing: the
+     * case kept the ship side's portal entities, and Pocket restores them under new UUIDs, so they would hold links the
+     * other side no longer answers. It is not added; the rest of its cluster breaks once loaded, as after a shatter.
+     */
+    public static void dropFromCase(final Portal portal) {
+        LOGGER.info("[IPShipPortal] {} came out of a Create: Pocket Sized case: dropping it, the rest of its cluster breaks", portal);
+        final IPShipPortalBrokenLinks broken = IPShipPortalBrokenLinks.of(MiscHelper.getServer());
+        clusterIds(portal).forEach(broken::add);
     }
 
     private static void scheduleShatter(final Portal holder, final String reason) {

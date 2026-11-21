@@ -9,6 +9,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.commands.CommandSourceStack;
@@ -18,6 +19,20 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.util.FakePlayer;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -88,6 +103,12 @@ public final class IPShipPortalCommand {
                                 .then(Commands.literal("wand")
                                         .then(wandCorners("a", "b", "c", Commands.argument("dimension", DimensionArgument.dimension())
                                                 .then(wandCorners("d", "e", "f", null)))))
+                                .then(Commands.literal("pocket")
+                                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                                .executes(IPShipPortalCommand::pocket)))
+                                .then(Commands.literal("unpocket")
+                                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                                .executes(IPShipPortalCommand::unpocket)))
                                 .then(Commands.literal("disassemble")
                                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("goal", BlockPosArgument.blockPos())
@@ -267,6 +288,71 @@ public final class IPShipPortalCommand {
      * Test hook: places fire on the ship block that is at the given world position, as flint and steel would (headless
      * tests cannot click). Fire placed in a ship's plot lights a portal frame through the same path as in the world.
      */
+    /**
+     * {@code debug pocket <pos>}: a fake player packs the ship nearest to the world position {@code pos} (within 4
+     * blocks) into a Create: Pocket Sized cardboard box, as a player's sneaking right-click on it with the box does. The
+     * ship must be small enough for Pocket (1/16). The packed case stays in the fake player's hand for {@code unpocket}.
+     */
+    private static int pocket(final CommandContext<CommandSourceStack> context) {
+        final ServerLevel level = context.getSource().getLevel();
+        final BlockPos world = BlockPosArgument.getBlockPos(context, "pos");
+        final Item box = BuiltInRegistries.ITEM.get(ResourceLocation.fromNamespaceAndPath("pocket", "empty_box"));
+        if (box == Items.AIR) {
+            context.getSource().sendFailure(Component.literal("Create: Pocket Sized is not loaded"));
+            return 0;
+        }
+        SubLevel nearest = null;
+        double best = Double.MAX_VALUE;
+        for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(new AABB(world).inflate(4)))) {
+            final double distance = ship.logicalPose().position().distanceSquared(world.getX() + 0.5, world.getY() + 0.5, world.getZ() + 0.5);
+            if (distance < best) {
+                best = distance;
+                nearest = ship;
+            }
+        }
+        if (nearest == null) {
+            context.getSource().sendFailure(Component.literal("No ship near " + world.toShortString()));
+            return 0;
+        }
+        final UUID id = nearest.getUniqueId();
+        final BoundingBox3ic bounds = nearest.getPlot().getBoundingBox();
+        final BlockPos plot = new BlockPos((bounds.minX() + bounds.maxX()) / 2, (bounds.minY() + bounds.maxY()) / 2,
+                (bounds.minZ() + bounds.maxZ()) / 2);
+        final FakePlayer player = FakePlayerFactory.getMinecraft(level);
+        player.setPos(Vec3.atCenterOf(world));
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(box));
+        player.setShiftKeyDown(true);
+        NeoForge.EVENT_BUS.post(new PlayerInteractEvent.RightClickBlock(player, InteractionHand.MAIN_HAND, plot,
+                new BlockHitResult(Vec3.atCenterOf(plot), Direction.UP, plot, false)));
+        player.setShiftKeyDown(false);
+        final ItemStack held = player.getMainHandItem();
+        if (held.is(box)) {
+            context.getSource().sendFailure(Component.literal("Ship " + id + " was not packed"));
+            return 0;
+        }
+        context.getSource().sendSuccess(() -> Component.literal("Ship " + id + " packed into " + held), true);
+        return 1;
+    }
+
+    /** {@code debug unpocket <pos>}: the fake player of {@code pocket} unpacks its case onto the top of the block at {@code pos}. */
+    private static int unpocket(final CommandContext<CommandSourceStack> context) {
+        final ServerLevel level = context.getSource().getLevel();
+        final BlockPos pos = BlockPosArgument.getBlockPos(context, "pos");
+        final FakePlayer player = FakePlayerFactory.getMinecraft(level);
+        final ItemStack held = player.getMainHandItem();
+        if (held.isEmpty()) {
+            context.getSource().sendFailure(Component.literal("Nothing packed: run debug pocket first"));
+            return 0;
+        }
+        player.setPos(Vec3.atCenterOf(pos).add(0, 1, 0));
+        player.setShiftKeyDown(true);
+        final InteractionResult result = held.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND,
+                new BlockHitResult(Vec3.atCenterOf(pos).add(0, 0.5, 0), Direction.UP, pos, false)));
+        player.setShiftKeyDown(false);
+        context.getSource().sendSuccess(() -> Component.literal("Unpacked at " + pos.toShortString() + ": " + result), true);
+        return result.consumesAction() ? 1 : 0;
+    }
+
     private static int light(final CommandContext<CommandSourceStack> context) {
         final ServerLevel level = context.getSource().getLevel();
         final BlockPos world = BlockPosArgument.getBlockPos(context, "pos");

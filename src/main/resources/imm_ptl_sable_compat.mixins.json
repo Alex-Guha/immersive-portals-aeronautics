@@ -17,6 +17,7 @@
     "MixinSablePhysicsTickets_StraddleImages",
     "MixinServerPlayerGameMode_ShipBlockBreakResync",
     "MixinSableAssembly_PortalBreak",
+    "MixinSableHeatMap_SplitFixes",
     "IPSubLevelTrackingSystemAccessor",
     "MixinSableTrackingSystem_DimensionAwareSend",
     "MixinSableTrackingSystem_PortalHandover",

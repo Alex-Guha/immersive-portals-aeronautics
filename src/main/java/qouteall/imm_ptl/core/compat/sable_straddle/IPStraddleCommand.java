@@ -12,6 +12,7 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -20,8 +21,8 @@ import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 
 /**
  * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
- * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel} and {@code debug joints} (operators
- * only).
+ * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel}, {@code debug joints} and
+ * {@code debug simassemble <assembler> <from>} and {@code debug reroot <n>} (operators only).
  * Registered only with Sable present.
  */
 public final class IPStraddleCommand {
@@ -45,7 +46,14 @@ public final class IPStraddleCommand {
                                                         .executes(IPStraddleCommand::tieRope))))
                                 .then(Commands.literal("swivel").executes(IPStraddleCommand::assembleSwivels))
                                 .then(Commands.literal("dock").executes(IPStraddleCommand::dockConnectors))
-                                .then(Commands.literal("joints").executes(IPStraddleCommand::listJoints)))));
+                                .then(Commands.literal("joints").executes(IPStraddleCommand::listJoints))
+                                .then(Commands.literal("simassemble")
+                                        .then(Commands.argument("assembler", BlockPosArgument.blockPos())
+                                                .then(Commands.argument("from", BlockPosArgument.blockPos())
+                                                        .executes(IPStraddleCommand::simAssemble))))
+                                .then(Commands.literal("reroot")
+                                        .then(Commands.argument("index", IntegerArgumentType.integer())
+                                                .executes(IPStraddleCommand::reroot))))));
     }
 
     /** Which of our hooks in other mods are alive, as far as their classes have loaded. */
@@ -64,6 +72,26 @@ public final class IPStraddleCommand {
     private static int setDebug(final CommandContext<CommandSourceStack> context, final boolean on) {
         IPStraddle.setDebugOutline(on);
         return status(context);
+    }
+
+    /** Test hook: assembles a ship as Simulated's physics assembler does (contraptions on it included). */
+    private static int simAssemble(final CommandContext<CommandSourceStack> context) {
+        final BlockPos assembler = BlockPosArgument.getBlockPos(context, "assembler");
+        final BlockPos from = BlockPosArgument.getBlockPos(context, "from");
+        final String error = IPShipJoints.simAssemble(context.getSource().getLevel(), assembler, from);
+        if (error != null) {
+            context.getSource().sendFailure(Component.literal("Not assembled: " + error));
+            return 0;
+        }
+        context.getSource().sendSuccess(() -> Component.literal("Assembled from " + from.toShortString()), true);
+        return 1;
+    }
+
+    /** Test hook: makes the n-th portal block of each ship carrying portal blocks its heat-map root. */
+    private static int reroot(final CommandContext<CommandSourceStack> context) {
+        final var lines = IPHeatMapDebug.reroot(context.getSource().getLevel(), IntegerArgumentType.getInteger(context, "index"));
+        lines.forEach(line -> context.getSource().sendSuccess(() -> Component.literal(line), true));
+        return lines.size();
     }
 
     /** Test hook: ties the rope holders at two positions (on ships or in the world) with a rope. */

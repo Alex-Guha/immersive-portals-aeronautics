@@ -178,6 +178,22 @@ public final class IPShipJoints {
         return SIMULATED_LOADED ? Impl.assembleSwivelBearings(level) : 0;
     }
 
+    /**
+     * Test hook: assembles a ship the way Simulated's physics assembler at {@code assembler} does from the block it faces,
+     * {@code from} (contraptions controlled by the ship's blocks are disassembled into it). Null on success, else why not.
+     */
+    public static String simAssemble(ServerLevel level, BlockPos assembler, BlockPos from) {
+        if (!SIMULATED_LOADED) {
+            return "Simulated is not loaded";
+        }
+        try {
+            return dev.simulated_team.simulated.util.SimAssemblyHelper.assembleFromSingleBlock(level, assembler, from, false, false) == null
+                ? "nothing to assemble" : null;
+        } catch (Exception e) {
+            return e.toString();
+        }
+    }
+
     /** Touches Simulated's classes; loaded only when Simulated is present. */
     private static final class Impl {
         static void shiftLoadedJoints(ServerLevel level, Map<UUID, BlockPos> shifts) {

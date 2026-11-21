@@ -1,7 +1,9 @@
 # The full headless regression suite: dedicated Minecraft servers run scripted scenarios on a test world, with our jar
 # and with stock physics, and each result is compared with the last green run on main. On every push of a branch (the
-# newest commit of each branch; a newer push cancels a run still going) and by hand (Actions, "Run workflow", with
-# optional suites or a test pattern).
+# newest commit of each branch; a newer push cancels a run still going) that changes more than text (README,
+# changelog, licensing, contributing notes, issue templates), and by hand (Actions, "Run workflow", with optional
+# suites or a test pattern). Only the Build workflow writes Gradle's cache: each job here writing its own copy of
+# about 2 GB filled the repository's 10 GB, so GitHub evicted older caches (the natives', the nested jars').
 #
 # The test scenarios, the world and the scripts that drive them are the maintainer's and private: they come from the
 # maintainer's notes repository with the NOTES_TOKEN secret (read-only), so this runs only in this repository, never on
@@ -11,6 +13,11 @@ name: Suite
 on:
   push:
     branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE*'
+      - 'NOTICE'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
     inputs:
       suites:
@@ -42,6 +49,8 @@ jobs:
       baseline: ${{ steps.baseline.outputs.run }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the release tag, for the jar's version (<release>.<k>-main, build.gradle)
 
       - uses: actions/setup-java@v6
         with:
@@ -49,6 +58,8 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true   # the Build workflow keeps Gradle's cache
 
       - name: Cache the nested jars of the mods we compile against
         id: deps
@@ -196,6 +207,8 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true   # the Build workflow keeps Gradle's cache
 
       - uses: actions/cache/restore@v6
         with:

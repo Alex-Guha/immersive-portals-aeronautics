@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 There is one file per minor version from 2.0 on, newest entry first.
 Changes not yet in a version are under "Unreleased Changes" at the top of the newest minor's file.
+They collect there between releases: a version is given only when a release is made, and then takes them all.
 A new minor version starts a new file, `<x.y>.md`, with its line in the index below.
 `pre-2.0.md` is closed: it holds the work before the first public release and is not edited again.
 

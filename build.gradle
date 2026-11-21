@@ -14,7 +14,29 @@ apply plugin: 'maven-publish'
 apply plugin: 'net.neoforged.gradle.userdev'
 apply plugin: 'net.neoforged.gradle.mixin'
 
-version = mod_version
+// The version only moves at a release (mod_version, tagged v<mod_version>). A build of a later commit gets
+// <mod_version>.<commits since the tag>-main (-dev-<branch> on a branch), so no two jars share a name; a test jar's
+// own mod_version (x.y.z.N-<branch>) is used as it is. -PcommitsSinceRelease=<k> sets k: a build made before its commit.
+def gitOutput(String... args) {
+    def result = providers.exec {
+        commandLine(['git'] + args.toList())
+        ignoreExitValue = true
+    }
+    def text = result.standardOutput.asText.get().trim()
+    return result.result.get().exitValue == 0 ? text : null
+}
+def buildVersion() {
+    if (!(mod_version ==~ /\d+\.\d+\.\d+/)) return mod_version
+    def count = project.findProperty('commitsSinceRelease') ?: gitOutput('rev-list', '--count', "v${mod_version}..HEAD")
+    if (count == null) {
+        logger.warn("no tag v${mod_version} in this clone (shallow?): the jar is named ${mod_version}.0-dev")
+        return "${mod_version}.0-dev"
+    }
+    if (count.toInteger() == 0) return mod_version
+    def branch = gitOutput('symbolic-ref', '--short', '-q', 'HEAD')
+    return "${mod_version}.${count}-" + (branch == null || branch == 'main' ? 'main' : "dev-${branch.replace('/', '-')}")
+}
+version = buildVersion()
 group = mod_group_id
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -207,6 +229,16 @@ def writeCompileClasspath = tasks.register('writeCompileClasspath') {
 }
 tasks.named('jar').configure { finalizedBy(writeCompileClasspath) }
 
+// The version this build gave the jar (see buildVersion), for the scripts that look for the jar
+def writeBuildVersion = tasks.register('writeBuildVersion') {
+    def out = layout.buildDirectory.file('ipa/version.txt')
+    def built = version.toString()
+    inputs.property('version', built)
+    outputs.file(out)
+    doLast { out.get().asFile.text = built + '\n' }
+}
+tasks.named('jar').configure { finalizedBy(writeBuildVersion) }
+
 // build/libs keeps only the jars of the version being built: a version bump leaves no old jar behind
 def removeOldJars = tasks.register('removeOldJars', Delete) {
     delete fileTree(layout.buildDirectory.dir('libs')) {
@@ -225,7 +257,7 @@ tasks.withType(ProcessResources).configureEach {
             minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
             neo_version         : neo_version, neo_version_range: neo_version_range, issue_tracker_url: issue_tracker_url,
             loader_version_range: loader_version_range,
-            mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_credits: mod_credits, mod_version: mod_version,
+            mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_credits: mod_credits, mod_version: version,
             ip_api_version      : ip_api_version,
             // the [[mixins]] entry of the Voxy compat, none without it (-PwithoutVoxy)
             voxy_mixins         : withoutVoxy ? '' : '[[mixins]]\nconfig="imm_ptl_voxy_compat.mixins.json"',

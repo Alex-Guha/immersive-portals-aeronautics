@@ -35,6 +35,12 @@ Some code comments cite `docs/...`: those are the maintainer's notes, which are 
 
 The git history is upstream Immersive Portals up to tag `v6.0.7`, then one commit per release up to 2.9.0.
 
+## Versions
+
+The version changes only when the maintainer makes a release: `mod_version` in `gradle.properties` is the last release, tagged `v<x.y.z>`, and each release takes everything merged since.
+Builds of later commits name themselves after it: `<x.y.z>.<commits since the tag>-main` on `main` (for example `2.9.31.3-main`), `-dev-<branch>` on other branches, so a log or a bug report shows which build it came from.
+A pull request doesn't change `mod_version` or the changelog.
+
 ## Testing a change
 
 Test in game, with the built jar in a normal game install rather than `runClient` or `runServer`. Ships need Sable and Create Aeronautics, and ships crossing portals smoothly needs a jar with the physics libraries. In the pull request, say what you tried, with which mods, and whether in single player or on a server. The maintainer may run further tests before merging.
@@ -44,7 +50,7 @@ After a build, `scripts/check.sh` runs the static checks, which CI also runs on 
 - `native-licences`, when `natives/Cargo.lock` changed: the licence list of the Rust crates shipped in the jar is current (`python3 scripts/native-licenses.py` rewrites it; needs cargo).
 - `mixins`: every class, method and field our mixins name exists in the jars we build against, and every mixin into another mod is skipped without that mod (`IPOptionalModMixinPlugin`, below). Known exceptions are in `scripts/mixincheck-expected.txt`.
 - `hooks`: the mixins and reflection other mods have into our classes (`scripts/hooks-into-us.txt`) still find what they need. If a change of yours breaks one, say so in the pull request: that mod's players would crash.
-- `version` and `tests`: the version fits the branch, and the unit tests passed.
+- `version` and `tests`: `mod_version` fits the branch (above), and the unit tests passed.
 
 ## Code conventions
 

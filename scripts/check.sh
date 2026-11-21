@@ -13,8 +13,8 @@
 #                    scripts/mixincheck-expected.txt)
 #   hooks            other mods' hooks into us, against our jar: the pinned releases of scripts/hooks-into-us.txt
 #                    (downloaded and decompiled once into ${XDG_CACHE_HOME:-~/.cache}/ipa-check)
-#   version          mod_version fits the branch: x.y.z on main with its changelog entry, x.y.z or
-#                    x.y.z.N-<branch> on a branch, the tag's version on a v<x.y.z> tag
+#   version          mod_version fits the branch: x.y.z on main (the last release, with its changelog entry), x.y.z
+#                    or x.y.z.N-<branch> on a branch, the tag's version on a v<x.y.z> tag
 #   tests            the last build's unit test results exist and passed
 #
 # Exit status 1 if any check failed. JAVA_HOME selects the JDK (javap, java); Python 3 and git are needed.
@@ -36,7 +36,9 @@ CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/ipa-check
 VINEFLOWER_VERSION=1.11.2
 VINEFLOWER_SHA256=e1e2415e7f78b34960402c4beddfc88e033d7842a23ecd132a8ec2eadd54f6bf
 VERSION=$(sed -n 's/^mod_version=//p' gradle.properties)
-JAR=build/libs/ip_aeronautics-$VERSION.jar
+# the jar's own version: mod_version at a release or test jar, <mod_version>.<k>-main between releases (build.gradle)
+BUILT=$(cat build/ipa/version.txt 2>/dev/null || echo "$VERSION")
+JAR=build/libs/ip_aeronautics-$BUILT.jar
 CLASSPATH_FILE=build/ipa/compile-classpath.txt
 
 failed=()
@@ -143,7 +145,7 @@ check_version() {
     else
         kind=branch; name=$(git rev-parse --abbrev-ref HEAD)
     fi
-    echo "mod_version=$VERSION on $kind $name"
+    echo "mod_version=$VERSION (jar $BUILT) on $kind $name"
     if [ $kind = tag ]; then
         [[ $name == v* ]] || { echo "not a version tag: nothing to check"; return 0; }
         [ "v$VERSION" = "$name" ] || { echo "the tag says ${name#v}"; return 1; }

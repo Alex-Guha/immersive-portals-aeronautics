@@ -63,7 +63,7 @@ scripts/build-natives.sh            # optional, needs Docker: the physics librar
 scripts/check.sh                    # the checks CI runs on every push
 ```
 
-The jar is `build/libs/ip_aeronautics-<version>.jar`. The build also runs the unit tests (`-x test` skips them).
+The jar is `build/libs/ip_aeronautics-<version>.jar`: the release version at a release tag, `<release>.<commits since>-main` after it (`CONTRIBUTING.md`, "Versions"). The build also runs the unit tests (`-x test` skips them).
 - `-PallowMissingNatives` builds a jar without the physics libraries. It runs, but ships cross portals in one step.
 - `-PwithoutVoxy` leaves out Voxy support, which compiles against a patched Voxy jar that isn't published.
 - The build refuses physics libraries built from another version of `natives/` than the one checked out: run `scripts/build-natives.sh` again, or build with `-PallowStaleNatives` to package them anyway.

@@ -38,7 +38,7 @@ The git history is upstream Immersive Portals up to tag `v6.0.7`, then one commi
 ## Versions
 
 The version changes only when the maintainer makes a release: `mod_version` in `gradle.properties` is the last release, tagged `v<x.y.z>`, and each release takes everything merged since.
-Builds of later commits name themselves after it: `<x.y.z>.<commits since the tag>-main` on `main` (for example `2.9.31.3-main`), `-dev-<branch>` on other branches, so a log or a bug report shows which build it came from.
+Builds of later commits name themselves after it: `<x.y.z>.<k>-main` on `main`, k counting `main`'s commits since the tag (for example `2.9.31.3-main`), and `<x.y.z>.<k>-<branch>.dev` on other branches, k counted where the branch left `main` (for example `2.9.31.3-my-fix.dev` has everything up to `2.9.31.3-main`). A log also names the git tree the jar was built from (`source tree` at startup), so a bug report shows exactly which build it came from.
 A pull request doesn't change `mod_version` or the changelog.
 
 ## Testing a change

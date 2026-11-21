@@ -74,6 +74,12 @@ public class IPModMain {
         loadConfig();
         
         Helper.LOGGER.info("Immersive Portals Mod Initializing");
+        // Immersive Aeronautics: which build this is, the version and the git tree of the source it was built from
+        // (build.gradle): a test jar's name says which main it is built on, the tree names the exact code
+        LOGGER.info("[IPA] ip_aeronautics {}, source tree {}", O_O.getImmPtlVersionStr(),
+            net.neoforged.fml.ModList.get().getModContainerById("ip_aeronautics")
+                .map(mod -> String.valueOf(mod.getModInfo().getModProperties().get("source_tree")))
+                .orElse("unknown"));
 
         eventBus.addListener(RegisterPayloadHandlersEvent.class, Payloads::register);
         ImmPtlNetworkConfig.init(eventBus);

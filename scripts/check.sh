@@ -13,8 +13,9 @@
 #                    scripts/mixincheck-expected.txt)
 #   hooks            other mods' hooks into us, against our jar: the pinned releases of scripts/hooks-into-us.txt
 #                    (downloaded and decompiled once into ${XDG_CACHE_HOME:-~/.cache}/ipa-check)
-#   version          mod_version fits the branch: x.y.z on main (the last release, with its changelog entry), x.y.z
-#                    or x.y.z.N-<branch> on a branch, the tag's version on a v<x.y.z> tag
+#   version          mod_version fits the branch: x.y.z on main (the last release, with its changelog entry), x.y.z,
+#                    x.y.z.k-<branch>.N (a test jar: main's x.y.z.k plus the branch's N-th jar) or the older
+#                    x.y.z.N-<branch> on a branch, the tag's version on a v<x.y.z> tag
 #   tests            the last build's unit test results exist and passed
 #
 # Exit status 1 if any check failed. JAVA_HOME selects the JDK (javap, java); Python 3 and git are needed.
@@ -162,10 +163,12 @@ check_version() {
     fi
     if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(.+)$ ]]; then
         [ $kind = branch ] && [ "$name" != main ] || { echo "a test-jar version belongs on its branch, not on $kind $name"; return 1; }
-        [ "${BASH_REMATCH[1]}" = "$name" ] || { echo "the version names branch ${BASH_REMATCH[1]}"; return 1; }
+        local named=${BASH_REMATCH[1]}
+        [ "$named" = "$name" ] || [[ $named =~ ^(.+)\.[0-9]+$ && ${BASH_REMATCH[1]} = "$name" ]] \
+            || { echo "the version names branch $named"; return 1; }
         return 0
     fi
-    echo "not x.y.z or x.y.z.N-<branch>"
+    echo "not x.y.z, x.y.z.k-<branch>.N or x.y.z.N-<branch>"
     return 1
 }
 

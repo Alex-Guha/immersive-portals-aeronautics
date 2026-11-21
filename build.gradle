@@ -15,8 +15,10 @@ apply plugin: 'net.neoforged.gradle.userdev'
 apply plugin: 'net.neoforged.gradle.mixin'
 
 // The version only moves at a release (mod_version, tagged v<mod_version>). A build of a later commit gets
-// <mod_version>.<commits since the tag>-main (-dev-<branch> on a branch), so no two jars share a name; a test jar's
-// own mod_version (x.y.z.N-<branch>) is used as it is. -PcommitsSinceRelease=<k> sets k: a build made before its commit.
+// <mod_version>.<k>-main, k the commits of main since the tag, so no two jars share a name. A branch's jar names the
+// main it is built on: <mod_version>.<k>-<branch>.<N> for its N-th test jar (its own mod_version, used as it is),
+// <mod_version>.<k>-<branch>.dev for any other build, k counted at the branch's merge base with main.
+// -PcommitsSinceRelease=<k> sets k: a build made before its commit.
 def gitOutput(String... args) {
     def result = providers.exec {
         commandLine(['git'] + args.toList())
@@ -27,16 +29,40 @@ def gitOutput(String... args) {
 }
 def buildVersion() {
     if (!(mod_version ==~ /\d+\.\d+\.\d+/)) return mod_version
-    def count = project.findProperty('commitsSinceRelease') ?: gitOutput('rev-list', '--count', "v${mod_version}..HEAD")
-    if (count == null) {
-        logger.warn("no tag v${mod_version} in this clone (shallow?): the jar is named ${mod_version}.0-dev")
-        return "${mod_version}.0-dev"
-    }
-    if (count.toInteger() == 0) return mod_version
     def branch = gitOutput('symbolic-ref', '--short', '-q', 'HEAD')
-    return "${mod_version}.${count}-" + (branch == null || branch == 'main' ? 'main' : "dev-${branch.replace('/', '-')}")
+    def onMain = branch == null || branch == 'main'
+    // a branch's builds count main's commits only, up to where the branch left it (origin/main in a CI clone)
+    def base = onMain ? 'HEAD' : (gitOutput('merge-base', 'HEAD', 'main') ?: gitOutput('merge-base', 'HEAD', 'origin/main'))
+    def count = project.findProperty('commitsSinceRelease') ?: (base ? gitOutput('rev-list', '--count', "v${mod_version}..${base}") : null)
+    def suffix = onMain ? 'main' : "${branch.replace('/', '-')}.dev"
+    if (count == null) {
+        logger.warn("no tag v${mod_version} or main in this clone (shallow?): the jar is named ${mod_version}.0-${onMain ? 'dev' : suffix}")
+        return "${mod_version}.0-${onMain ? 'dev' : suffix}"
+    }
+    if (onMain && count.toInteger() == 0) return mod_version
+    return "${mod_version}.${count}-${suffix}"
 }
 version = buildVersion()
+// The source the jar is built from, as a git tree id: the tracked files as they are, uncommitted changes included, so
+// it is also the tree of the commit a test jar or merge makes after its build. Logged at startup (IPModMain).
+def sourceTree() {
+    def index = gitOutput('rev-parse', '--git-path', 'index')
+    if (index == null || !file(index).isFile()) return 'unknown'
+    def copy = layout.buildDirectory.file('tmp/source-tree.index').get().asFile
+    copy.parentFile.mkdirs()
+    copy.bytes = file(index).bytes
+    def git = { String... args ->
+        providers.exec {
+            commandLine(['git'] + args.toList())
+            environment('GIT_INDEX_FILE', copy.absolutePath)
+            ignoreExitValue = true
+        }
+    }
+    if (git('add', '-u').result.get().exitValue != 0) return 'unknown'
+    def tree = git('write-tree')
+    return tree.result.get().exitValue == 0 ? tree.standardOutput.asText.get().trim().take(12) : 'unknown'
+}
+def builtFromTree = sourceTree()
 group = mod_group_id
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -258,7 +284,7 @@ tasks.withType(ProcessResources).configureEach {
             neo_version         : neo_version, neo_version_range: neo_version_range, issue_tracker_url: issue_tracker_url,
             loader_version_range: loader_version_range,
             mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_credits: mod_credits, mod_version: version,
-            ip_api_version      : ip_api_version,
+            ip_api_version      : ip_api_version, source_tree: builtFromTree,
             // the [[mixins]] entry of the Voxy compat, none without it (-PwithoutVoxy)
             voxy_mixins         : withoutVoxy ? '' : '[[mixins]]\nconfig="imm_ptl_voxy_compat.mixins.json"',
             mod_authors         : mod_authors, mod_description: mod_description, pack_format_number: pack_format_number,

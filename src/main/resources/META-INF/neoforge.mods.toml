@@ -235,3 +235,7 @@ side="CLIENT"
 # stop your mod loading on the server for example.
 #[features.${mod_id}]
 #openGLVersion="[3.2,)"
+
+# The git tree the jar was built from (build.gradle), logged at startup (IPModMain)
+[modproperties.ip_aeronautics]
+source_tree="${source_tree}"

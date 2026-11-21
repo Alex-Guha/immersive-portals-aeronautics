@@ -1752,8 +1752,11 @@ public class Portal extends Entity implements
             oldState = null;
         }
         
+        // Immersive Aeronautics: a ship portal's holder that loses a ship mount moves its cluster to its new state
+        int shipMountsBefore = qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.shipMountCount(this);
         setPos(pos);
         readAdditionalSaveData(customData);
+        qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.afterClientSync(this, shipMountsBefore);
 
         if (animation.defaultAnimation.durationTicks > 0 && oldState != null) { // TODO @Nick1st the != null is a quick fix for initial data sync
             animation.defaultAnimation.startClientDefaultAnimation(this, oldState);

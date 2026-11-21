@@ -388,8 +388,37 @@ public final class IPShipPortalAnchors {
             MISSING.remove(holder.getUUID());
         }
         holder.reloadPortal();
+        // reloadPortal moves only the cluster's portals that are loaded; any other keeps its last state on the ship
+        // until IP links it again, which moves nothing ({@link #rectifyWhenLinked})
+        final PortalExtension links = PortalExtension.get(holder);
+        if (links.flippedPortal == null || links.reversePortal == null || links.parallelPortal == null) {
+            holder.getPersistentData().putBoolean(RECTIFY_WHEN_LINKED, true);
+        }
         LOGGER.info("[IPShipPortal] {} is no longer on a ship at {} ({})", holder,
                 thisSide ? "its own end" : "its far end", why);
+    }
+
+    /** Entity data of a holder whose cluster has portals that were not loaded when it last left a ship. */
+    private static final String RECTIFY_WHEN_LINKED = "ip_aeronautics:rectifyWhenLinked";
+
+    /**
+     * Called by IP once it has resolved {@code portal}'s cluster links on the server: a holder that left its ship while
+     * part of its cluster was not loaded moves those portals to its own state as soon as all three are linked. Until
+     * then they keep their state from the ship: through a portal moved away, IP breaks the pair for abnormal pairing;
+     * through one disassembled where it was, their plane is off by a fraction of a block, and an entity coming out of
+     * one is in front of the face beside it and falls straight back.
+     */
+    public static void rectifyWhenLinked(final Portal portal) {
+        if (!portal.getPersistentData().getBoolean(RECTIFY_WHEN_LINKED)) {
+            return;
+        }
+        final PortalExtension links = PortalExtension.get(portal);
+        if (links.flippedPortal == null || links.reversePortal == null || links.parallelPortal == null) {
+            return;
+        }
+        portal.getPersistentData().remove(RECTIFY_WHEN_LINKED);
+        portal.rectifyClusterPortals(true);
+        LOGGER.info("[IPShipPortal] {}: moved the portals of its cluster that were not loaded when it left its ship", portal);
     }
 
     /**

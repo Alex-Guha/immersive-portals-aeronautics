@@ -131,6 +131,35 @@ public final class IPShipPortals {
         return mountIn(portal.animation.otherSideAnimations);
     }
 
+    /** How many ship mounts this portal's animation has, on both sides (client and server). */
+    public static int shipMountCount(final Portal portal) {
+        int count = 0;
+        for (final PortalAnimationDriver driver : portal.animation.thisSideAnimations) {
+            if (driver instanceof IPShipMount) {
+                count++;
+            }
+        }
+        for (final PortalAnimationDriver driver : portal.animation.otherSideAnimations) {
+            if (driver instanceof IPShipMount) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Client, after a portal's sync: a holder that lost a ship mount moves the rest of its cluster to its new state at
+     * once. Each portal of a cluster is synced in its own entity tick, so the other portals' syncs can come first, and
+     * until the holder's sync the client's animation still drives them from the ship and moves them back onto its last
+     * pose; nothing moves them after that. An end disassembled where it stood was then off by a fraction of a block on
+     * the client, and a player coming out of the far side fell back through the face beside it.
+     */
+    public static void afterClientSync(final Portal portal, final int shipMountsBefore) {
+        if (shipMountsBefore > 0 && shipMountCount(portal) < shipMountsBefore) {
+            portal.rectifyClusterPortals(false);
+        }
+    }
+
     @Nullable
     private static IPShipMount mountIn(final List<PortalAnimationDriver> drivers) {
         for (final PortalAnimationDriver driver : drivers) {

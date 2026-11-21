@@ -86,4 +86,10 @@ final class IPPehkuiScaleType {
     static double motion(Entity entity) {
         return ScaleTypes.MOTION.getScaleData(entity).getScale();
     }
+
+    static double movement(Entity entity) {
+        // the factor Pehkui's mixin on Entity.move multiplies a self-propelled move by: MOTION, or 1 with Pehkui's
+        // scaledMotion option off
+        return virtuoel.pehkui.util.ScaleUtils.getMotionScale(entity);
+    }
 }

@@ -652,9 +652,10 @@ public class ServerTeleportationManager {
         );
         
         portal.onEntityTeleportedOnServer(entity);
-        
-        ScaleUtils.onServerEntityTeleported(entity, portal);
-        
+
+        // Immersive Aeronautics: its velocity, transformed above, keeps the portal's scaling once with Pehkui
+        ScaleUtils.onTeleportedWithVelocity(entity, portal);
+
         // a new entity may be created
         this.lastTeleportGameTime.put(entity, currGameTime);
     }

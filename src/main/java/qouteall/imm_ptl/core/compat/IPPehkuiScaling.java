@@ -110,6 +110,14 @@ public final class IPPehkuiScaling {
         return active ? IPPehkuiScaleType.motion(entity) : 1.0;
     }
 
+    /**
+     * The factor Pehkui multiplies an entity's own moves by (its velocity, walking, falling) on their way into
+     * {@code Entity.move}: its motion scale, 1 when Pehkui's {@code scaledMotion} is off; 1 without Pehkui.
+     */
+    public static double movementScale(Entity entity) {
+        return active ? IPPehkuiScaleType.movement(entity) : 1.0;
+    }
+
     /** Keeps {@link #MIRROR_TAG} equal to the portal scaling Pehkui holds for a player (server side). */
     static void mirror(Entity entity, double scale) {
         if (!(entity instanceof Player) || entity.level() == null || entity.level().isClientSide()) {

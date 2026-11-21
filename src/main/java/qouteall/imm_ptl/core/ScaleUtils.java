@@ -16,12 +16,16 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPehkuiScaling;
 import qouteall.imm_ptl.core.portal.Portal;
 
 @SuppressWarnings({"resource", "JavadocReference", "DanglingJavadoc"})
 public class ScaleUtils {
-    
+
+    // Immersive Aeronautics
+    private static final Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+
     /**
      * It's the id of attribute modifier of scale.
      */
@@ -179,6 +183,40 @@ public class ScaleUtils {
         return getVanillaScale(entity) * IPPehkuiScaling.motionScale(entity);
     }
     
+    /**
+     * Immersive Aeronautics: {@link #onServerEntityTeleported} for an entity whose velocity IP's teleport has just
+     * transformed through the portal ({@link Portal#transformVelocityRelativeToPortal}, which multiplies it by the
+     * portal's scaling, so its speed in the world follows its new size). Pehkui moves an entity by its velocity times
+     * its motion scale, which the crossing multiplies by the scaling as well, so the speed was scaled twice: through a
+     * x0.5 portal an entity moved at a quarter of its old speed, through a x2 one at four times it, until friction
+     * settled the velocity a few ticks later. Dividing the velocity by the change in that factor scales it once, with
+     * Pehkui or without (where the factor stays 1).
+     */
+    public static void onTeleportedWithVelocity(Entity entity, Portal portal) {
+        double before = IPPehkuiScaling.movementScale(entity);
+        onServerEntityTeleported(entity, portal);
+        keepWorldVelocity(entity, before);
+    }
+
+    /**
+     * Immersive Aeronautics: divides the entity's velocity by the change in Pehkui's movement factor
+     * ({@link IPPehkuiScaling#movementScale}) since {@code movementScaleBefore}; see {@link #onTeleportedWithVelocity}
+     */
+    public static void keepWorldVelocity(Entity entity, double movementScaleBefore) {
+        double after = IPPehkuiScaling.movementScale(entity);
+        if (after == movementScaleBefore || !(after > 0) || !(movementScaleBefore > 0)) {
+            return;
+        }
+        Vec3 velocity = entity.getDeltaMovement();
+        entity.setDeltaMovement(velocity.scale(movementScaleBefore / after));
+        LOGGER.info(
+            "[IPPehkui] {} {}: movement scale {} -> {}, velocity {} -> {}",
+            entity.level().isClientSide ? "client" : "server", entity.getName().getString(),
+            String.format("%.3f", movementScaleBefore), String.format("%.3f", after),
+            String.format("%.4f", velocity.length()), String.format("%.4f", entity.getDeltaMovement().length())
+        );
+    }
+
     public static void doScalingForEntity(Entity entity, Portal portal) {
         // Immersive Aeronautics: by the portal's factor (doScalingForEntity(Entity, double))
         doScalingForEntity(entity, portal.getScaling());

@@ -109,6 +109,49 @@ public class MixinSableEntityCollision_StraddleCut {
         }
     }
 
+    /**
+     * A server player on a far half stands on it, as Sable has a server player stand on the ship it tracks. Sable gives
+     * server players no collision with sub-levels (the client's position wins) and has one that tracks a ship stand: on
+     * the ground, its fall stopped. One on a far half tracks nothing (the ship is in another level), so the server's own
+     * movement step let it fall through the far half, faster every tick until the client's next position came; its pose
+     * was then tested down there, where the far half above it made it crawl or crouch, and that pose went to the client.
+     * Runs after {@link #ip_dropForeignTracking} (declared after it, same injection point).
+     */
+    @Inject(method = "collide", at = @At("HEAD"), cancellable = true, require = 0)
+    private static void ip_serverPlayerStandsOnFarHalf(final Entity entity, final Vec3 collisionMotion, final Vec3 velocityMotion,
+                                                       final LevelReusedVectors sink, final CallbackInfoReturnable<SubLevelEntityCollision.CollisionInfo> cir) {
+        if (!(entity instanceof net.minecraft.server.level.ServerPlayer) || Sable.HELPER.getTrackingSubLevel(entity) != null) {
+            return;
+        }
+        final List<IPStraddleCut.Projection> projections = IPStraddleCut.projectionsInto(entity.level());
+        if (projections.isEmpty()) {
+            return;
+        }
+        final AABB box = entity.getBoundingBox();
+        final AABB feet = new AABB(box.minX, box.minY - IP_FEET_REACH, box.minZ, box.maxX, box.minY, box.maxZ);
+        boolean near = false;
+        for (final IPStraddleCut.Projection projection : projections) {
+            near |= projection.mappedBounds().intersects(feet);
+        }
+        if (!near || dev.ryanhcode.sable.mixinhelpers.CanFallAtleastHelper.canFallAtleastWithSubLevels(entity.level(), feet) == null) {
+            return;
+        }
+        final SubLevelEntityCollision.CollisionInfo info = new SubLevelEntityCollision.CollisionInfo();
+        final boolean falling = collisionMotion.y < 0.0;
+        info.motion = falling ? new Vec3(collisionMotion.x, 0.0, collisionMotion.z) : collisionMotion;
+        info.verticalCollision = falling;
+        info.verticalCollisionBelow = falling;
+        entity.setOnGround(true);
+        if (entity.getDeltaMovement().y < 0.0) {
+            entity.setDeltaMovement(entity.getDeltaMovement().multiply(1.0, 0.0, 1.0));
+        }
+        cir.setReturnValue(info);
+    }
+
+    /** How far below a server player's feet a far half still holds it up (a client standing on one reports a millimetre above). */
+    @Unique
+    private static final double IP_FEET_REACH = 0.1;
+
     @Inject(method = "collide", at = @At("RETURN"), require = 0)
     private static void ip_noForeignTracking(final Entity entity, final Vec3 collisionMotion, final Vec3 velocityMotion,
                                              final LevelReusedVectors sink, final CallbackInfoReturnable<SubLevelEntityCollision.CollisionInfo> cir) {
@@ -172,7 +215,8 @@ public class MixinSableEntityCollision_StraddleCut {
     private static Pose3d ip_mapLogicalPose(final SubLevel ship, final Operation<Pose3d> original,
                                             @Local(argsOnly = true) final Entity entity) {
         final Pose3d pose = original.call(ship);
-        final IPStraddleCut.Projection projection = ship.getLevel() == entity.level() ? null : IPStraddleCut.projectionOf(entity.level(), ship);
+        final IPStraddleCut.Projection projection = ship.getLevel() == entity.level() ? null
+                : IPStraddleCut.projectionNear(entity.level(), ship, entity.getBoundingBox());
         final Behind behind = ship.getLevel() == entity.level() ? null : ip_behind.get().get(ship);
         if (behind != null) {
             final Pose3d mapped = behind.projection().map().mapPose(pose);

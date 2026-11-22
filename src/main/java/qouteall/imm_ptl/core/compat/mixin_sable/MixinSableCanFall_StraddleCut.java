@@ -78,7 +78,7 @@ public class MixinSableCanFall_StraddleCut {
     )
     private static Pose3dc ip_mapLastPose(final SubLevel ship, final Operation<Pose3dc> original, final Level level, final AABB aabb) {
         final Pose3dc pose = original.call(ship);
-        final IPStraddleCut.Projection projection = ship.getLevel() == level ? null : IPStraddleCut.projectionOf(level, ship);
+        final IPStraddleCut.Projection projection = ship.getLevel() == level ? null : IPStraddleCut.projectionNear(level, ship, aabb);
         if (projection == null) {
             ip_current.remove();
             return pose;

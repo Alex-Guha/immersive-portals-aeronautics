@@ -55,6 +55,13 @@ public final class IPStraddleCut {
         return crossing;
     }
 
+    /**
+     * A trimmed box thinner than this along the cut is dropped. A ship resting against something at the plane sits a
+     * few millimetres past it (contact skin), which left a sliver of every block there on the far side; Sable's entity
+     * collision lets an entity through a sliver lying on top of other blocks, so the far half under it held nothing.
+     */
+    private static final double MIN_KEPT_THICKNESS = 1.0e-2;
+
     /** {@link #classify} result for a block wholly past a plane. */
     public static final List<double[]> CUT = List.of();
 
@@ -106,7 +113,7 @@ public final class IPStraddleCut {
             } else {
                 max[axis] = Math.min(max[axis], t);
             }
-            if (max[axis] - min[axis] < 1.0e-4) {
+            if (max[axis] - min[axis] < MIN_KEPT_THICKNESS) {
                 return false;
             }
         }
@@ -326,6 +333,36 @@ public final class IPStraddleCut {
             }
         }
         return null;
+    }
+
+    /**
+     * A ship straddling two portals into one level has a far half there past each of their exits; the one that
+     * matters to something at {@code near} is the one whose exit is nearest (a far half reaches out from its exit). Not
+     * the distance along the exit's plane: two exits facing each other on one line put an entity at either far half
+     * on both exits' centre lines.
+     *
+     * @return the projection of {@code ship} into {@code level} whose far half {@code near} is next to, or null when
+     * it has none there
+     */
+    @org.jetbrains.annotations.Nullable
+    public static Projection projectionNear(final Level level, final SubLevel ship, final net.minecraft.world.phys.AABB near) {
+        if (ship.getLevel() == level) {
+            return null;
+        }
+        final Vec3 centre = near.getCenter();
+        Projection best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (final Projection projection : projectionsInto(level)) {
+            if (projection.ship() != ship) {
+                continue;
+            }
+            final double score = centre.distanceToSqr(projection.keepPoint());
+            if (score < bestScore) {
+                best = projection;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     /**

@@ -57,6 +57,20 @@ public final class IPSableClientPlotChunks {
             || Math.abs(cz) > IPSableCompatHelper.PLOT_SPACE_CHUNK_THRESHOLD;
     }
 
+    /**
+     * The chunk a ship's plot holds at a plot-space position, which Sable's own {@code ClientChunkCache.getChunk} hook
+     * serves without IP: IP's map has only the chunks the server sent, not those a mod built straight into a plot (Pym's
+     * client mirrors of Create: Pocket Sized hat and hat stand builds), which were drawn as empty chunks. Null outside
+     * plot space, without Sable, or when no plot holds one there (IP's map answers then).
+     */
+    @org.jetbrains.annotations.Nullable
+    public static LevelChunk plotChunk(ClientLevel level, int cx, int cz) {
+        if (!SABLE || !isPlotSpace(cx, cz)) {
+            return null;
+        }
+        return Impl.plotChunk(level, cx, cz);
+    }
+
     /** After IP's chunk map stored a chunk received from the server. */
     public static void onChunkLoaded(ClientLevel level, LevelChunk chunk) {
         ChunkPos pos = chunk.getPos();
@@ -76,6 +90,14 @@ public final class IPSableClientPlotChunks {
 
     /** Separate class so Sable's types are only loaded once a plot-space chunk shows up. */
     private static final class Impl {
+        static LevelChunk plotChunk(ClientLevel level, int cx, int cz) {
+            SubLevelContainer container = SubLevelContainer.getContainer(level);
+            if (container == null || !container.inBounds(cx, cz)) {
+                return null;
+            }
+            return container.getChunk(new ChunkPos(cx, cz));
+        }
+
         static void onChunkLoaded(ClientLevel level, LevelChunk chunk) {
             SubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container == null || !container.inBounds(chunk.getPos())) {

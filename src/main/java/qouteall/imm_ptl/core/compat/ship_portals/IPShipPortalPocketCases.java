@@ -36,6 +36,40 @@ public final class IPShipPortalPocketCases {
         IPShipPortalAnchors.shatterCarriedPortals(ship.getUniqueId(), "its ship is being packed into a Create: Pocket Sized case");
     }
 
+    /**
+     * Pym is about to take {@code ship} out of the world as a build (put on a hat or a hat stand: {@code Detached.adopt}):
+     * no portal is kept on those ({@link IPShipPortalAnchors}), and once taken Sable no longer finds the ship.
+     */
+    public static void onBecomingHeldBuild(final ServerSubLevel ship) {
+        IPShipPortalAnchors.shatterCarriedPortals(ship.getUniqueId(), HELD_BUILD);
+    }
+
+    /**
+     * Whether no portal may be lit at {@code pos} because it is in the plot of one of Pym's builds (a hat or hat stand
+     * build, or a ship riding one). Refused before any portal block is placed: breaking a portal there afterwards
+     * changes the build's blocks, which Pocket takes for the ship being broken off the hat.
+     */
+    public static boolean refusesPortalAt(final net.minecraft.server.level.ServerLevel level, final BlockPos pos) {
+        if (!qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat.isLoaded()) {
+            return false;
+        }
+        final dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer container =
+            dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
+        if (container == null || !container.inBounds(pos)) {
+            return false;
+        }
+        final dev.ryanhcode.sable.sublevel.plot.LevelPlot plot = container.getPlot(new net.minecraft.world.level.ChunkPos(pos));
+        final dev.ryanhcode.sable.sublevel.SubLevel ship = plot == null ? null : plot.getSubLevel();
+        if (ship == null || !qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat.isHeldBuild(ship)) {
+            return false;
+        }
+        LOGGER.info("[IPShipPortal] no portal lit at {} on ship {}: {}", pos.toShortString(), ship.getUniqueId(), HELD_BUILD);
+        return true;
+    }
+
+    /** Why a portal on one of Pym's builds shatters. */
+    public static final String HELD_BUILD = "its ship is a Create: Pocket Sized hat or hat stand build";
+
     /** A portal loaded from a case being unpacked (one packed before its portals shattered at packing). */
     public static void onUnpackedPortal(final Portal portal) {
         IPShipPortalAnchors.dropFromCase(portal);

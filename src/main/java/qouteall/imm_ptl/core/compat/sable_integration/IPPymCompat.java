@@ -34,6 +34,14 @@ public final class IPPymCompat {
     @Nullable
     private static volatile String problem;
     private static volatile boolean warnedCall;
+    private static volatile boolean resolvedLifecycles;
+    @Nullable
+    private static Method isHosted;
+    @Nullable
+    private static Method isDetached;
+    @Nullable
+    private static Method findDetached;
+    private static volatile boolean warnedLifecycle;
 
     private IPPymCompat() {
     }
@@ -63,6 +71,87 @@ public final class IPPymCompat {
     /** @return whether Pym is changing the ship's scale (false without Pym) */
     public static boolean isResizing(final SubLevel ship) {
         return !query(true, ship);
+    }
+
+    /**
+     * Whether Pym has the ship worn (its {@code Hosted} lifecycle, from Pym 0.7: Create: Pocket Sized's hats and the ships
+     * riding them): its physics body is pinned under the world while its pose follows the wearer's head, Pym sends it to
+     * no client, and Pocket moves it to the wearer's dimension itself. False without Pym 0.7.
+     */
+    public static boolean isWorn(final SubLevel ship) {
+        return lifecycle(true, ship);
+    }
+
+    /**
+     * Whether the ship is one of Pym's builds rather than a ship of the world: worn ({@link #isWorn}), or detached
+     * ({@code Detached}: kept out of physics, such as a build on a Pocket hat stand). Those neither cross nor straddle
+     * portals, nor carry them. False without Pym 0.7.
+     */
+    public static boolean isHeldBuild(final SubLevel ship) {
+        return lifecycle(true, ship) || lifecycle(false, ship);
+    }
+
+    /**
+     * Whether Pym holds a detached ship with this UUID ({@code Detached.find}): detached ships are kept out of Sable's
+     * UUID lookup, so a ship that is not found may still be one. False without Pym 0.7.
+     */
+    public static boolean isDetachedId(final java.util.UUID ship) {
+        if (!isLoaded()) {
+            return false;
+        }
+        resolveLifecycles();
+        if (findDetached == null) {
+            return false;
+        }
+        try {
+            return findDetached.invoke(null, ship) != null;
+        } catch (final Throwable t) {
+            if (!warnedLifecycle) {
+                warnedLifecycle = true;
+                LOGGER.warn("[IPShipPortal] could not ask Pym whether a ship is worn or detached (logged once)", t);
+            }
+            return false;
+        }
+    }
+
+    private static boolean lifecycle(final boolean worn, final SubLevel ship) {
+        if (!isLoaded()) {
+            return false;
+        }
+        resolveLifecycles();
+        final Method method = worn ? isHosted : isDetached;
+        if (method == null) {
+            return false;
+        }
+        try {
+            return (boolean) method.invoke(null, ship);
+        } catch (final Throwable t) {
+            if (!warnedLifecycle) {
+                warnedLifecycle = true;
+                LOGGER.warn("[IPShipPortal] could not ask Pym whether a ship is worn or detached (logged once)", t);
+            }
+            return false;
+        }
+    }
+
+    private static synchronized void resolveLifecycles() {
+        if (resolvedLifecycles) {
+            return;
+        }
+        resolvedLifecycles = true;
+        try {
+            final ClassLoader loader = IPPymCompat.class.getClassLoader();
+            isHosted = Class.forName("com.misterblusky9.pym.api.Hosted", true, loader).getMethod("isHosted", SubLevel.class);
+            final Class<?> detached = Class.forName("com.misterblusky9.pym.api.Detached", true, loader);
+            isDetached = detached.getMethod("isDetached", SubLevel.class);
+            findDetached = detached.getMethod("find", java.util.UUID.class);
+        } catch (final ReflectiveOperationException | LinkageError t) {
+            isHosted = null;
+            isDetached = null;
+            findDetached = null;
+            // Pym before 0.7 has neither lifecycle: every ship is a ship of the world
+            LOGGER.info("[IPShipPortal] this Pym has no worn or detached ships (Hosted.isHosted, Detached.isDetached: before Pym 0.7)");
+        }
     }
 
     /** @return {@code isSettled} (true when unknown) or {@code isScaled} (false when unknown) of Pym's scale query */

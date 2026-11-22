@@ -112,6 +112,11 @@ public class ImmPtlClientChunkMap extends ClientChunkCache {
     
     @Override
     public LevelChunk getChunk(int x, int z, ChunkStatus chunkStatus, boolean create) {
+        // Immersive Aeronautics: a ship's plot chunk first, as Sable's ClientChunkCache hook does without IP
+        LevelChunk plotChunk = IPSableClientPlotChunks.plotChunk(this.level, x, z);
+        if (plotChunk != null) {
+            return plotChunk;
+        }
         return readChunkMap(chunkMap -> {
             LevelChunk chunk = chunkMap.get(ChunkPos.asLong(x, z));
             if (chunk != null) {

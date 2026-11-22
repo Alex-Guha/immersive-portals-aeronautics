@@ -74,6 +74,8 @@ public final class IPShipPortalTraversalImpl {
     private static final Map<UUID, Long> STUCK_SINCE = new HashMap<>();
     /** Per ship: hull centre at the previous scan, to tell which way it is moving through a portal. */
     private static final Map<UUID, Vec3> LAST_HULL_CENTER = new HashMap<>();
+    /** Pym's worn or detached ships logged at a portal (once each). */
+    private static final Set<UUID> HELD_BUILDS_AT_PORTAL = new HashSet<>();
     /** Movement into a portal between two scans below this (0.25 m/s) does not carry a ship through. */
     private static final double STILL_EPSILON = 0.05;
     /** Portals and ships this far beyond the hull size around an arrival point are outside the clearance search. */
@@ -99,6 +101,7 @@ public final class IPShipPortalTraversalImpl {
         SUPPRESSED_UNTIL_CLEAR.clear();
         STUCK_SINCE.clear();
         LAST_HULL_CENTER.clear();
+        HELD_BUILDS_AT_PORTAL.clear();
         TICK_FAILURES.clear();
         IPShipThroughPortalSync.reset();
         IPShipRiderCarry.reset();
@@ -258,6 +261,16 @@ public final class IPShipPortalTraversalImpl {
     private static void considerShip(MinecraftServer server, ServerLevel level, ServerSubLevel sub, long tick, Predicate<Portal> wanted) {
         UUID shipId = sub.getUniqueId();
         if (IPShipRagdollGuard.isRagdollSubLevel(sub)) {
+            return;
+        }
+        if (IPPymCompat.isHeldBuild(sub)) {
+            // a worn Pocket hat follows its wearer's head, and Pocket takes it along when the wearer changes dimension
+            if (!HELD_BUILDS_AT_PORTAL.contains(shipId)
+                    && !overlappingPortals(level, IPSableBridge.worldAabb(sub).inflate(1.0), ANY_PORTAL).isEmpty()) {
+                HELD_BUILDS_AT_PORTAL.add(shipId);
+                LOGGER.info("[IPShipPortal] ship {} at a portal is {} by Pym: left to Pocket, it neither crosses nor straddles",
+                    shipId, IPPymCompat.isWorn(sub) ? "worn" : "detached");
+            }
             return;
         }
 
@@ -424,7 +437,7 @@ public final class IPShipPortalTraversalImpl {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container != null) {
             for (ServerSubLevel other : container.getAllSubLevels()) {
-                if (!other.isRemoved() && !other.getUniqueId().equals(shipId)) {
+                if (!other.isRemoved() && !other.getUniqueId().equals(shipId) && !IPPymCompat.isWorn(other)) {
                     AABB box = IPSableBridge.worldAabb(other);
                     if (box.intersects(area)) {
                         boxes.add(box);

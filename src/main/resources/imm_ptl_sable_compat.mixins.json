@@ -48,7 +48,8 @@
     "MixinShieldImpactPayload_PortalViewers",
     "MixinServerLevel_CrossDimensionParticles",
     "MixinPocketSubLevelEvents_ShatterPortals",
-    "MixinPocketedEntities_Portals"
+    "MixinPocketedEntities_Portals",
+    "MixinPymDetached_ShatterPortals"
   ],
   "client": [
     "MixinPymScaleHandshake_AllLevels",

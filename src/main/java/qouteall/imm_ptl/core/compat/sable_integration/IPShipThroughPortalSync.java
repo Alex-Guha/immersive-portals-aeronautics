@@ -119,7 +119,8 @@ public final class IPShipThroughPortalSync {
                 List<ServerSubLevel> subLevels = container.getAllSubLevels();
                 if (!subLevels.isEmpty()) {
                     for (ServerSubLevel sub : List.copyOf(subLevels)) {
-                        if (!sub.isRemoved() && !IPShipRagdollGuard.isRagdollSubLevel(sub)) {
+                        // Pym sends a worn Pocket hat to no client (Pocket draws it on the wearer)
+                        if (!sub.isRemoved() && !IPShipRagdollGuard.isRagdollSubLevel(sub) && !IPPymCompat.isWorn(sub)) {
                             collectViewers(level, sub, visibleByPlayer, players, shipLevels);
                         }
                     }
@@ -367,7 +368,8 @@ public final class IPShipThroughPortalSync {
      * @return whether the ship was taken over (Sable must not send its removal)
      */
     public static boolean adoptFromSable(ServerPlayer player, ServerLevel shipLevel, ServerSubLevel sub) {
-        if (!isAccessorAvailable() || sub.isRemoved() || IPShipRagdollGuard.isRagdollSubLevel(sub) || player.level() == shipLevel) {
+        if (!isAccessorAvailable() || sub.isRemoved() || IPShipRagdollGuard.isRagdollSubLevel(sub) || IPPymCompat.isWorn(sub)
+                || player.level() == shipLevel) {
             return false;
         }
         HashMap<UUID, Map<UUID, ServerSubLevel>> visibleByPlayer = new HashMap<>();

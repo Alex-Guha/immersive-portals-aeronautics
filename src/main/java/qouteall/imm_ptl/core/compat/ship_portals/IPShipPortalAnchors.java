@@ -40,6 +40,7 @@ import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat;
 import qouteall.imm_ptl.core.compat.sable_integration.IPSableCompatHelper;
 import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
@@ -641,6 +642,12 @@ public final class IPShipPortalAnchors {
                 scheduleShatter(holder, "its ship was removed");
                 return;
             }
+            // a worn hat's pose follows its wearer and its body is under the world; clients only see Pocket's copy of it
+            final ServerSubLevel carrier = loadedCarrier(driver);
+            if ((carrier != null && IPPymCompat.isHeldBuild(carrier)) || (carrier == null && IPPymCompat.isDetachedId(driver.carrier))) {
+                scheduleShatter(holder, IPShipPortalPocketCases.HELD_BUILD);
+                return;
+            }
             if (!driver.carrierSeen()) {
                 if (shouldBeLoaded(new End(holder, thisSide), driver)) {
                     missingCarrier = driver.carrier;
@@ -1143,7 +1150,8 @@ public final class IPShipPortalAnchors {
         ShipSide best = null;
         int bestCount = 0;
         for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(portal.getBoundingBox().inflate(1.0)))) {
-            if (ship.isRemoved()) {
+            if (ship.isRemoved() || IPPymCompat.isHeldBuild(ship)) {
+                // no portal on a worn Pocket hat or a detached build (IPPymCompat.isHeldBuild)
                 continue;
             }
             final UnilateralPortalState plot = toPlot(world, ship.logicalPose());

@@ -543,7 +543,9 @@ final class IPStraddleController {
                                      final Set<IPStraddleSessions.Key> seen, final List<Handoff> handoffs,
                                      final int arrivalHop) {
         final boolean openOnly = arrivalHop > MAX_CHAINED_HANDOFFS;
-        if (ship.getPlot().getBoundingBox() == BoundingBox3i.EMPTY || IPShipRagdollGuard.isRagdollSubLevel(ship)) {
+        if (ship.getPlot().getBoundingBox() == BoundingBox3i.EMPTY || IPShipRagdollGuard.isRagdollSubLevel(ship)
+                || IPPymCompat.isHeldBuild(ship)) {
+            // a worn Pocket hat's body is pinned under the world, a detached build has none: neither can straddle
             return;
         }
         if (IPPymCompat.isResizing(ship)) {

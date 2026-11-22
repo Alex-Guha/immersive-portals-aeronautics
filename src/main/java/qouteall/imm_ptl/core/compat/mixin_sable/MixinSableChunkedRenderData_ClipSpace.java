@@ -81,6 +81,14 @@ public class MixinSableChunkedRenderData_ClipSpace {
 
             this.ip_savedClipEquation = clipEquation;
             this.ip_savedUniform = clipUniform;
+            // a build Pym draws on a player's head or in a hand: its own model-view, not the camera's
+            if (qouteall.imm_ptl.core.compat.sable_integration.client.IPPymPortraitClip.isDrawing()) {
+                double[] portrait = qouteall.imm_ptl.core.compat.sable_integration.client.IPPymPortraitClip.equation(
+                    clipEquation, modelView, this.subLevel);
+                clipUniform.set((float) portrait[0], (float) portrait[1], (float) portrait[2], (float) portrait[3]);
+                clipUniform.upload();
+                return;
+            }
             // the carrier of the far portal side: exactly at the plane, without IP's 1 cm band
             double[] carrierEquation = IPShipPortalClip.equationFor(this.subLevel);
             if (carrierEquation != null) {

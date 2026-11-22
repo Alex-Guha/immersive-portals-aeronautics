@@ -9,7 +9,7 @@
 
 # Create: Simurail (github.com/Crystaelix/Create-Simurail): required mixins (defaultRequire 1) into IPStraddleSessions,
 # its Session's fields and IPStraddleRender
-mod create-simurail ecIWrCq0 0.1.1+mc1.21.1 simurail.mixins.json com/crystaelix/simurail/mixin
+mod create-simurail FxqnnYs6 0.1.4+mc1.21.1 simurail.mixins.json com/crystaelix/simurail/mixin
 
 # Create: Teleporters: required @Pseudo mixins into IPShipPortals and IPShipPortalAnchors, and the members its
 # AeronauticsPortalIntegration reaches by reflection, listed below

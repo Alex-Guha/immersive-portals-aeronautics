@@ -128,6 +128,10 @@ public final class IPStackFallColumns {
             PACK_MESHES.clear();
             return;
         }
+        if (!ClientWorldLoader.getIsInitialized()) {
+            // joining a world: a client tick can come before IP sets up its client worlds
+            return;
+        }
         if (--ticksToScan > 0) {
             return;
         }

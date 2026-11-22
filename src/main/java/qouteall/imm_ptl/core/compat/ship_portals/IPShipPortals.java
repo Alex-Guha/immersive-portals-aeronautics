@@ -16,10 +16,12 @@ import qouteall.imm_ptl.core.platform_specific.IPConfig;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalExtension;
 import qouteall.imm_ptl.core.portal.animation.PortalAnimationDriver;
+import qouteall.imm_ptl.core.portal.animation.UnilateralPortalState;
 import qouteall.imm_ptl.core.portal.custom_portal_gen.CustomPortalGeneration;
 import qouteall.imm_ptl.core.portal.nether_portal.BlockPortalShape;
 import qouteall.imm_ptl.core.portal.nether_portal.BreakablePortalEntity;
 import qouteall.imm_ptl.core.portal.nether_portal.NetherPortalEntity;
+import qouteall.q_misc_util.my_util.DQuaternion;
 
 import java.util.List;
 import java.util.UUID;
@@ -214,6 +216,47 @@ public final class IPShipPortals {
     @Nullable
     public static IPShipMount ownSideMount(final Portal portal) {
         return sideMount(portal, true);
+    }
+
+    /**
+     * {@code portal}'s own side and the side it leads to, each in its own frame: its ship's plot for a side on a ship,
+     * the world for a side fixed in the world. Both stay put while the ships fly, so whatever maps one onto the other
+     * ({@code UnilateralPortalState.combine}) is fixed too. Null when a ship side's plot state is not known. Server and
+     * client; for an unscaled carrier only (a scaled one changes the size between the frames).
+     */
+    @Nullable
+    public static FramedSides framedSides(final Portal portal) {
+        final UnilateralPortalState own = sideInFrame(portal, true);
+        final UnilateralPortalState far = sideInFrame(portal, false);
+        return own == null || far == null ? null : new FramedSides(own, far, ownSideCarrier(portal), farSideCarrier(portal));
+    }
+
+    /** A portal's two sides in their own frames ({@link #framedSides}), with the ship of each (null: the world). */
+    public record FramedSides(UnilateralPortalState own, UnilateralPortalState far,
+                              @Nullable UUID ownCarrier, @Nullable UUID farCarrier) {
+    }
+
+    @Nullable
+    private static UnilateralPortalState sideInFrame(final Portal portal, final boolean own) {
+        final UnilateralPortalState face = own ? portal.getThisSideState() : portal.getOtherSideState();
+        final Portal holder = portal.getAnimationHolder();
+        if (holder == null || sideMount(portal, own) == null) {
+            return face;
+        }
+        // the holder's state on that side, in the plot and in the world, gives the plot's pose; the face is mapped back
+        // through it (the face may be the holder's flipped, reverse or parallel portal)
+        final boolean holderSide = isOnHolderSide(portal, holder) == own;
+        final UnilateralPortalState plot = holderSide ? holder.animation.thisSideReferenceState : holder.animation.otherSideReferenceState;
+        if (plot == null) {
+            return null;
+        }
+        final UnilateralPortalState world = holderSide ? holder.getThisSideState() : holder.getOtherSideState();
+        final DQuaternion toPlot = world.orientation().hamiltonProduct(plot.orientation().getConjugated()).getConjugated();
+        return new UnilateralPortalState.Builder()
+                .from(face)
+                .position(toPlot.rotate(face.position().subtract(world.position())).add(plot.position()))
+                .orientation(toPlot.hamiltonProduct(face.orientation()))
+                .build();
     }
 
     /**

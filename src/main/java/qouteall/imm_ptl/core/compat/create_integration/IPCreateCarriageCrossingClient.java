@@ -386,7 +386,8 @@ public final class IPCreateCarriageCrossingClient {
      */
     public static BitSet withoutBeyondPlane(final BitSet shouldRender, final List<BlockEntity> blockEntities,
                                             @Nullable final AbstractContraptionEntity entity, final BitSet scratch) {
-        if (!(entity instanceof CarriageContraptionEntity) || shouldRender.isEmpty() || IPCreateCarriageCrossing.STOCK
+        final boolean elevator = entity != null && !(entity instanceof CarriageContraptionEntity) && IPElevatorPortals.keep(entity) != null;
+        if ((!(entity instanceof CarriageContraptionEntity) && !elevator) || shouldRender.isEmpty() || IPCreateCarriageCrossing.STOCK
             || IPCreateCarriageVanillaDraw.isDrawingFarHalf()) {
             return shouldRender;
         }
@@ -655,6 +656,9 @@ public final class IPCreateCarriageCrossingClient {
      * with Create alone).
      */
     public static boolean drawsVanillaPart(@Nullable final Entity entity, final net.minecraft.core.BlockPos localPos) {
+        if (!(entity instanceof CarriageContraptionEntity) && entity instanceof AbstractContraptionEntity contraption) {
+            return IPElevatorPortalsClient.drawsVanillaPart(contraption, localPos);
+        }
         if (!(entity instanceof final CarriageContraptionEntity carriageEntity) || IPCreateCarriageCrossing.STOCK
             || IPCreateCarriageVanillaDraw.isDrawingFarHalf()) {
             return true;

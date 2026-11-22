@@ -22,6 +22,34 @@ import org.jetbrains.annotations.Nullable;
  * same past its fourth wait in a frame.
  */
 public final class IPPortalVisibility {
+    /** Portals drawn every frame whatever their query says, until the time given ({@link System#nanoTime}). */
+    private static final java.util.Map<java.util.UUID, Long> KEPT_DRAWN = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Draws the portal {@code portalId} every frame for the next {@code millis}, without the one-frame delay above: for
+     * a portal something is about to come through in view, such as a Create elevator car that fills the portal's opening
+     * and hides it until its floor or roof has passed the plane; drawn a frame late, that floor or roof blinked out.
+     */
+    public static void keepDrawn(final java.util.UUID portalId, final long millis) {
+        KEPT_DRAWN.put(portalId, System.nanoTime() + millis * 1_000_000L);
+    }
+
+    /** Whether {@link #keepDrawn} holds for this portal now. */
+    public static boolean isKeptDrawn(final java.util.UUID portalId) {
+        if (KEPT_DRAWN.isEmpty()) {
+            return false;
+        }
+        final Long until = KEPT_DRAWN.get(portalId);
+        if (until == null) {
+            return false;
+        }
+        if (System.nanoTime() > until) {
+            KEPT_DRAWN.remove(portalId, until);
+            return false;
+        }
+        return true;
+    }
+
     /** Debug switch {@code portal_query_wait}: upstream's waiting, for comparison. */
     public static boolean waitForQueries = false;
 

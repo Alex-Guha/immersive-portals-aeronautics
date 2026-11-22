@@ -224,6 +224,11 @@ public class ClientTeleportationManager {
             return null;
         }
 
+        // Immersive Aeronautics: a player seated on an elevator car is handed over at the plane by the server
+        if (player.getVehicle() instanceof qouteall.imm_ptl.core.compat.IPSeatedCrossingHandled) {
+            return null;
+        }
+
         // Immersive Aeronautics: a player riding another player (Carry On) crosses with the carrier, never on their own
         if (player.getVehicle() instanceof net.minecraft.world.entity.player.Player) {
             return null;

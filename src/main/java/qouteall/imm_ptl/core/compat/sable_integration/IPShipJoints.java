@@ -194,6 +194,25 @@ public final class IPShipJoints {
         }
     }
 
+    /**
+     * Test hook: clicks the physics assembler at {@code pos} (a world position, over a ship's assembler too), as a player
+     * does: assembles, or starts to disassemble its ship. @return its last refusal, "clicked", or why nothing was clicked
+     */
+    public static String clickAssembler(ServerLevel level, BlockPos pos) {
+        if (!SIMULATED_LOADED) {
+            return "Simulated is not loaded";
+        }
+        final BlockPos at = qouteall.imm_ptl.core.compat.create_integration.IPElevatorFrames.blockAt(level, pos);
+        if (!(level.getBlockEntity(at) instanceof final dev.simulated_team.simulated.content.blocks.physics_assembler.PhysicsAssemblerBlockEntity assembler)) {
+            return "no physics assembler at " + at.toShortString();
+        }
+        final var before = assembler.getLastAssemblyException();
+        assembler.assembleOrDisassemble();
+        final var refusal = assembler.getLastAssemblyException();
+        // the assembler keeps its last refusal until something clears it: only a new one is this click's
+        return refusal == null || refusal == before ? "clicked " + at.toShortString() : "refused: " + refusal.component.getString();
+    }
+
     /** Touches Simulated's classes; loaded only when Simulated is present. */
     private static final class Impl {
         static void shiftLoadedJoints(ServerLevel level, Map<UUID, BlockPos> shifts) {

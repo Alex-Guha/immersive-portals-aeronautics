@@ -26,6 +26,8 @@
     "MixinSablePhysicsSystem_FusedStep",
     "MixinSableRapier3D_LoadLibrary",
     "MixinSableRapierPipeline_OwnBackend",
+    "MixinSableRapierPipeline_ElevatorCars",
+    "MixinServerLevelPlot_ElevatorFarCopies",
     "MixinSableRapierBakery_LevelBound",
     "IPSubLevelContainerAccessor",
     "IPLevelPlotAccessor",

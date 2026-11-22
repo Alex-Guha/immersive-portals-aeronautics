@@ -49,7 +49,8 @@ import java.util.WeakHashMap;
  * and everything else is rejected.
  * <p>
  * Create carriages crossing a portal are cut the same way, by their own and their bogeys' embeddings
- * ({@link IPCreateCarriageCrossingClient}); that needs no Sable.
+ * ({@link IPCreateCarriageCrossingClient}), and so are elevator cars through a portal ({@link IPElevatorPortalsClient});
+ * that needs no Sable.
  * <p>
  * The embeddings are Flywheel's own or, with Colorwheel (Flywheel under an Iris shader pack), Colorwheel's, which
  * work the same way ({@link IPFlywheelEmbeddings}); Colorwheel's programs take the indirect planes from another
@@ -224,6 +225,11 @@ public final class IPFlywheelStraddleClip {
                 } else {
                     // Create carriages crossing a portal, then straddling ships
                     plane = IPCreateCarriageCrossingClient.flywheelPlane(environment, root, renderOrigin);
+                    if (plane == null && !CONTRAPTIONS.isEmpty()) {
+                        // elevator cars through a portal, and their far copies
+                        final WeakReference<Entity> reference = CONTRAPTIONS.get(root);
+                        plane = IPElevatorPortalsClient.flywheelPlane(reference != null ? reference.get() : null, renderOrigin);
+                    }
                     if (plane == null && SABLE) {
                         plane = qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleRender
                             .flywheelPlane(context.level(), plotProbe(root), renderOrigin);
@@ -294,6 +300,18 @@ public final class IPFlywheelStraddleClip {
         final dev.ryanhcode.sable.sublevel.plot.LevelPlot plot =
                 container.getPlot(new net.minecraft.world.level.ChunkPos(new net.minecraft.core.BlockPos(plotProbe(root(environment)))));
         return plot != null && plot.getSubLevel() == ship;
+    }
+
+    /** DIAGNOSTIC (elevators 2.9.31.15): whether a contraption entity has an embedding registered here. */
+    static boolean hasContraptionEmbedding(final Entity entity) {
+        synchronized (CONTRAPTIONS) {
+            for (final WeakReference<Entity> reference : CONTRAPTIONS.values()) {
+                if (reference.get() == entity) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Remembers the entity of a Create contraption's embedding ({@link #CONTRAPTIONS}). */

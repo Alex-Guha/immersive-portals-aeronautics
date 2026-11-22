@@ -21,8 +21,8 @@ import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 
 /**
  * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
- * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel}, {@code debug joints} and
- * {@code debug simassemble <assembler> <from>} and {@code debug reroot <n>} (operators only).
+ * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel}, {@code debug joints},
+ * {@code debug simassemble <assembler> <from>}, {@code debug reroot <n>}, {@code debug assembler <pos>} and {@code debug elevator <pulley> [floor]} (operators only).
  * Registered only with Sable present.
  */
 public final class IPStraddleCommand {
@@ -51,6 +51,14 @@ public final class IPStraddleCommand {
                                         .then(Commands.argument("assembler", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("from", BlockPosArgument.blockPos())
                                                         .executes(IPStraddleCommand::simAssemble))))
+                                .then(Commands.literal("assembler")
+                                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                                .executes(IPStraddleCommand::clickAssembler)))
+                                .then(Commands.literal("elevator")
+                                        .then(Commands.argument("pulley", BlockPosArgument.blockPos())
+                                                .executes(IPStraddleCommand::clickElevator)
+                                                .then(Commands.argument("floor", IntegerArgumentType.integer(0))
+                                                        .executes(IPStraddleCommand::targetElevator))))
                                 .then(Commands.literal("reroot")
                                         .then(Commands.argument("index", IntegerArgumentType.integer())
                                                 .executes(IPStraddleCommand::reroot))))));
@@ -84,6 +92,40 @@ public final class IPStraddleCommand {
             return 0;
         }
         context.getSource().sendSuccess(() -> Component.literal("Assembled from " + from.toShortString()), true);
+        return 1;
+    }
+
+    /** Test hook: clicks a physics assembler as a player does. */
+    private static int clickAssembler(final CommandContext<CommandSourceStack> context) {
+        final String result = IPShipJoints.clickAssembler(context.getSource().getLevel(), BlockPosArgument.getBlockPos(context, "pos"));
+        context.getSource().sendSuccess(() -> Component.literal("Assembler: " + result), true);
+        return 1;
+    }
+
+    /** Test hook: clicks a Create elevator pulley, as a player does to start or stop it. */
+    private static int clickElevator(final CommandContext<CommandSourceStack> context) {
+        final BlockPos pulley = BlockPosArgument.getBlockPos(context, "pulley");
+        if (!net.neoforged.fml.ModList.get().isLoaded("create")
+            || !qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortals.debugClick(context.getSource().getLevel(), pulley)) {
+            context.getSource().sendFailure(Component.literal("No elevator pulley at " + pulley.toShortString()));
+            return 0;
+        }
+        context.getSource().sendSuccess(() -> Component.literal("Clicked the elevator pulley at " + pulley.toShortString()), true);
+        return 1;
+    }
+
+    /** Test hook: picks the n-th floor from the bottom on a Create elevator's car, as its controls do. */
+    private static int targetElevator(final CommandContext<CommandSourceStack> context) {
+        final BlockPos pulley = BlockPosArgument.getBlockPos(context, "pulley");
+        final String done = net.neoforged.fml.ModList.get().isLoaded("create")
+            ? qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortals.debugTarget(
+                context.getSource().getLevel(), pulley, IntegerArgumentType.getInteger(context, "floor"))
+            : null;
+        if (done == null) {
+            context.getSource().sendFailure(Component.literal("No running elevator with that floor at " + pulley.toShortString()));
+            return 0;
+        }
+        context.getSource().sendSuccess(() -> Component.literal("Called " + done), true);
         return 1;
     }
 

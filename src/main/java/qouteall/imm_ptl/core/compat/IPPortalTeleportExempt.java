@@ -5,7 +5,8 @@ package qouteall.imm_ptl.core.compat;
 
 /**
  * An entity IP never teleports through a portal on its own: another mod moves it across (Create's carriage copies, which
- * Create places and replaces itself; a copy IP carried to the other side would leave Create's record of it dangling).
+ * Create places and replaces itself; a copy IP carried to the other side would leave Create's record of it dangling), or
+ * it belongs to a block in its own level (contraptions moved by a pulley, piston, bearing or gantry shaft).
  */
 public interface IPPortalTeleportExempt {
 }

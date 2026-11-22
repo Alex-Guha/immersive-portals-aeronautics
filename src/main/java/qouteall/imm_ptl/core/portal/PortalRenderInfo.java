@@ -247,6 +247,9 @@ public class PortalRenderInfo implements AutoCloseable {
                 decision = qouteall.imm_ptl.core.render.IPPortalVisibility.decideWithoutWaiting(
                     lastFrameQuery, visibility.lastFrameRendered
                 );
+                if (!decision && qouteall.imm_ptl.core.render.IPPortalVisibility.isKeptDrawn(portal.getUUID())) {
+                    decision = true;
+                }
                 decision = IPFrustumCapture.occlusionDecision(portal, decision, thisFrameQuery::fetchQueryResult);
                 visibility.thisFrameRendered = decision;
                 return decision;

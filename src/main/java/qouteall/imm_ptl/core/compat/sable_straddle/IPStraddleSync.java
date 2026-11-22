@@ -32,7 +32,11 @@ import java.util.UUID;
 final class IPStraddleSync {
     private static final String CLIENT = "qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleClientSessions.RemoteCallables.";
     /** Per player: the sessions they were told about, with the version they were told. */
-    private static final Map<UUID, Map<IPStraddleSessions.Key, Integer>> KNOWN = new HashMap<>();
+    private static final Map<UUID, Map<IPStraddleSessions.Key, Told>> KNOWN = new HashMap<>();
+
+    /** What a player was told of a session: which session object, at which version. */
+    private record Told(long serial, int version) {
+    }
     /** Sessions closed by a hand-off since the last sync (the client keeps drawing them until the ship arrives). */
     private static final Set<IPStraddleSessions.Key> HANDED_OFF = new HashSet<>();
 
@@ -55,12 +59,12 @@ final class IPStraddleSync {
 
         for (final ServerPlayer player : server.getPlayerList().getPlayers()) {
             online.add(player.getUUID());
-            final Map<IPStraddleSessions.Key, Integer> known = KNOWN.computeIfAbsent(player.getUUID(), id -> new HashMap<>());
+            final Map<IPStraddleSessions.Key, Told> known = KNOWN.computeIfAbsent(player.getUUID(), id -> new HashMap<>());
             for (final IPStraddleSessions.Session session : current.values()) {
-                final Integer told = known.get(session.key);
-                if (told == null || told != session.version) {
+                final Told now = new Told(session.serial, session.version);
+                if (!now.equals(known.get(session.key))) {
                     sendBegin(player, session);
-                    known.put(session.key, session.version);
+                    known.put(session.key, now);
                 }
             }
             known.entrySet().removeIf(entry -> {

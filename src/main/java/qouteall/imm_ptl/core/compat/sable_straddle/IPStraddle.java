@@ -210,7 +210,7 @@ public final class IPStraddle {
     /** How far from a ship's far half players get the ship synced. */
     private static final double FAR_HALF_VIEW_DISTANCE = 96.0;
 
-    private static AABB mapBounds(final IPPortalSimilarity isometry, final BoundingBox3dc box) {
+    static AABB mapBounds(final IPPortalSimilarity isometry, final BoundingBox3dc box) {
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < 8; i++) {

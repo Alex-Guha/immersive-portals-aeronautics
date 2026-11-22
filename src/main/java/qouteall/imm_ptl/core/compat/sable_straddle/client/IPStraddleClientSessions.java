@@ -373,6 +373,8 @@ public final class IPStraddleClientSessions {
             RETIRED.remove(new Key(ship, portal));
             RETIRED_UNTIL.remove(new Key(ship, portal));
             STRADDLING_PLOT.remove(new Key(ship, portal));
+            // a mounted session's mount follows its begin in the same tick; one without (its carrier unloaded) has none
+            MOUNTS.remove(new Key(ship, portal));
             SESSIONS.put(new Key(ship, portal),
                     new Session(ship, shipDim, portal, destDim, origin, normal, axisW, axisH, halfW, halfH, map));
             LOGGER.debug("[IPStraddle] client: ship {} straddles portal {} ({} -> {})", ship, portal, shipDim.location(), destDim.location());

@@ -146,6 +146,8 @@ final class IPStraddleController {
         WAITING_SINCE.clear();
         STUCK_SINCE.clear();
         LET_THROUGH.clear();
+        SAVED_PORTAL_MISSING_SINCE.clear();
+        IPStraddleLoadHold.reset();
     }
 
     /** Straddling switched off: ships let through frame blocks collide with them again. */
@@ -201,9 +203,10 @@ final class IPStraddleController {
             }
         }
 
+        IPStraddleLoadHold.tick(server, tick);
         for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
             if (!seen.contains(key)) {
-                IPStraddleSessions.close(key, live.contains(key.ship()) ? "away from the portal" : "ship gone");
+                IPStraddleSessions.close(key, live.contains(key.ship()) ? "away from the portal" : IPStraddleSessions.SHIP_GONE);
             }
         }
         IPShipCrossingDetector.retain(live);
@@ -573,6 +576,8 @@ final class IPStraddleController {
         if (!tooLarge && (!nearby.isEmpty() || LET_THROUGH.containsKey(ship.getUniqueId()))) {
             letThroughFrameIfStuck(level, ship, IPShipCrossingDetector.blocks(ship, tick), nearby, tick);
         }
+        final IPStraddleSavedSessions saved = IPStraddleSavedSessions.of(level.getServer());
+        forgetSavedPortalsAway(saved, ship.getUniqueId(), nearby, tick);
         if (nearby.isEmpty()) {
             return;
         }
@@ -598,6 +603,21 @@ final class IPStraddleController {
             final boolean haveSession = IPStraddleSessions.has(key);
             final Vec3 normal = portal.getNormal().scale(-1.0);
             final State state = IPShipCrossingDetector.evaluate(ship, blocks, portal, normal, DETECTION_MARGIN);
+            // the face this ship straddled when it was saved or unloaded: its session comes back on that face, with no
+            // direction needed (a ship that just loaded has none), and the doorway's other face does not get one
+            boolean restored = !haveSession && saved.has(ship.getUniqueId(), portal.getUUID());
+            if (restored && (state.phase() != Phase.STRADDLING
+                    || !IPShipCrossingDetector.straddlesInsideAperture(ship, blocks, portal, normal, DETECTION_MARGIN))) {
+                saved.remove(ship.getUniqueId(), portal.getUUID());
+                restored = false;
+            }
+            if (!haveSession && !restored) {
+                final Portal savedTwin = oppositeFace(portal, nearby);
+                if (savedTwin != null && saved.has(ship.getUniqueId(), savedTwin.getUUID()) && !hasSession(ship, savedTwin)) {
+                    declined(ship, portal, state, "the opposite face had its session when it was saved");
+                    continue;
+                }
+            }
 
             // Opening one segment early is neutral for a ship still in front of the plane (the clip regions only
             // remove contacts past it) and lets a fast ship meet an already open doorway.
@@ -607,7 +627,7 @@ final class IPStraddleController {
                     || (arrivalHop > 0 && state.phase() == Phase.STRADDLING && state.maxDistance() < 0.0))
                     && IPShipCrossingDetector.willEnter(ship, blocks, portal, normal, DETECTION_MARGIN, EARLY_OPEN_SEGMENTS)
                     && IPShipCrossingDetector.frameContactAhead(level, ship, blocks, portal, normal, EARLY_OPEN_SEGMENTS) < -FRAME_TOUCHING;
-            final boolean straddling = (state.phase() == Phase.STRADDLING && (haveSession || state.sweptThroughAperture()))
+            final boolean straddling = (state.phase() == Phase.STRADDLING && (haveSession || restored || state.sweptThroughAperture()))
                     || predicted;
 
             if (haveSession && state.phase() == Phase.STRADDLING
@@ -636,7 +656,7 @@ final class IPStraddleController {
             }
             if (straddling) {
                 final Portal twin = oppositeFace(portal, nearby);
-                if (!ownsFace(twin, state, haveSession, predicted)) {
+                if (!ownsFace(twin, state, haveSession || restored, predicted)) {
                     declined(ship, portal, state, "the opposite face owns the doorway (entry direction " + state.sweptDirection() + ")");
                     continue;
                 }
@@ -663,6 +683,10 @@ final class IPStraddleController {
                         IPStraddleSessions.close(key, "the opposite face of the doorway has a session");
                     }
                     continue;
+                }
+                if (restored) {
+                    LOGGER.info("[IPStraddle] ship {} loaded through portal {}: reopening the session it had", ship.getUniqueId(), portal.getUUID());
+                    IPStraddleLoadHold.hold(ship, tick);
                 }
                 if (IPStraddleSessions.openOrRefresh(ship, portal, level, normal, tick)) {
                     seen.add(key);
@@ -913,6 +937,31 @@ final class IPStraddleController {
      * A new session belongs to the face the ship's blocks were swept through towards the destination; an existing one
      * keeps its face. Faces with no coincident opposite face need no proof.
      */
+    /** Ticks a saved portal of a loaded ship may be missing (its chunk loading after the ship's) before the entry goes. */
+    private static final long SAVED_PORTAL_GRACE = 200;
+    private static final Map<IPStraddleSessions.Key, Long> SAVED_PORTAL_MISSING_SINCE = new HashMap<>();
+
+    /**
+     * Forgets the saved portals of {@code ship} that have not been near it for {@link #SAVED_PORTAL_GRACE} ticks: broken,
+     * or the ship moved away while not straddling (it collides with the world there as any ship does).
+     */
+    private static void forgetSavedPortalsAway(final IPStraddleSavedSessions saved, final UUID ship, final List<Portal> nearby,
+                                               final long tick) {
+        for (final UUID portal : saved.portalsOf(ship)) {
+            final IPStraddleSessions.Key key = new IPStraddleSessions.Key(ship, portal);
+            boolean near = false;
+            for (final Portal p : nearby) {
+                near |= p.getUUID().equals(portal);
+            }
+            if (near) {
+                SAVED_PORTAL_MISSING_SINCE.remove(key);
+            } else if (tick - SAVED_PORTAL_MISSING_SINCE.computeIfAbsent(key, k -> tick) > SAVED_PORTAL_GRACE) {
+                SAVED_PORTAL_MISSING_SINCE.remove(key);
+                saved.remove(ship, portal);
+            }
+        }
+    }
+
     private static boolean ownsFace(@Nullable final Portal twin, final State state, final boolean haveSession, final boolean predicted) {
         if (twin == null || haveSession || predicted) {
             return true;

@@ -71,6 +71,11 @@ final class IPStraddleSessions {
         double imageShipScale = 1.0;
         /** Bumped whenever the portal geometry changes, so clients are told again ({@link IPStraddleSync}). */
         int version;
+        /**
+         * Unique to this session object: one closed and opened again in the same tick (its carriers changed) has the same
+         * key and version, and clients must still be told ({@link IPStraddleSync}).
+         */
+        final long serial = ++lastSerial;
         /** Server tick the session opened at. */
         long openedTick;
         /** Added to the clip depth while the ship waits wholly past the plane ({@link #setExtraDepth}). */
@@ -99,6 +104,7 @@ final class IPStraddleSessions {
     }
 
     private static final Map<Key, Session> SESSIONS = new HashMap<>();
+    private static long lastSerial;
     /**
      * Frame blocks a ship stuck in a portal's frame is let through until it is free of them (world boxes of its own
      * level, grown by {@link #GHOST_MARGIN}; {@code IPStraddleController}): their contacts are dropped for its body and,
@@ -172,6 +178,12 @@ final class IPStraddleSessions {
             if (existing.ship != ship || existing.bodyId != ship.getRuntimeId()) {
                 // the ship was reloaded (new body): its old image died with the old body
                 close(key, "ship reloaded");
+            } else if (!sameCarriers(existing.mount, IPShipPortalAnchors.mountFor(portal))) {
+                // A ship carrying the portal loaded after the session opened (a session reopened as its ship loads,
+                // before the far side's ship), or unloaded: the image follows only the carriers it was made with, so
+                // a moved carrier left the far half behind until the ship fell out of the opening. Made again with
+                // the carriers there are now, in the same tick.
+                close(key, "the ships carrying the portal changed");
             } else {
                 refreshIfMoved(existing, portal, normal);
                 rebuildImageIfResized(existing);
@@ -218,6 +230,7 @@ final class IPStraddleSessions {
             return false;
         }
         SESSIONS.put(key, session);
+        IPStraddleSavedSessions.of(source.getServer()).add(key.ship(), key.portal());
         IPMountedStraddle.sendAnchor(session, destScene);
         applyClipRegions(session, portal);
 
@@ -266,6 +279,13 @@ final class IPStraddleSessions {
         applyClipRegions(session, session.portal);
     }
 
+    private static boolean sameCarriers(@Nullable final IPShipPortalAnchors.Mount a, @Nullable final IPShipPortalAnchors.Mount b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        return a.source() == b.source() && a.destination() == b.destination();
+    }
+
     /**
      * Closes a session: removes the image and recomputes the ship's own clip regions from its remaining sessions.
      */
@@ -273,6 +293,10 @@ final class IPStraddleSessions {
         final Session session = SESSIONS.remove(key);
         if (session == null) {
             return;
+        }
+        if (!SHIP_GONE.equals(reason)) {
+            // a ship unloading keeps its record: it loads again still through the portal
+            IPStraddleSavedSessions.of(session.source.getServer()).remove(key.ship(), key.portal());
         }
         final long destScene = RapierExt.sceneHandle(session.dest);
         if (destScene != 0L) {
@@ -287,6 +311,9 @@ final class IPStraddleSessions {
     /**
      * Closes every session (straddling switched off).
      */
+    /** The reason a session closes when its ship is no longer loaded (unloaded, or removed). */
+    static final String SHIP_GONE = "ship gone";
+
     static void closeAll(final String reason) {
         for (final Key key : keys()) {
             close(key, reason);

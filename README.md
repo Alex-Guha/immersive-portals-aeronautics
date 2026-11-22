@@ -17,22 +17,24 @@ Picking up where [Immersive Portals](https://github.com/iPortalTeam/ImmersivePor
 *   DH & Voxy LODs render through portals
 *   No visual glitches or rendering issues (unless there's a mod incompatibility)
 *   Shader support!
+*   INTERDIMENSIONAL HELLEVATORS!
 *   Vast inter-mod compatibility support. If you find an issue, I will almost certainly fix it.
 *   So, so many fixes on the base Immersive Portals
+*   Complete config overhaul and performance presets
 *   …and more!
 
 ### Good to know
 
 - **Portals on ships.** A portal on a ship links to a fixed portal in the other dimension, and breaks if it is carried through another portal. Moving one end of a portal is an easy way to travel far, so the setting *Portals on ships* chooses Off, Limited or Unlimited. Limited, the default, breaks the portal once its two ends are farther apart than *Ship Portal Range* (in chunks).
 - **Air pressure.** Air pressure can differ between a portal's two ends, so a ship may sink or rise after passing through unless the portals are placed with care.
-- **Frame rate.** *View Distance Through Portals* limits how far you see past a portal before the view fades into fog. Drawing less behind portals helps the frame rate when several are in view. A full performance update will come soon.
+- **Shaders.** Using shaders wtih multiple portals or nested portals will significantly hurt performance (duh). Use the performance configs in mod menu to help deal with this.
 
 ### Compatibility
 
 Works with:
 - Sodium and Iris, with shaders: BSL, Complementary Unbound, Complementary Reimagined and Sundial Lite are tested. If the view through a portal flickers, turn off the shader's TAA (often under "Post-processing").
 - Distant Horizons. Turn off its anti-aliasing if LODs jitter through portals.
-- Voxy with Roxy, and Neo Voxy.
+- Voxy with Roxy, or Neo Voxy.
 - Separate Sable Render Distance (SSRD), Create Sable Dynamic Lights, Create: Teleporters, [Create: Pocket Sized](https://www.curseforge.com/minecraft/mc-mods/pocket) (scaled portals resize ships passing through), [Shield Generators](https://www.curseforge.com/minecraft/mc-mods/create-aeronautics-shield-generator-force-field), and many others not listed. If you run into an issue, make a github issue or post it in the discord.
 
 Partly compatible: Vista (no crash, but its far cameras shouldn't work through portals).

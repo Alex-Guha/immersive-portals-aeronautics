@@ -216,6 +216,7 @@ dependencies {
     compileOnly "maven.modrinth:colorwheel:lV874ox8"            // Colorwheel 1.3.2+mc1.21.1 (NeoForge): Flywheel under Iris packs
     compileOnly "maven.modrinth:create-teleporters:WHTovylv"    // Create: Teleporters 3.0.1b
     compileOnly "maven.modrinth:create-pipes-n-physics:kH90vhqN" // Create: Pipes'n physics 3.2.1
+    compileOnly "maven.modrinth:create-pocket-sized:p7CpwP4q"  // Create: Pocket Sized 0.32.0; bundles Pym 0.7.1 as jar-in-jar (our hooks reach it by reflection)
 
     // Unit tests (./gradlew test, part of build): plain JUnit on classes that need no running game
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"

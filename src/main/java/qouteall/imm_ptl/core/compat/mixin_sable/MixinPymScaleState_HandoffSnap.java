@@ -12,7 +12,7 @@ import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleHandoffLatch
 import java.util.UUID;
 
 /**
- * Create: Pocket Sized (Pym) flags a ship for an interpolation snap when it is placed discontinuously
+ * Pym (the library bundled by Create: Pocket Sized) flags a ship for an interpolation snap when it is placed discontinuously
  * ({@code ScaleState.consumeClientInterpolationSnap}); its client tick then sets the ship to its newest snapshot and
  * clears the interpolation buffer ({@code ClientSubLevelMixin.pym$resetDiscontinuousPlacementInterpolation}). On the
  * new copy of a hand-off, playing on its old copy's timeline with the old copy's snapshots carried over, that threw the

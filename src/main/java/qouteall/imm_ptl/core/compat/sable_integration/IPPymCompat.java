@@ -304,6 +304,39 @@ public final class IPPymCompat {
         }
     }
 
+    /**
+     * Test hook: leases {@code ship} to a Pym scale driver that holds it at {@code scale} until {@code ticks} from now
+     * ({@code Pym.resize().drive}), as another mod built on Pym would (a driver is kept by the ship's UUID).
+     *
+     * @return null when leased, otherwise why not
+     */
+    @Nullable
+    public static String debugDrive(final ServerSubLevel ship, final double scale, final long ticks) {
+        if (!isLoaded()) {
+            return "Pym is not loaded";
+        }
+        try {
+            final ClassLoader loader = IPPymCompat.class.getClassLoader();
+            final Class<?> driverClass = Class.forName("com.misterblusky9.pym.api.ScaleDriver", true, loader);
+            final Object driver = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[]{driverClass},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "commandedScale" -> scale;
+                    case "isRemoved" -> false;
+                    case "toString" -> "ip_aeronautics debug driver at " + scale;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
+                });
+            final Class<?> pym = Class.forName("com.misterblusky9.pym.api.Pym", true, loader);
+            final Object resizing = pym.getMethod("resize").invoke(null);
+            resizing.getClass().getMethod("drive", ServerSubLevel.class, driverClass, long.class)
+                .invoke(resizing, ship, driver, ship.getLevel().getGameTime() + ticks);
+            return null;
+        } catch (final Throwable t) {
+            return t.toString();
+        }
+    }
+
     private static synchronized void resolve() {
         if (resolved) {
             return;

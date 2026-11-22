@@ -508,7 +508,7 @@ final class IPStraddleController {
     private static void leaveResizing(final ServerLevel level, final ServerSubLevel ship) {
         for (final IPStraddleSessions.Key key : IPStraddleSessions.keys()) {
             if (key.ship().equals(ship.getUniqueId())) {
-                IPStraddleSessions.close(key, "resized by Create: Pocket Sized, crosses in one step");
+                IPStraddleSessions.close(key, "being resized by Pym, crosses in one step");
             }
         }
         if (LET_THROUGH.remove(ship.getUniqueId()) != null) {
@@ -803,7 +803,7 @@ final class IPStraddleController {
 
     /**
      * Why {@code ship} cannot go through {@code portal}, a portal that changes size, or null when it can (or the portal
-     * keeps sizes): Create: Pocket Sized must be able to make it its scale times the portal's at the hand-off, and
+     * keeps sizes): Pym must be able to make it its scale times the portal's at the hand-off, and
      * ships tied to others do not straddle such portals yet (docs/lessons/scaled-ships.md).
      */
     @Nullable

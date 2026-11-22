@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPStraddleHandoffLatch;
 
 /**
- * Create: Pocket Sized (Pym) keeps each ship's client scale by UUID and puts it into the ship every client tick, twice:
+ * Pym (the library bundled by Create: Pocket Sized) keeps each ship's client scale by UUID and puts it into the ship every client tick, twice:
  * into Sable's interpolation snapshot before the pose is interpolated ({@code ClientSubLevel.tick},
  * {@code pym$preserveScaleThroughSableInterpolation}) and into the pose after it ({@code ScaleMotion.enforceClientScale}),
  * both from {@code ScaleState.getClientScale(ClientSubLevel)}. The old copy a hand-off holds until its replacement is

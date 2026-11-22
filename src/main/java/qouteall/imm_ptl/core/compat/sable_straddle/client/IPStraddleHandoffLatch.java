@@ -52,7 +52,7 @@ public final class IPStraddleHandoffLatch {
     /** Snapshots of the two copies are one server tick when their positions agree this well [blocks] through the portal. */
     private static final double MATCH_TOLERANCE = 1.0e-3;
 
-    /** @param scale the ship's scale when it was held (Create: Pocket Sized's client must not change it, below) */
+    /** @param scale the ship's scale when it was held (Pym's client must not change it, below) */
     private record Pending(ClientLevel level, int x, int z, ClientSubLevel ship, long deadline, double scale) {
     }
 

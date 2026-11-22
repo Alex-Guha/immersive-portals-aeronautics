@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Several mods on the compile classpath ship their classes / libraries as jar-in-jar
-# (Sodium 0.8.x, Iris, Sable, Create, Create Aeronautics ...). Gradle only sees the outer
+# (Sodium 0.8.x, Iris, Sable, Create, Create Aeronautics, Create: Pocket Sized's Pym ...). Gradle only sees the outer
 # wrapper jar, so extract the nested jars (recursively) into deps/ (gitignored), where
 # build.gradle picks them up as compileOnly.
 set -euo pipefail
@@ -22,7 +22,7 @@ extract_nested() {  # $1 = jar to inspect
   rm -rf "$tmp"
 }
 
-for outer in $(find "$CACHE/sodium" "$CACHE/iris" "$CACHE/sable" "$CACHE/create" "$CACHE/create-aeronautics" "$CACHE/distanthorizons" "$CACHE/sable-ragdolls" -name '*.jar' 2>/dev/null); do
+for outer in $(find "$CACHE/sodium" "$CACHE/iris" "$CACHE/sable" "$CACHE/create" "$CACHE/create-aeronautics" "$CACHE/distanthorizons" "$CACHE/sable-ragdolls" "$CACHE/create-pocket-sized" -name '*.jar' 2>/dev/null); do
   extract_nested "$outer"
 done
 

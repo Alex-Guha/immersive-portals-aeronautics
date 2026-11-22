@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Checks that every target class, method and field named by a set of mixins exists in the jars we build against.
+"""Checks that every target class, method and field named by a set of mixins exists in the jars we build against:
+a method named with its whole descriptor (method = "name(...)...", an @At target) must have exactly that descriptor, and
+an @Inject handler that takes the target method's parameters (a @WrapMethod handler: all of them) must take the ones the
+target has, compared by simple type name.
 
     python3 scripts/mixincheck.py [options] <repo> <classpath> <config.json>...
 
@@ -168,6 +171,181 @@ def members(cls):
     return names
 
 
+PRIMITIVES = {"Z": "boolean", "B": "byte", "C": "char", "S": "short", "I": "int", "J": "long", "F": "float",
+              "D": "double", "V": "void"}
+
+
+def parse_descriptor(desc):
+    """'(ILa/b/C;)V' -> (('int', 'a.b.C'), 'void'); None unless a whole method descriptor"""
+    match = re.fullmatch(r"\((.*)\)(.+)", desc)
+    if not match:
+        return None
+
+    def types(s):
+        out, i = [], 0
+        while i < len(s):
+            dims = 0
+            while s[i] == "[":
+                dims, i = dims + 1, i + 1
+            if s[i] == "L":
+                end = s.index(";", i)
+                name, i = s[i + 1:end].replace("/", "."), end + 1
+            else:
+                name, i = PRIMITIVES[s[i]], i + 1
+            out.append(name + "[]" * dims)
+        return out
+    try:
+        params, ret = types(match.group(1)), types(match.group(2))
+    except (ValueError, KeyError, IndexError):
+        return None
+    return (tuple(params), ret[0]) if len(ret) == 1 else None
+
+
+def strip_generics(s):
+    previous = None
+    while previous != s:
+        previous, s = s, re.sub(r"<[^<>]*>", "", s)
+    return s
+
+
+def type_variable(t):
+    """a type javap prints without a package and that is no primitive: a type variable, which erases to its bound"""
+    base = t.replace("[]", "")
+    return "." not in base and base not in PRIMITIVES.values()
+
+
+SIGNATURE = re.compile(r"^(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp)\s+)*"
+                       r"(?:([\w.$\[\]]+)\s+)?([\w.$]+)\((.*)\)")
+
+
+@functools.lru_cache(maxsize=None)
+def signatures(cls, inherited=True):
+    """{method name: [(param types, return type)]}, erased as javap prints them, constructors as <init> (never
+    inherited); with the supertypes' methods unless inherited is False; None if the class is not on the classpath"""
+    c = canonical(cls)
+    if c is None:
+        return None
+    load_with_supers([c])
+    lines = JAVAP_OUT.get(c)
+    if lines is None:
+        return None
+    out = {}
+    for line in lines[1:]:
+        match = SIGNATURE.match(strip_generics(line.strip()).replace("...", "[]"))
+        if not match:
+            continue
+        ret, name, params = match.groups()
+        if ret is None:
+            if name != c:
+                continue
+            ret, name = "void", "<init>"
+        out.setdefault(name, []).append((tuple(p.strip() for p in params.split(",") if p.strip()), ret))
+    if inherited:
+        for sup in supers_of(c):
+            if sup != c:
+                for name, sigs in (signatures(sup) or {}).items():
+                    if name != "<init>":
+                        out.setdefault(name, []).extend(sigs)
+    return out
+
+
+def same_type(wanted_type, javap_type):
+    return type_variable(javap_type) or wanted_type == javap_type
+
+
+def has_descriptor(cls, name, desc):
+    """whether a class (or a supertype) has a method of that name with exactly that descriptor"""
+    sigs = (signatures(cls) or {}).get(name, [])
+    params, ret = desc
+    return any(len(p) == len(params) and all(map(same_type, params, p)) and same_type(ret, r) for p, r in sigs)
+
+
+def simple_type(t):
+    """'a.b.C$D[]' or 'C.D[]' -> 'D[]': how a handler's parameter, written with imports, is compared"""
+    dims = t.count("[]")
+    return re.split(r"[.$]", t.replace("[]", ""))[-1] + "[]" * dims
+
+
+def close_bracket(s, i):
+    """index just past the bracket that closes the one at s[i], skipping string and character literals"""
+    opening, closing = s[i], {"(": ")", "{": "}"}[s[i]]
+    depth, j = 0, i
+    while j < len(s):
+        ch = s[j]
+        if ch in "\"'":
+            j += 1
+            while j < len(s) and s[j] != ch:
+                j += 2 if s[j] == "\\" else 1
+        elif ch == opening:
+            depth += 1
+        elif ch == closing:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return len(s)
+
+
+def split_top(s):
+    """splits a parameter list on its commas outside brackets and generics"""
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(s):
+        if ch in "(<{":
+            depth += 1
+        elif ch in ")>}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(s[start:i])
+            start = i + 1
+    parts.append(s[start:])
+    return [p for p in parts if p.strip()]
+
+
+def handler_param(p):
+    """'@Local(ordinal = 1) final List<Foo> foos' -> ('List', coerced): its type as compared, and whether @Coerce"""
+    coerced = bool(re.search(r"@(?:[\w.]+\.)?Coerce\b", p))
+    while True:
+        match = re.search(r"@[\w.]+\s*", p)
+        if not match:
+            break
+        end = match.end()
+        if end < len(p) and p[end] == "(":
+            end = close_bracket(p, end)
+        p = p[:match.start()] + " " + p[end:]
+    p = strip_generics(p).replace("...", "[]").replace("final ", " ")
+    words = p.split()
+    return simple_type("".join(words[:-1])) if len(words) > 1 else "", coerced
+
+
+INJECTOR = re.compile(r"@(Inject|WrapMethod)\s*\(")
+
+
+def handlers(src):
+    """(kind, method selectors, [(param type, coerced)]) of each @Inject and @WrapMethod and the method it annotates"""
+    found = []
+    for match in INJECTOR.finditer(src):
+        end = close_bracket(src, match.end() - 1)
+        annotation = src[match.end():end - 1]
+        i = end
+        while True:                                   # other annotations on the handler
+            i += len(src[i:]) - len(src[i:].lstrip())
+            other = re.match(r"@[\w.]+\s*", src[i:])
+            if not other:
+                break
+            i += other.end()
+            if i < len(src) and src[i] == "(":
+                i = close_bracket(src, i)
+        declaration = re.match(r"[^;{(=@]*?[\w$]+\s*\(", src[i:])
+        if not declaration:
+            continue
+        start = i + declaration.end() - 1
+        params = [handler_param(p) for p in split_top(src[start + 1:close_bracket(src, start) - 1])]
+        selectors = [s for m in re.findall(r'method\s*=\s*(\{[^}]*\}|"[^"]*")', annotation)
+                     for s in re.findall(r'"([^"]+)"', m)]
+        found.append((match.group(1), selectors, params))
+    return found
+
+
 def resolve_class(simple, imports, wildcards, pkg):
     """the class a name in a mixin source means: imports, wildcard imports, its own package, java.lang"""
     head, _, rest = simple.partition(".")
@@ -206,7 +384,8 @@ def wanted(cls):
 
 
 def parse(cfg_name, pkg, name, src):
-    """(targets, [(owner or None, member)] of injectors, accessors and invokers, [(owner, member)] of @At targets)"""
+    """(targets, [(owner or None, member)] of injectors, accessors and invokers, [(owner, member)] of @At targets,
+    [(owner or None, method, descriptor)] named with a whole descriptor, handlers())"""
     src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
     src = re.sub(r"//.*", "", src)
     imports = re.findall(r"^import\s+([\w.$]+);", src, flags=re.M)
@@ -225,7 +404,7 @@ def parse(cfg_name, pkg, name, src):
     if not targets:
         problems.append((cfg_name, name, "NO TARGETS", ann[:80]))
         return None
-    methods = []
+    methods, descs = [], []
     for mstr in re.findall(r'method\s*=\s*(\{[^}]*\}|"[^"]*")', src):
         for s in re.findall(r'"([^"]+)"', mstr):
             owner = None
@@ -236,11 +415,17 @@ def parse(cfg_name, pkg, name, src):
             mname = s.split("(")[0].split("*")[0]
             if mname and mname not in ("<init>", "<clinit>"):
                 methods.append((owner, mname))
+            desc = parse_descriptor(s[s.index("("):]) if "(" in s and "*" not in s else None
+            if desc and mname != "<clinit>":
+                descs.append((owner, mname, desc))
     ats = []
     for tstr in re.findall(r'target\s*=\s*"([^"]+)"', src):
-        mm = re.match(r"L([^;]+);([\w$<>]+)", tstr)
+        mm = re.match(r"L([^;]+);([\w$<>]+)(\(.*)?", tstr)
         if mm:
             ats.append((mm.group(1).replace("/", "."), mm.group(2)))
+            desc = parse_descriptor(mm.group(3)) if mm.group(3) else None
+            if desc:
+                descs.append((mm.group(1).replace("/", "."), mm.group(2), desc))
     # @Accessor("field") and @Invoker("method"), or the name taken from the method's (getX/isX/setX, callX/invokeX)
     for kind, given, method in re.findall(
             r'@(Accessor|Invoker)\s*(?:\(\s*(?:value\s*=\s*)?"([^"]*)"[^)]*\))?[^;{(]*?\b(\w+)\s*\(', src):
@@ -248,7 +433,7 @@ def parse(cfg_name, pkg, name, src):
             prefix = re.match(r"(get|is|set)(?=[A-Z])" if kind == "Accessor" else r"(call|invoke)(?=[A-Z])", method)
             given = method[prefix.end()].lower() + method[prefix.end() + 1:] if prefix else method
         methods.append((None, given))
-    return targets, methods, ats
+    return targets, methods, ats, descs, handlers(src)
 
 
 problems = []
@@ -272,10 +457,10 @@ for cfg in args.configs:
             parsed.append((cfg_name, name) + result)
 
 # every class named anywhere, loaded in a few javap runs rather than one per mixin
-load_with_supers(canonical(c) for _cfg, _name, targets, methods, ats in parsed
+load_with_supers(canonical(c) for _cfg, _name, targets, methods, ats, _descs, _handlers in parsed
                  for c in targets + [o for o, _m in methods if o] + [o for o, _m in ats])
 
-for cfg_name, name, targets, methods, ats in parsed:
+for cfg_name, name, targets, methods, ats, descs, injectors in parsed:
     def target_missing(cls, kind):
         prefix = absent_mod(cls)
         if prefix:
@@ -305,6 +490,46 @@ for cfg_name, name, targets, methods, ats in parsed:
         checked += 1
         if mname not in ms:
             problems.append((cfg_name, name, "AT TARGET NOT FOUND", o + "#" + mname))
+    # a method named with its whole descriptor must have exactly that one: with require = 0, a hook on a method whose
+    # parameters changed is skipped without a word
+    for owner, mname, desc in descs:
+        for o in ([owner] if owner and wanted(owner) else [] if owner else targets):
+            ms = members(o)
+            if ms is None or mname not in ms:
+                continue                              # reported above
+            checked += 1
+            if not has_descriptor(o, mname, desc):
+                problems.append((cfg_name, name, "DESCRIPTOR NOT FOUND",
+                                 "%s#%s(%s)%s" % (o, mname, ", ".join(desc[0]), desc[1])))
+    # an @Inject handler takes none or all of the target method's parameters before its CallbackInfo, a @WrapMethod
+    # handler all of them before its Operation: a target whose parameters changed fails the hook at load
+    for kind, selectors, params in injectors:
+        marker = ("CallbackInfo", "CallbackInfoReturnable") if kind == "Inject" else ("Operation",)
+        count = next((i for i, (t, _c) in enumerate(params) if t in marker), None)
+        if count is None or (kind == "Inject" and count == 0):
+            continue
+        taken = params[:count]
+        for selector in selectors:
+            owner, s = None, selector
+            mm = re.match(r"L([^;]+);(.*)", s)
+            if mm:
+                owner, s = mm.group(1).replace("/", "."), mm.group(2)
+            mname = s.split("(")[0]
+            if not mname or "*" in mname or mname == "<clinit>":
+                continue
+            desc = parse_descriptor(s[s.index("("):]) if "(" in s else None
+            for o in ([owner] if owner and wanted(owner) else [] if owner else targets):
+                sigs = (signatures(o, mname != "<init>") or {}).get(mname)
+                if not sigs:
+                    continue                          # reported above
+                if desc:
+                    sigs = [(p, r) for p, r in sigs if len(p) == len(desc[0]) and all(map(same_type, desc[0], p))]
+                checked += 1
+                if not any(len(p) == count and all(c or type_variable(t) or simple_type(t) == h
+                                                   for (h, c), t in zip(taken, p)) for p, _r in sigs):
+                    problems.append((cfg_name, name, "HANDLER PARAMETERS DO NOT MATCH", "%s#%s: (%s), target %s" % (
+                        o, mname, ", ".join(h for h, _c in taken),
+                        " or ".join("(%s)" % ", ".join(simple_type(t) for t in p) for p, _r in sigs) or "gone")))
 
 if args.members:
     wanted_members = re.findall(r"^\s*([\w.$]+)#([\w$<>]+)\s*$", open(args.members, encoding="utf-8").read(), flags=re.M)

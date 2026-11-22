@@ -11,7 +11,13 @@ imm_ptl_voxy_compat.mixins.json  MixinVoxyDistantTrackRenderer_PortalEdges  TARG
 imm_ptl_voxy_compat.mixins.json  MixinVoxyKineticSnapshots_PlayerWorldOnly  TARGET CLASS NOT FOUND  me.cortex.voxy.client.compat.create.KineticSnapshots
 imm_ptl_voxy_compat.mixins.json  MixinVoxyMDICSectionRenderer_OwnLevel  AT OWNER NOT FOUND  me.cortex.voxy.client.compat.LodPipelineHooks
 imm_ptl_voxy_compat.mixins.json  MixinVoxyRenderSystem_PortalView  METHOD NOT FOUND  me.cortex.voxy.client.core.VoxyRenderSystem#renderOpaqueNow
+imm_ptl_voxy_compat.mixins.json  MixinVoxyRenderSystem_PortalView  DESCRIPTOR NOT FOUND  me.cortex.voxy.client.core.VoxyRenderSystem#setupViewport(org.joml.Matrix4fc, org.joml.Matrix4fc, double, double, double)me.cortex.voxy.client.core.rendering.Viewport
 imm_ptl_voxy_compat.mixins.json  MixinVoxySableParentChunkLightSync_IPChunkTracking  TARGET CLASS NOT FOUND  me.cortex.voxy.commonImpl.compat.sable.SableParentChunkLightSync
 
 # Roxy's own patch class, present only in a Roxy install's Voxy (require = 0)
 imm_ptl_voxy_compat.mixins.json  MixinVoxyRenderGenerationService_PortalSideResults  AT OWNER NOT FOUND  net.rasanovum.roxy.patch.RoxyVoxyRenderPatch
+
+# One wrap over a call in two Pocket Sized classes, PocketedSubLevelEvents#pocket and PocketCaseItem#captureWelded (from
+# Pocket 0.32): each method name is looked for in both classes, and each class has only one of them (require = 0)
+imm_ptl_sable_compat.mixins.json  MixinPocketSubLevelEvents_ShatterPortals  METHOD NOT FOUND  com.misterblusky9.pocket.item.PocketCaseItem#pocket
+imm_ptl_sable_compat.mixins.json  MixinPocketSubLevelEvents_ShatterPortals  METHOD NOT FOUND  com.misterblusky9.pocket.pocket.PocketedSubLevelEvents#captureWelded

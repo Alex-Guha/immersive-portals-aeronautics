@@ -108,7 +108,7 @@ public final class IPPhysicsBackend {
         // its scale query
         final String pymProblem = IPPymCompat.queryProblem();
         if (pymProblem != null) {
-            return fallBack("Create: Pocket Sized (Pym) is installed, but its ships' scale cannot be read (" + pymProblem + ")");
+            return fallBack("Pym (bundled with Create: Pocket Sized and other mods) is installed, but its ships' scale cannot be read (" + pymProblem + ")");
         }
 
         // JNI binds a native method in the libraries its class's loader loaded: Sable's Rapier3D and our RapierExt

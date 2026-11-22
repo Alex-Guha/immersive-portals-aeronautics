@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Create: Pocket Sized (Pym) keeps each ship's client scale in a map by UUID, and every client tick its
+ * Pym (the library bundled by Create: Pocket Sized) keeps each ship's client scale in a map by UUID, and every client tick its
  * {@code ScaleHandshake} lists the ships of the player's own level ({@code Minecraft.level}): a ship it has asked about
  * that is not in that list is forgotten ({@code forgetClientSnapshot}), and a ship without a scale is asked for. A
  * forgotten ship reads scale 1, which Pym writes into the ship's pose every client tick ({@code enforceClientScale}

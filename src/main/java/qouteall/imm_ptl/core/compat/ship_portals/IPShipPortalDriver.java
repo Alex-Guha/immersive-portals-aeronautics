@@ -60,7 +60,7 @@ public final class IPShipPortalDriver implements PortalAnimationDriver, IPShipMo
     public final Vec3 plotOrigin;
     private Vec3 lastOffset;
     private DQuaternion lastRotation;
-    /** The carrier's scale at the last result (Create: Pocket Sized), 1 for an unscaled carrier. */
+    /** The carrier's scale at the last result (Pym), 1 for an unscaled carrier. */
     private double lastScale;
     /** Whether the last result came from the carrier (false: it was missing and the last delta was kept). */
     private boolean carrierSeen;

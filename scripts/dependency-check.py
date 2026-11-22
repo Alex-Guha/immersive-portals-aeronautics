@@ -29,6 +29,8 @@ NOTES = {
     "sable": "Our physics library is matched to exact Sable versions (IPSableBackendVersion): with a new Sable, ships "
              "fall back to stock physics until its Rust changes are merged into natives/.",
     "create": "Create bundles Flywheel and Ponder: their hooks are checked with it.",
+    "create-pocket-sized": "Create: Pocket Sized bundles Pym, the library most of our hooks reach: they are checked with "
+                           "it. A newer Pocket may need a newer Create Aeronautics than the one we test with.",
 }
 
 

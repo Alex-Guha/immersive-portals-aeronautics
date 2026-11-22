@@ -20,7 +20,7 @@ import qouteall.imm_ptl.core.compat.sable_integration.IPShipThroughPortalSync;
 import java.util.UUID;
 
 /**
- * Create: Pocket Sized (Pym) syncs a ship's scale by UUID; the client stores it whatever level the ship is in. Two
+ * Pym (the library bundled by Create: Pocket Sized) syncs a ship's scale by UUID; the client stores it whatever level the ship is in. Two
  * server paths assumed the player is in the ship's dimension:
  * <ul>
  *   <li>a scale change ({@code ScaleNetwork.sendScale}) went to the players in the ship's dimension only; here it also

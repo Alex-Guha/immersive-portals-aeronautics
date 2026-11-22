@@ -48,7 +48,7 @@ Test in game, with the built jar in a normal game install rather than `runClient
 After a build, `scripts/check.sh` runs the static checks, which CI also runs on every push and pull request:
 - `headers`: every Java file has its origin header (below; `python3 scripts/stamp-headers.py` writes them).
 - `native-licences`, when `natives/Cargo.lock` changed: the licence list of the Rust crates shipped in the jar is current (`python3 scripts/native-licenses.py` rewrites it; needs cargo).
-- `mixins`: every class, method and field our mixins name exists in the jars we build against, and every mixin into another mod is skipped without that mod (`IPOptionalModMixinPlugin`, below). Known exceptions are in `scripts/mixincheck-expected.txt`.
+- `mixins`: every class, method and field our mixins name exists in the jars we build against (a method named with its descriptor, with that descriptor; an `@Inject` or `@WrapMethod` handler taking the target's parameters, with the parameters the target has), and every mixin into another mod is skipped without that mod (`IPOptionalModMixinPlugin`, below). Known exceptions are in `scripts/mixincheck-expected.txt`.
 - `hooks`: the mixins and reflection other mods have into our classes (`scripts/hooks-into-us.txt`) still find what they need. If a change of yours breaks one, say so in the pull request: that mod's players would crash.
 - `version` and `tests`: `mod_version` fits the branch (above), and the unit tests passed.
 

@@ -122,7 +122,7 @@ public final class IPCreatePortalShafts {
         /** The rotation from frame to world directions. */
         org.joml.Quaternionf rotation();
 
-        /** How many world blocks one of the frame's blocks spans (a ship's Create: Pocket Sized scale). */
+        /** How many world blocks one of the frame's blocks spans (a ship's Pym scale). */
         default double scale() {
             return 1.0;
         }

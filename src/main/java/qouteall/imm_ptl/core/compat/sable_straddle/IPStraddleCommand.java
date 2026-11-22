@@ -12,6 +12,7 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
@@ -22,7 +23,8 @@ import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 /**
  * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
  * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel}, {@code debug joints},
- * {@code debug simassemble <assembler> <from>}, {@code debug reroot <n>}, {@code debug assembler <pos>} and {@code debug elevator <pulley> [floor]} (operators only).
+ * {@code debug simassemble <assembler> <from>}, {@code debug reroot <n>}, {@code debug assembler <pos>},
+ * {@code debug elevator <pulley> [floor]} and {@code debug pymdrive <scale> <ticks>} (operators only).
  * Registered only with Sable present.
  */
 public final class IPStraddleCommand {
@@ -61,7 +63,11 @@ public final class IPStraddleCommand {
                                                         .executes(IPStraddleCommand::targetElevator))))
                                 .then(Commands.literal("reroot")
                                         .then(Commands.argument("index", IntegerArgumentType.integer())
-                                                .executes(IPStraddleCommand::reroot))))));
+                                                .executes(IPStraddleCommand::reroot)))
+                                .then(Commands.literal("pymdrive")
+                                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.0))
+                                                .then(Commands.argument("ticks", IntegerArgumentType.integer(1))
+                                                        .executes(IPStraddleCommand::pymDrive)))))));
     }
 
     /** Which of our hooks in other mods are alive, as far as their classes have loaded. */
@@ -134,6 +140,25 @@ public final class IPStraddleCommand {
         final var lines = IPHeatMapDebug.reroot(context.getSource().getLevel(), IntegerArgumentType.getInteger(context, "index"));
         lines.forEach(line -> context.getSource().sendSuccess(() -> Component.literal(line), true));
         return lines.size();
+    }
+
+    /** Test hook: a Pym scale driver holds every ship of the command's dimension at a scale for some ticks. */
+    private static int pymDrive(final CommandContext<CommandSourceStack> context) {
+        final double scale = DoubleArgumentType.getDouble(context, "scale");
+        final int ticks = IntegerArgumentType.getInteger(context, "ticks");
+        final ServerSubLevelContainer container = SubLevelContainer.getContainer(context.getSource().getLevel());
+        int count = 0;
+        for (final ServerSubLevel ship : container == null ? java.util.List.<ServerSubLevel>of() : container.getAllSubLevels()) {
+            final String error = qouteall.imm_ptl.core.compat.sable_integration.IPPymCompat.debugDrive(ship, scale, ticks);
+            if (error != null) {
+                context.getSource().sendFailure(Component.literal("Not driven: " + error));
+                return count;
+            }
+            count++;
+        }
+        final int driven = count;
+        context.getSource().sendSuccess(() -> Component.literal("Driving " + driven + " ship(s) at scale " + scale + " for " + ticks + " ticks"), true);
+        return driven;
     }
 
     /** Test hook: ties the rope holders at two positions (on ships or in the world) with a rope. */

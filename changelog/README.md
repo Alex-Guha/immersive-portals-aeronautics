@@ -11,6 +11,7 @@ A new minor version starts a new file, `<x.y>.md`, with its line in the index be
 
 | File | Versions | Dates |
 |---|---|---|
+| [2.10.md](2.10.md) | 2.10.0 | 2026-11-22 |
 | [2.9.md](2.9.md) | 2.9.0 to 2.9.31 | 2026-11-12 to 2026-11-20 |
 | [2.8.md](2.8.md) | 2.8.0 to 2.8.36 | 2026-10-31 to 2026-11-12 |
 | [2.7.md](2.7.md) | 2.7.0 to 2.7.12 | 2026-10-28 to 2026-10-31 |

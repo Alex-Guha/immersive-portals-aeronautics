@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * The approach (a second hardware clip plane per ship, the far half drawn by the destination's level renderer with the
  * ship's pose mapped through the portal) follows IPSable 0.5.0 by r2smith141 (Apache License 2.0).
  */

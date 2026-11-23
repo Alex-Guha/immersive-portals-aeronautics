@@ -1,7 +1,7 @@
 /*
- * Immersive Portals: Aeronautics - modified file.
+ * Immersive Portals Revamped - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
- * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
  * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
@@ -856,7 +856,7 @@ public class Portal extends Entity implements
     public void setScaleTransformation(double newScale) {
         double old = scaling;
         scaling = newScale;
-        // Immersive Portals: Aeronautics: what is linked through a portal on the condition that it is unscaled (Create
+        // Immersive Portals Revamped: what is linked through a portal on the condition that it is unscaled (Create
         // tracks: a train cannot change size) hears when that changes, from a command, the API or an animation
         java.util.function.Consumer<Portal> listener = SCALE_UNIT_CHANGED;
         if (listener != null && (Math.abs(old - 1.0) <= 1.0E-4) != (Math.abs(newScale - 1.0) <= 1.0E-4)
@@ -866,7 +866,7 @@ public class Portal extends Entity implements
     }
 
     /**
-     * Immersive Portals: Aeronautics: called on the server when a portal's scale becomes 1 or stops being 1
+     * Immersive Portals Revamped: called on the server when a portal's scale becomes 1 or stops being 1
      * ({@link #setScaleTransformation}, which animations go through too). Set by our Create integration.
      */
     @Nullable
@@ -1475,7 +1475,7 @@ public class Portal extends Entity implements
     }
 
     public void setScaling(double scaling) {
-        // Immersive Portals: Aeronautics: through setScaleTransformation, so SCALE_UNIT_CHANGED hears it
+        // Immersive Portals Revamped: through setScaleTransformation, so SCALE_UNIT_CHANGED hears it
         setScaleTransformation(scaling);
         updateCache();
     }

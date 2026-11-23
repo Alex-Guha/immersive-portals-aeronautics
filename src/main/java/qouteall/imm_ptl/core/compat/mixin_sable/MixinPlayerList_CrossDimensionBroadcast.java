@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * The terrain part restores Immersive Portals' own PlayerList.broadcast (iPortalTeam; Apache License 2.0).
  */
 package qouteall.imm_ptl.core.compat.mixin_sable;

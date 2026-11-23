@@ -1,8 +1,8 @@
 <div align="center">
 
-# Immersive Portals: Aeronautics
+# Immersive Portals Revamped
 
-[![CurseForge Downloads](https://img.shields.io/curseforge/dt/1735987?style=flat-square&logo=curseforge&label=CurseForge&color=%23EB622B)](https://www.curseforge.com/minecraft/mc-mods/immersive-portals-aeronautics) [![Modrinth Downloads](https://img.shields.io/modrinth/dt/jkNDQMu6?style=flat-square&logo=modrinth&label=Modrinth&color=%2300AF5C)](https://modrinth.com/mod/immersive-portals-aeronautics) ![Static Badge](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-blue?style=flat-square) [![Build](https://img.shields.io/github/actions/workflow/status/Alex-Guha/immersive-portals-aeronautics/build.yml?branch=main&style=flat-square&logo=github&label=Build)](https://github.com/Alex-Guha/immersive-portals-aeronautics/actions/workflows/build.yml) [![Discord](https://img.shields.io/discord/1558244213487829002?style=flat-square&logo=discord)](https://discord.gg/R6jjbqnThA)
+[![CurseForge Downloads](https://img.shields.io/curseforge/dt/1735987?style=flat-square&logo=curseforge&label=CurseForge&color=%23EB622B)](https://www.curseforge.com/minecraft/mc-mods/immersive-portals-aeronautics) [![Modrinth Downloads](https://img.shields.io/modrinth/dt/jkNDQMu6?style=flat-square&logo=modrinth&label=Modrinth&color=%2300AF5C)](https://modrinth.com/mod/immersive-portals-revamped) ![Static Badge](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-blue?style=flat-square) [![Build](https://img.shields.io/github/actions/workflow/status/Alex-Guha/immersive-portals-revamped/build.yml?branch=main&style=flat-square&logo=github&label=Build)](https://github.com/Alex-Guha/immersive-portals-revamped/actions/workflows/build.yml) [![Discord](https://img.shields.io/discord/1558244213487829002?style=flat-square&logo=discord)](https://discord.gg/R6jjbqnThA)
 
 </div>
 
@@ -27,7 +27,7 @@ Picking up where [Immersive Portals](https://github.com/iPortalTeam/ImmersivePor
 
 - **Portals on ships.** A portal on a ship links to a fixed portal in the other dimension, and breaks if it is carried through another portal. Moving one end of a portal is an easy way to travel far, so the setting *Portals on ships* chooses Off, Limited or Unlimited. Limited, the default, breaks the portal once its two ends are farther apart than *Ship Portal Range* (in chunks).
 - **Air pressure.** Air pressure can differ between a portal's two ends, so a ship may sink or rise after passing through unless the portals are placed with care.
-- **Shaders.** Using shaders wtih multiple portals or nested portals will significantly hurt performance (duh). Use the performance configs in mod menu to help deal with this.
+- **Shaders.** Using shaders with multiple portals or nested portals will significantly hurt performance (duh). Use the performance configs in mod menu to help deal with this.
 
 ### Compatibility
 

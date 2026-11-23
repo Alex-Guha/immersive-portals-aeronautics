@@ -1,7 +1,7 @@
 /*
- * Immersive Portals: Aeronautics - modified file.
+ * Immersive Portals Revamped - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
- * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
  * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
@@ -171,7 +171,7 @@ public class ImmPtlViewArea extends ViewArea {
 
     @Override
     public void setDirty(int cx, int cy, int cz, boolean isImportant) {
-        // Immersive Portals: Aeronautics: this override bypasses Sable's hook on ViewArea.setDirty
+        // Immersive Portals Revamped: this override bypasses Sable's hook on ViewArea.setDirty
         if (IPSableViewAreaDirty.routeToShip(level, cx, cy, cz, isImportant)) {
             return;
         }

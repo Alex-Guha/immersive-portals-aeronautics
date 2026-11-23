@@ -15,7 +15,7 @@ permissions:
 jobs:
   check:
     name: Newer releases and their hooks
-    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    if: github.repository_owner == 'Alex-Guha'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

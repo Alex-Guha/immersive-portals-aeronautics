@@ -44,7 +44,7 @@ Every Java file states its origin and licence in a comment at its top. `scripts/
 | Unmodified upstream | in (1) at `v6.0.7` and unchanged | none (upstream ships no per-file notices); Apache-2.0 |
 | A, modified upstream | in (1) at `v6.0.7`, changed since | "modified file", names (1), and (2) as well when the fork changed the file too; changes marked `Immersive Aeronautics:` in the code; our changes PolyForm Shield, the rest Apache-2.0 |
 | B, reconstructed | not in (1); the class exists in the fork's jar (2) | "reconstructed and modified file", names (2) and (1); our changes PolyForm Shield, the rest Apache-2.0 |
-| C, new | neither | "Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0)" |
+| C, new | neither | "Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0)" |
 
 `RapierExt` (`ipaeronautics/rapier`) declares the JNI entry points of our native additions after IPSable's `IplRapierNatives`; it sits in that package only because the JNI names require it.
 

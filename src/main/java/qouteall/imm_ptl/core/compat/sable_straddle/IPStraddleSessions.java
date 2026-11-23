@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * Follows IPSable 0.5.0's IplAtlasStraddleSession by r2smith141 (Apache License 2.0), re-expressed for ships that
  * stay in their own level (no hosting dimension).
  */

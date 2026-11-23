@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * The projection raycast follows IPSable 0.5.0's IplProjectionAwareClipMixin and IplStraddleOutlineMixin by r2smith141
  * (Apache License 2.0).
  */

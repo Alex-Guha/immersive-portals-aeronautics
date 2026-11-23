@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+# Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
 """Finds newer releases of the mods we build against or that hook into us, and tries each one.
 
     python3 scripts/dependency-check.py find              list the newer NeoForge 1.21.1 releases on Modrinth

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+# Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
 # The fast static checks, each reported by name. Run after a build (./gradlew build, which also runs the unit tests and
 # writes build/ipa/compile-classpath.txt), from anywhere in the checkout; CI runs it on every push.
 #

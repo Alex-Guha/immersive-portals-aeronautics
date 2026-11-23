@@ -42,7 +42,7 @@ env:
 jobs:
   jar:
     name: Jar with the Linux physics library
-    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    if: github.repository_owner == 'Alex-Guha'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:

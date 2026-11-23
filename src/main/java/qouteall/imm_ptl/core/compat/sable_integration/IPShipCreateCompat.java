@@ -1,8 +1,8 @@
 /*
- * Immersive Portals: Aeronautics - reconstructed and modified file.
+ * Immersive Portals Revamped - reconstructed and modified file.
  * Original: Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0), a derivative of
  * Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0). Rebuilt as source from the
- * binary release and modified for Immersive Portals: Aeronautics, 2026. This project's changes are
+ * binary release and modified for Immersive Portals Revamped, 2026. This project's changes are
  * licensed under the PolyForm Shield License 1.0.0; the original code stays under the Apache
  * License 2.0. See NOTICE.
  */
@@ -290,7 +290,7 @@ public final class IPShipCreateCompat {
             for (long packedPos : generatorPositions) {
                 BlockPos pos = BlockPos.of(packedPos).offset(shift);
                 if (level.getBlockEntity(pos) instanceof GeneratingKineticBlockEntity generator) {
-                    // Immersive Portals: Aeronautics: propagate now, not at the generator's next tick: machines that
+                    // Immersive Portals Revamped: propagate now, not at the generator's next tick: machines that
                     // tick before it saw speed 0 for a tick (a propeller lost 15% of its spin at every crossing)
                     try {
                         generator.updateGeneratedRotation();

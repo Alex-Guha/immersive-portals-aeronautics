@@ -18,7 +18,7 @@ permissions:
 jobs:
   post:
     name: Post the release notes
-    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    if: github.repository_owner == 'Alex-Guha'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -36,7 +36,7 @@ jobs:
           release = json.load(open(sys.argv[1]))
           if release["isDraft"]:
               sys.exit(f"{os.environ['TAG']} is a draft: publish it first")
-          title = f"## Immersive Portals: Aeronautics {release['name']}"
+          title = f"## Immersive Portals Revamped {release['name']}"
           if release["isPrerelease"]:
               title += " (pre-release)"
           text = f"{title}\n<{release['url']}>\n\n{release['body'].strip()}".replace("\r\n", "\n")
@@ -65,7 +65,7 @@ jobs:
                   os.environ["DISCORD_WEBHOOK"] + "?wait=true",
                   data=json.dumps(payload).encode(),
                   headers={"Content-Type": "application/json",
-                           "User-Agent": "DiscordBot (https://github.com/Alex-Guha/immersive-portals-aeronautics, 1)"},
+                           "User-Agent": "DiscordBot (https://github.com/Alex-Guha/immersive-portals-revamped, 1)"},
               )
               with urllib.request.urlopen(request, timeout=30) as response:
                   print(f"message {i + 1}/{len(messages)}: HTTP {response.status}")

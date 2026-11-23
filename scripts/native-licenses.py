@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+# Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
 """Lists the Rust crates statically linked into the ipa_rapier native library, with their licence texts.
 
 Writes src/main/resources/natives/ipa_rapier/THIRD-PARTY-LICENSES.txt (shipped in the jar next to LICENSE-RAPIER).

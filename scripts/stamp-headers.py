@@ -22,34 +22,34 @@ import glob, os, subprocess, sys
 
 HEADERS = {
     'A': """/*
- * Immersive Portals: Aeronautics - modified file.
+ * Immersive Portals Revamped - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
- * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
  * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
  */
 """,
     'AF': """/*
- * Immersive Portals: Aeronautics - modified file.
+ * Immersive Portals Revamped - modified file.
  * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0), with changes from
  * Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0).
- * Modified for Immersive Portals: Aeronautics, 2026; changes are marked "Immersive Aeronautics:"
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
  * in the code and summarised in changelog/. This project's changes are licensed under the
  * PolyForm Shield License 1.0.0; the original code and ItsSoBread's changes stay under the
  * Apache License 2.0. See NOTICE.
  */
 """,
     'B': """/*
- * Immersive Portals: Aeronautics - reconstructed and modified file.
+ * Immersive Portals Revamped - reconstructed and modified file.
  * Original: Immersive Aeronautics 1.1.4 by ItsSoBread (Apache License 2.0), a derivative of
  * Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0). Rebuilt as source from the
- * binary release and modified for Immersive Portals: Aeronautics, 2026. This project's changes are
+ * binary release and modified for Immersive Portals Revamped, 2026. This project's changes are
  * licensed under the PolyForm Shield License 1.0.0; the original code stays under the Apache
  * License 2.0. See NOTICE.
  */
 """,
     'C': """/*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  */
 """,
 }
@@ -58,9 +58,9 @@ def header_kind(src):
     head = src[:900]
     if 'reconstructed and modified file' in head:
         return 'B'
-    if 'Aeronautics - modified file' in head:
+    if 'Revamped - modified file' in head:
         return 'AF' if 'with changes from\n * Immersive Aeronautics 1.1.4' in head else 'A'
-    if 'Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0)' in head:
+    if 'Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0)' in head:
         return 'C'
     if 'Copied from Sable' in head:
         return 'sable'

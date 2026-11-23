@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  */
 package qouteall.imm_ptl.core.compat.mixin_sable;
 
@@ -93,7 +93,7 @@ public class MixinSableRapierPipeline_OwnBackend {
     )
     private String ip_linkErrorMessage(String message) {
         return IPPhysicsBackend.isOwnBackendActive()
-            ? "Immersive Portals: Aeronautics has failed to link with its ipa_rapier physics library (loaded in place of Sable's). Please report this to Immersive Portals: Aeronautics, not to Sable"
+            ? "Immersive Portals Revamped has failed to link with its ipa_rapier physics library (loaded in place of Sable's). Please report this to Immersive Portals Revamped, not to Sable"
             : message;
     }
 
@@ -106,6 +106,6 @@ public class MixinSableRapierPipeline_OwnBackend {
         if (!IPPhysicsBackend.isOwnBackendActive()) {
             return original.call(cause, title);
         }
-        return original.call(cause != null ? cause : error, "Immersive Portals: Aeronautics linking with its ipa_rapier physics library");
+        return original.call(cause != null ? cause : error, "Immersive Portals Revamped linking with its ipa_rapier physics library");
     }
 }

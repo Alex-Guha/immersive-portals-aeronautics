@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * Declarations follow IPSable 0.5.0's IplRapierNatives by r2smith141 (Apache License 2.0). The functions are IPSable's
  * additions to Sable's crate and ours, in ipa_rapier's natives/rapier/src (ipl_ext.rs, moving_portals.rs, lib.rs); the
  * JNI names are fixed there.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+# Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
 # Refuses commits that would put machine details into this public repository: added lines and commit messages naming
 # a home directory or a Windows user folder, an email address in a message other than a noreply one, and (with
 # --identities, for the maintainer's own pushes) an author or committer email other than a GitHub noreply address.

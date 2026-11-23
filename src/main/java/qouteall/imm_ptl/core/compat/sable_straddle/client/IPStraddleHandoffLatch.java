@@ -1,5 +1,5 @@
 /*
- * Immersive Portals: Aeronautics, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
+ * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  * The idea (keep drawing the old copy until the new frame can take over) follows IPSable 0.5.0's hand-off latch by
  * r2smith141 (Apache License 2.0).
  */

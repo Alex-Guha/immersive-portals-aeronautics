@@ -321,8 +321,8 @@
 
   "imm_ptl.quilt_warning": "You are using Immersive Portals mod on Quilt. The Fabric version of Immersive Portals mod is designed for Fabric and may malfunction on Quilt. ",
 
-  "imm_ptl.mod_patch_version_mismatch": "The server's Immersive Portals: Aeronautics version (%s) does not match the client's (%s). It's recommended to use the same version on both.",
-  "imm_ptl.mod_major_minor_version_mismatch": "The server's Immersive Portals: Aeronautics version (%s) cannot work with the client's (%s).\nUse the same version on both.\nTo join anyway, turn on 'Tolerant Version Mismatch with Server' in the mod's Config screen. Things may break.",
+  "imm_ptl.mod_patch_version_mismatch": "The server's Immersive Portals Revamped version (%s) does not match the client's (%s). It's recommended to use the same version on both.",
+  "imm_ptl.mod_major_minor_version_mismatch": "The server's Immersive Portals Revamped version (%s) cannot work with the client's (%s).\nUse the same version on both.\nTo join anyway, turn on 'Tolerant Version Mismatch with Server' in the mod's Config screen. Things may break.",
   "imm_ptl.server_missing_immptl": "You logged into a server that does not install Immersive Portals mod. Immersive portals mod is designed to work with the server that installs it. All Immersive Portals functionality will not work here. And other issue may arise. It's recommended to log into this server without Immersive Portals.",
   "imm_ptl.low_max_memory": "[Immersive Portals] The game is allocated with only %s MB memory. Portals will load more chunks and require more memory. It's recommended to allocate more memory to the game to get smoother experience. (The official launcher sometimes will only allocate 2GB to the game even if the computer has much more memory.) How to allocate more memory: ",
 

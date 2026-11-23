@@ -6,9 +6,9 @@ loaderVersion="${loader_version_range}"
 # The license for you mod. This is mandatory metadata and allows for easier comprehension of your redistributive properties.
 license="${mod_license}"
 # A URL to refer people to when problems occur with this mod
-issue_tracker_url="${issue_tracker_url}"
+issueTrackerURL="${issue_tracker_url}"
 # A list of mods - how many allowed here is determined by the individual mod loader
-# Our own mod id, with our own version: what mods looking for Immersive Portals: Aeronautics itself should check or
+# Our own mod id, with our own version: what mods looking for Immersive Portals Revamped itself should check or
 # depend on. First, so launchers show it for the jar. The only one of our ids in NeoForge's Mods list
 # (MixinModListScreen), with the config screen (IPAeronauticsClientEntry).
 [[mods]] #mandatory
@@ -161,7 +161,7 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="transferables"
 type="incompatible"
-reason="Immersive Portals: Aeronautics already carries Create shafts and fluid pipes through portals. Remove Create Transferables."
+reason="Immersive Portals Revamped already carries Create shafts and fluid pipes through portals. Remove Create Transferables."
 versionRange="*"
 ordering="NONE"
 side="BOTH"
@@ -192,7 +192,7 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="create"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Create 6.0.10. Trains, belts, shafts and pipes through portals may not work on this version."
+reason="Immersive Portals Revamped was tested with Create 6.0.10. Trains, belts, shafts and pipes through portals may not work on this version."
 versionRange="(6.0.10,)"
 ordering="NONE"
 side="BOTH"
@@ -200,7 +200,7 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="simulated"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Create Aeronautics 1.3.3. Ropes, joints and handles through portals may not work on this version."
+reason="Immersive Portals Revamped was tested with Create Aeronautics 1.3.3. Ropes, joints and handles through portals may not work on this version."
 versionRange="(1.3.3,)"
 ordering="NONE"
 side="BOTH"
@@ -208,7 +208,7 @@ side="BOTH"
 [[dependencies.ip_aeronautics]]
 modId="distanthorizons"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Distant Horizons 3.3.3 to 3.3.5-dev. LODs in portal views may not work on this version."
+reason="Immersive Portals Revamped was tested with Distant Horizons 3.3.3 to 3.3.5-dev. LODs in portal views may not work on this version."
 # Maven orders 3.3.5-dev after 3.3.5, so the release 3.3.5 still warns until it is checked
 versionRange="(3.3.4,3.3.5-dev),(3.3.5-dev,)"
 ordering="NONE"
@@ -217,7 +217,7 @@ side="CLIENT"
 [[dependencies.ip_aeronautics]]
 modId="sodium"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Sodium 0.8.13. Portal views may not work on this version."
+reason="Immersive Portals Revamped was tested with Sodium 0.8.13. Portal views may not work on this version."
 versionRange="[0.9,)"
 ordering="NONE"
 side="CLIENT"
@@ -225,7 +225,7 @@ side="CLIENT"
 [[dependencies.ip_aeronautics]]
 modId="iris"
 type="discouraged"
-reason="Immersive Portals: Aeronautics was tested with Iris 1.8.14. Portal views with shader packs may not work on this version."
+reason="Immersive Portals Revamped was tested with Iris 1.8.14. Portal views with shader packs may not work on this version."
 versionRange="[1.9,)"
 ordering="NONE"
 side="CLIENT"

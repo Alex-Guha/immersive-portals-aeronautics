@@ -17,9 +17,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortals;
 
 /**
- * The column of an elevator pulley and the column past its shaft's portal act as one ({@link IPElevatorPortals#linkOf}):
- * each lists the other's floors in its own frame, shows the floor reached and the active state on both, tells the
- * other when names change, numbers their floors as one column, and keeps their targets the same.
+ * The column of an elevator pulley and the columns past its shaft's portals act as one ({@link IPElevatorPortals#linkOf}):
+ * each lists the others' floors in its own frame, shows the floor reached and the active state on all, tells the
+ * others when names change, numbers their floors as one column, and keeps their targets the same.
  */
 @Mixin(value = ElevatorColumn.class, remap = false)
 public class MixinElevatorColumn_Portals {
@@ -30,22 +30,22 @@ public class MixinElevatorColumn_Portals {
 
     @Inject(method = "floorReached", at = @At("TAIL"))
     private void ip$floorReachedBoth(LevelAccessor level, String name, CallbackInfo ci) {
-        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, link) -> other.floorReached(link.other(), name));
+        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, member) -> other.floorReached(member.level(), name));
     }
 
     @Inject(method = "markDirty", at = @At("TAIL"))
     private void ip$markDirtyBoth(CallbackInfo ci) {
-        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, link) -> other.markDirty());
+        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, member) -> other.markDirty());
     }
 
     @Inject(method = "namesChanged", at = @At("TAIL"))
     private void ip$namesChangedBoth(CallbackInfo ci) {
-        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, link) -> other.namesListVersion++);
+        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, member) -> other.namesListVersion++);
     }
 
     @Inject(method = "setActive", at = @At("TAIL"))
     private void ip$activeBoth(boolean isActive, CallbackInfo ci) {
-        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, link) -> other.setActive(isActive));
+        IPElevatorPortals.mirror((ElevatorColumn) (Object) this, (other, member) -> other.setActive(isActive));
     }
 
     @Inject(method = "initNames", at = @At("HEAD"), cancellable = true)

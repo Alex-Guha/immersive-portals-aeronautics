@@ -13,7 +13,7 @@ import qouteall.imm_ptl.core.compat.create_integration.IPElevatorPulley;
 import qouteall.imm_ptl.core.compat.create_integration.IPElevatorShaft;
 
 /**
- * An elevator's rope runs on through its shaft's portal: the car may go down to the far level's floor (mapped into the
+ * An elevator's rope runs on through its shaft's portals: the car may go down to the last far level's floor (mapped into the
  * pulley's frame), still no further than the rope length, instead of stopping at the pulley's own level's floor.
  */
 @Mixin(value = PulleyBlockEntity.class, remap = false)
@@ -23,10 +23,11 @@ public class MixinPulleyBlockEntity_ElevatorRange {
         if (!((Object) this instanceof IPElevatorPulley pulley)) {
             return;
         }
-        final IPElevatorShaft shaft = pulley.ip$shaft();
-        if (shaft == null) {
+        final java.util.List<IPElevatorShaft> chain = pulley.ip$chain();
+        if (chain.isEmpty()) {
             return;
         }
+        final IPElevatorShaft shaft = chain.get(chain.size() - 1); // the last level's floor
         final int y = ((PulleyBlockEntity) (Object) this).getBlockPos().getY();
         final int range = Math.min(AllConfigs.server().kinetics.maxRopeLength.get(), y - 1 - shaft.bottomY());
         cir.setReturnValue(Math.max(cir.getReturnValue(), Math.max(0, range)));

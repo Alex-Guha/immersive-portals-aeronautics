@@ -93,7 +93,8 @@ public final class IPElevatorPortalsClient {
      */
     public static void beforeLevelRender() {
         final java.util.Map<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>,
-            java.util.Map<BlockPos, com.simibubi.create.content.contraptions.ControlledContraptionEntity>> copies = IPElevatorPortals.clientCopies();
+            java.util.Map<IPElevatorPortals.CopyKey, com.simibubi.create.content.contraptions.ControlledContraptionEntity>> copies =
+            IPElevatorPortals.clientCopies();
         if (copies.isEmpty()) {
             return;
         }
@@ -105,21 +106,22 @@ public final class IPElevatorPortalsClient {
             for (final var entry : byDim.getValue().entrySet()) {
                 final var copy = entry.getValue();
                 final IPElevatorFarCopy.FarInfo info = IPElevatorPortals.farInfo(copy);
-                if (copy.isRemoved() || !isLive(copy) || info == null || !homeLevel.isLoaded(entry.getKey())
-                    || !(homeLevel.getBlockEntity(entry.getKey()) instanceof ElevatorPulleyBlockEntity pulley)
-                    || pulley.movedContraption == null || ((IPElevatorPulley) pulley).ip$shaft() == null) {
+                final BlockPos pulleyPos = entry.getKey().pulley();
+                if (copy.isRemoved() || !isLive(copy) || info == null || !homeLevel.isLoaded(pulleyPos)
+                    || !(homeLevel.getBlockEntity(pulleyPos) instanceof ElevatorPulleyBlockEntity pulley)
+                    || pulley.movedContraption == null || ((IPElevatorPulley) pulley).ip$chain().isEmpty()) {
                     continue;
                 }
-                IPElevatorPortals.placeFrom(pulley.movedContraption, copy, ((IPElevatorPulley) pulley).ip$shaft());
+                IPElevatorPortals.placeFrom(pulley.movedContraption, copy, info.shaft());
             }
         }
     }
 
     /**
-     * The part of the pulley's belt past the plane, and the magnet on top of the car once it is past, drawn on the far
-     * side with the far copy (the pulley's own visual draws the rest on its side; {@link #beltOffset},
-     * {@link #magnetPastPlane}). Create's vanilla pulley renderer's parts, placed from the pulley's position mapped
-     * through the shaft's portal.
+     * The part of the pulley's belt between the far copy's planes (its portal's, and the next portal's below if any),
+     * and the magnet on top of the car while it is between them, drawn with the far copy (the pulley's own visual draws
+     * the part on its side; {@link #beltOffset}, {@link #magnetPastPlane}). Create's vanilla pulley renderer's parts,
+     * placed from the pulley's position mapped into the copy's frame.
      */
     public static void drawFarPulleyParts(final AbstractContraptionEntity copy, final double camX, final double camY, final double camZ,
                                           final float partialTick, final com.mojang.blaze3d.vertex.PoseStack poseStack,
@@ -131,23 +133,24 @@ public final class IPElevatorPortalsClient {
         final net.minecraft.client.multiplayer.ClientLevel homeLevel = qouteall.imm_ptl.core.ClientWorldLoader.getOptionalWorld(info.homeDim());
         if (homeLevel == null || !homeLevel.isLoaded(info.pulleyPos())
             || !(homeLevel.getBlockEntity(info.pulleyPos()) instanceof ElevatorPulleyBlockEntity pulley)
-            || ((IPElevatorPulley) pulley).ip$shaft() == null) {
+            || ((IPElevatorPulley) pulley).ip$chain().isEmpty()) {
             return;
         }
-        final IPElevatorShaft shaft = ((IPElevatorPulley) pulley).ip$shaft();
+        final IPElevatorShaft shaft = info.shaft();
         final float offset = com.simibubi.create.content.contraptions.pulley.PulleyRenderer.getBlockEntityOffset(partialTick, pulley);
         if (offset <= 0 || !com.simibubi.create.content.contraptions.pulley.PulleyRenderer.isPulleyRunning(pulley)) {
             return;
         }
         final BlockPos farPulley = shaft.blockToFar(pulley.getBlockPos());
         final double farPlane = shaft.farPlaneY();
+        final double farBottom = info.hasBottom() ? info.farBottomPlaneY() : Double.NEGATIVE_INFINITY;
         final net.minecraft.world.level.block.state.BlockState state = pulley.getBlockState();
         // the pulley's facing, turned as the portal turns
         final float angle = 180.0F + net.createmod.catnip.math.AngleHelper.horizontalAngle(shaft.directionToFar(
             state.getValue(com.simibubi.create.content.contraptions.elevator.ElevatorPulleyBlock.HORIZONTAL_FACING)));
         final com.mojang.blaze3d.vertex.VertexConsumer vb = buffers.getBuffer(net.minecraft.client.renderer.RenderType.solid());
         IPElevatorFramesClient.pushAt(copy.level(), farPulley, camX, camY, camZ, poseStack);
-        if (farPulley.getY() - offset < farPlane) {
+        if (farPulley.getY() - offset < farPlane && farPulley.getY() - offset >= farBottom) {
             final net.createmod.catnip.render.SuperByteBuffer magnet =
                 net.createmod.catnip.render.CachedBuffers.partial(com.simibubi.create.AllPartialModels.ELEVATOR_MAGNET, state);
             com.simibubi.create.content.contraptions.pulley.AbstractPulleyRenderer.renderAt(copy.level(),
@@ -162,16 +165,21 @@ public final class IPElevatorPortalsClient {
             final float at = offset - i;
             final double bottom = farPulley.getY() - at;
             if (bottom >= farPlane) {
-                break; // from here up the belt is on the pulley's side
+                break; // from here up the belt is on the side above this copy's portal
+            }
+            // the piece's part between the planes (below the next plane, the next copy draws it)
+            final double from = Math.max(bottom, farBottom);
+            final double to = Math.min(bottom + 1, farPlane);
+            if (to <= from) {
+                continue;
             }
             belt.center().rotateYDegrees(angle).uncenter();
-            final double height = farPlane - bottom;
-            if (height < 1) {
-                // the piece across the plane: only its part below the plane, squeezed to that height. Moved down
+            if (from > bottom || to < bottom + 1) {
+                // a piece across a plane: only its part between the planes, squeezed to that height. Moved down
                 // first, then squeezed (renderAt would move it after the squeeze, and the squeeze would shorten the move)
                 final BlockPos lightPos = farPulley.below((int) at);
-                belt.translate(0, -at, 0);
-                belt.scale(1, (float) height, 1);
+                belt.translate(0, -at + (from - bottom), 0);
+                belt.scale(1, (float) (to - from), 1);
                 belt.shiftUVScrolling(beltShift, (float) beltScroll * spriteSize)
                     .light(net.minecraft.client.renderer.LevelRenderer.getLightColor(copy.level(), copy.level().getBlockState(lightPos), lightPos))
                     .renderInto(poseStack, vb);
@@ -200,7 +208,7 @@ public final class IPElevatorPortalsClient {
         private RemoteCallables() {
         }
 
-        /** A pulley's shaft ({@code IPElevatorPortals.sendShaft}); an empty tag: none. Ignored until the pulley is loaded here. */
+        /** A pulley's shaft, its chain of portals ({@code IPElevatorPortals.sendShaft}); an empty tag: none. Ignored until the pulley is loaded here. */
         public static void setShaft(final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension,
                                     final BlockPos pulley, final net.minecraft.nbt.CompoundTag tag) {
             if (!qouteall.imm_ptl.core.ClientWorldLoader.getIsInitialized()) {
@@ -212,10 +220,10 @@ public final class IPElevatorPortalsClient {
             if (level == null || !level.isLoaded(pulley) || !(level.getBlockEntity(pulley) instanceof ElevatorPulleyBlockEntity be)) {
                 return;
             }
-            final IPElevatorShaft shaft = tag.isEmpty() ? null : IPElevatorShaft.read(tag);
+            final java.util.List<IPElevatorShaft> chain = tag.isEmpty() ? java.util.List.of() : IPElevatorShaft.readChain(tag);
             final IPElevatorPulley holder = (IPElevatorPulley) be;
-            if (!java.util.Objects.equals(shaft, holder.ip$shaft())) {
-                holder.ip$setShaft(shaft);
+            if (!chain.equals(holder.ip$chain())) {
+                holder.ip$setChain(chain);
             }
         }
     }

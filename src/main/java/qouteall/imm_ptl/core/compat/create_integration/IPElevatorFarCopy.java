@@ -14,7 +14,20 @@ import org.jetbrains.annotations.Nullable;
  * which pulley's car it stands for, through which shaft, and where the car put it this tick.
  */
 public interface IPElevatorFarCopy {
-    record FarInfo(ResourceKey<Level> homeDim, BlockPos pulleyPos, IPElevatorShaft shaft) {
+    /**
+     * @param index       which portal of the chain it stands past (0: the first below the pulley)
+     * @param shaft       the map from the pulley's frame to the copy's ({@link IPElevatorShaft#then}), its plane the copy's top
+     * @param bottomPlane the next portal's plane below, in the pulley's frame; {@link Double#NEGATIVE_INFINITY} if none
+     */
+    record FarInfo(ResourceKey<Level> homeDim, BlockPos pulleyPos, int index, IPElevatorShaft shaft, double bottomPlane) {
+        /** The next portal's plane in the copy's own frame. */
+        public double farBottomPlaneY() {
+            return bottomPlane + shaft.shift().getY();
+        }
+
+        public boolean hasBottom() {
+            return bottomPlane != Double.NEGATIVE_INFINITY;
+        }
     }
 
     @Nullable FarInfo ip$farInfo();

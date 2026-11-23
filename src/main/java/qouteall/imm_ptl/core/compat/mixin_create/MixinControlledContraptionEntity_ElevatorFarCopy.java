@@ -96,6 +96,8 @@ public class MixinControlledContraptionEntity_ElevatorFarCopy implements IPEleva
             tag.putString("HomeDim", ip$farInfo.homeDim().location().toString());
             tag.put("Pulley", NbtUtils.writeBlockPos(ip$farInfo.pulleyPos()));
             tag.put("Shaft", ip$farInfo.shaft().write());
+            tag.putInt("Index", ip$farInfo.index());
+            tag.putDouble("BottomPlane", ip$farInfo.bottomPlane());
             compound.put("IPElevatorFarCopy", tag);
         }
     }
@@ -111,7 +113,8 @@ public class MixinControlledContraptionEntity_ElevatorFarCopy implements IPEleva
         if (dim == null || shaft == null) {
             return;
         }
-        ip$farInfo = new FarInfo(ResourceKey.create(Registries.DIMENSION, dim), NbtUtils.readBlockPos(tag, "Pulley").orElseThrow(), shaft);
+        ip$farInfo = new FarInfo(ResourceKey.create(Registries.DIMENSION, dim), NbtUtils.readBlockPos(tag, "Pulley").orElseThrow(),
+            tag.getInt("Index"), shaft, tag.contains("BottomPlane") ? tag.getDouble("BottomPlane") : Double.NEGATIVE_INFINITY);
         final ControlledContraptionEntity self = (ControlledContraptionEntity) (Object) this;
         if (self.level().isClientSide()) {
             IPElevatorPortals.onClientFarCopy(self, ip$farInfo);

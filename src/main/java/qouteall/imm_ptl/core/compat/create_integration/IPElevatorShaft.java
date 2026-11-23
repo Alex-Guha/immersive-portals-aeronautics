@@ -25,13 +25,15 @@ import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 import qouteall.q_misc_util.my_util.DQuaternion;
 
 /**
- * The portal an elevator's shaft runs through (docs/plans/elevators.md): the first floor portal below the pulley whose
+ * A portal an elevator's shaft runs through ({@link #findChain} finds them all, top down): a floor portal whose
  * opening holds the whole car, unscaled, turned by whole quarter turns about the vertical at most, mapping blocks onto
  * blocks. Below its plane the shaft goes on in {@link #farDim}: a point p of the pulley's frame is at
  * {@code turn(p) + shift} there ({@link #toFar}), so a far floor at y lies at {@code y - shift.y} in the pulley's frame.
  * Positions are in each side's own frame ({@link IPElevatorFrames}): a ship's plot for a side on a ship, so for a ship's
  * portal the shift is between plot coordinates. A portal comes to be turned when a ship carrying one of its ends is
- * disassembled: Create Aeronautics turns the ship to the nearest quarter turn as it places it.
+ * disassembled: Create Aeronautics turns the ship to the nearest quarter turn as it places it. Past the first portal
+ * of a chain, each record holds the whole way from the pulley ({@link #then}): its map from the pulley's frame into the
+ * level past that portal, and its plane in the pulley's frame.
  *
  * @param turns   quarter turns about +y from the pulley's frame to the far frame, 0 to 3
  * @param bottomY the lowest y in the pulley's frame the car may reach: the far level's floor, mapped back
@@ -130,24 +132,73 @@ public record IPElevatorShaft(UUID portalId, ResourceKey<Level> farDim, double p
     }
 
     /**
-     * The shaft below {@code pulley} for a car with these bounds, or null if the rope meets no such portal. The portal's
-     * end there must be in the pulley's frame (both fixed in the world, or both on one ship: an elevator fixed in the
-     * world never runs through a ship's portal); its other end may be anywhere, fixed or on a ship. Each end is taken in
-     * its own frame ({@link IPShipPortals#framedSides}), so the shift between them stays put while ships fly.
+     * This shaft followed by {@code step}, a shaft from this one's far frame: the map from the pulley's frame into
+     * {@code step}'s far frame, with {@code step}'s plane and bottom in the pulley's frame. Turns about the vertical
+     * leave heights alone, so heights move by the shifts' y only.
      */
-    public static @Nullable IPElevatorShaft find(final ServerLevel level, final BlockPos pulley, final AABB car) {
-        final double top = pulley.getY();
+    public IPElevatorShaft then(final IPElevatorShaft step) {
+        final Vec3 shifted = step.turn(Vec3.atLowerCornerOf(shift));
+        final BlockPos total = new BlockPos((int) Math.round(shifted.x), (int) Math.round(shifted.y), (int) Math.round(shifted.z))
+            .offset(step.shift);
+        return new IPElevatorShaft(step.portalId, step.farDim, step.planeY - shift.getY(), total, (turns + step.turns) % 4,
+            step.bottomY - shift.getY());
+    }
+
+    /** Most portals one shaft runs through. */
+    private static final int MAX_CHAIN = 8;
+
+    /**
+     * The shaft below {@code pulley} for a car with these bounds, as a chain of floor portals (empty if the rope meets
+     * none): each element maps the pulley's frame into the level past that portal ({@link #then}), its plane the
+     * portal's in the pulley's frame. Past each portal the rope goes on in that level, to the next floor portal below
+     * whose end is in the frame of the end it came out of, at least the car's height lower (a copy of the car is cut at
+     * one plane at a time, so the car may never be in two portals at once).
+     */
+    public static List<IPElevatorShaft> findChain(final ServerLevel level, final BlockPos pulley, final AABB car) {
+        final List<IPElevatorShaft> chain = new ArrayList<>();
+        final StringBuilder why = new StringBuilder();
+        Step step = find(level, Vec3.atCenterOf(pulley), IPElevatorFrames.shipAt(level, pulley), pulley.getY(), car, 0.0, why);
+        final java.util.Set<UUID> seen = new java.util.HashSet<>();
+        while (step != null && chain.size() < MAX_CHAIN && seen.add(step.shaft().portalId())) {
+            final IPElevatorShaft total = chain.isEmpty() ? step.shaft() : chain.get(chain.size() - 1).then(step.shaft());
+            chain.add(total);
+            final ServerLevel far = level.getServer().getLevel(total.farDim());
+            if (far == null) {
+                break;
+            }
+            final Vec3 a = total.toFar(new Vec3(car.minX, car.minY, car.minZ));
+            final Vec3 b = total.toFar(new Vec3(car.maxX, car.maxY, car.maxZ));
+            final AABB farCar = new AABB(a, b);
+            final double top = total.farPlaneY();
+            why.setLength(0);
+            step = find(far, new Vec3(farCar.getCenter().x, top, farCar.getCenter().z), step.farCarrier(), top, farCar,
+                car.getYsize(), why);
+        }
+        lastRejections = why.toString();
+        return chain;
+    }
+
+    /** One portal of a shaft, in the frame it was searched in, and the ship carrying its far end (null: the world). */
+    private record Step(IPElevatorShaft shaft, @Nullable UUID farCarrier) {
+    }
+
+    /**
+     * The floor portal below {@code top} (in the frame of {@code ship}, or the world's if null; {@code at} a point of
+     * that frame) whose end there is in that frame, its plane at least {@code gap} below {@code top}, for a car with
+     * these bounds in that frame. Its other end may be anywhere, fixed or on a ship. Each end is taken in its own frame
+     * ({@link IPShipPortals#framedSides}), so the shift between them stays put while ships fly.
+     */
+    private static @Nullable Step find(final ServerLevel level, final Vec3 at, @Nullable final UUID ship, final double top,
+                                       final AABB car, final double gap, final StringBuilder why) {
         final double bottom = level.getMinBuildHeight() - 1;
         final AABB column = new AABB(car.minX, bottom, car.minZ, car.maxX, top, car.maxZ);
-        final UUID ship = IPElevatorFrames.shipAt(level, pulley);
-        final AABB search = ship == null ? column : IPElevatorFrames.worldBox(level, Vec3.atCenterOf(pulley), column);
+        final AABB search = ship == null ? column : IPElevatorFrames.worldBox(level, at, column);
         final List<Portal> candidates = new ArrayList<>(level.getEntitiesOfClass(Portal.class, search.inflate(1.0)));
         if (ship == null) {
             candidates.addAll(GlobalPortalStorage.getGlobalPortals(level));
         }
         Portal best = null;
         IPShipPortals.FramedSides bestSides = null;
-        final StringBuilder why = new StringBuilder();
         for (final Portal portal : candidates) {
             if (portal.isRemoved() || !portal.isTeleportable()) {
                 continue;
@@ -163,7 +214,7 @@ public record IPElevatorShaft(UUID portalId, ResourceKey<Level> farDim, double p
             }
             if (!java.util.Objects.equals(sides.ownCarrier(), ship)) {
                 note(why, portal, "its end here is " + (sides.ownCarrier() == null ? "fixed in the world" : "on ship " + sides.ownCarrier())
-                    + ", the pulley " + (ship == null ? "in the world" : "on ship " + ship));
+                    + ", the shaft above it " + (ship == null ? "in the world" : "on ship " + ship));
                 continue;
             }
             final UnilateralPortalState own = sides.own();
@@ -188,12 +239,13 @@ public record IPElevatorShaft(UUID portalId, ResourceKey<Level> farDim, double p
             } else if (!holds(own, car)) {
                 note(why, portal, "the car " + car + " is not inside the opening at " + own.position() + " (" + own.width() + " x "
                     + own.height() + ")");
+            } else if (plane > top - gap + EPS) {
+                note(why, portal, String.format("%.2f below the portal above it, less than the car's height %.2f", top - plane, gap));
             } else {
                 best = portal;
                 bestSides = sides;
             }
         }
-        lastRejections = why.toString();
         if (best == null) {
             return null;
         }
@@ -206,10 +258,35 @@ public record IPElevatorShaft(UUID portalId, ResourceKey<Level> farDim, double p
         final BlockPos shift = new BlockPos((int) Math.round(d.x), (int) Math.round(d.y), (int) Math.round(d.z));
         // rounded: a plane on a ship is found through its pose, a hair off from one search to the next
         final double planeY = Math.round(bestSides.own().position().y * 1.0e6) / 1.0e6;
-        return new IPElevatorShaft(best.getUUID(), best.getDestDim(), planeY, shift, turns, farLevel.getMinBuildHeight() - shift.getY());
+        return new Step(new IPElevatorShaft(best.getUUID(), best.getDestDim(), planeY, shift, turns, farLevel.getMinBuildHeight() - shift.getY()),
+            bestSides.farCarrier());
     }
 
-    /** Why the last {@link #find} turned down the floor portals below the pulley (empty if none): for its log line. */
+    /** Writes a chain ({@link #findChain}). */
+    public static CompoundTag writeChain(final List<IPElevatorShaft> chain) {
+        final CompoundTag tag = new CompoundTag();
+        final net.minecraft.nbt.ListTag list = new net.minecraft.nbt.ListTag();
+        for (final IPElevatorShaft shaft : chain) {
+            list.add(shaft.write());
+        }
+        tag.put("Chain", list);
+        return tag;
+    }
+
+    /** Reads a chain; empty if the tag holds none. */
+    public static List<IPElevatorShaft> readChain(final CompoundTag tag) {
+        final List<IPElevatorShaft> chain = new ArrayList<>();
+        for (final net.minecraft.nbt.Tag element : tag.getList("Chain", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+            final IPElevatorShaft shaft = read((CompoundTag) element);
+            if (shaft == null) {
+                return List.of();
+            }
+            chain.add(shaft);
+        }
+        return List.copyOf(chain);
+    }
+
+    /** Why the last {@link #findChain} turned down the floor portals below its last portal (or the pulley): for its log line. */
     static String lastRejections = "";
 
     private static void note(final StringBuilder why, final Portal portal, final String reason) {

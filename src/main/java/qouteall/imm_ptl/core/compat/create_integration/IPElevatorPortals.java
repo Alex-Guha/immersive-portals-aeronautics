@@ -31,6 +31,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -39,14 +40,14 @@ import qouteall.imm_ptl.core.compat.mixin_create.IPElevatorColumnAccessor;
 import qouteall.imm_ptl.core.compat.mixin_create.IPLinearActuatorAccessor;
 
 /**
- * Create elevators whose shaft runs through a floor portal (docs/plans/elevators.md). The car (the home car) stays in
- * its pulley's level and is moved by Create as anywhere, on past the portal plane; while part of it is past the plane a
- * far copy stands in the destination level at the mapped place, placed by the car every tick on the server and on
- * each client, so players there stand on it, see it and use its controls. The far copy has no controller, is never
- * saved and ticks no actors on the server; its chests open the car's own storage ({@link #openCarStorage}); seated riders are handed
- * between the car and the far copy at the plane ({@link #handOverRiders}).
- * The floors of the pulley's column and of the far column form one list ({@link #link}): each side sees the other's
- * floors in its own frame, and a call from a far floor targets the home column.
+ * Create elevators whose shaft runs through floor portals, one below the other ({@link IPElevatorShaft#findChain}). The
+ * car (the home car) stays in its pulley's level and is moved by Create as anywhere, on past the portal planes; while
+ * part of it is past a plane, a far copy stands in the level past that portal at the mapped place, placed by the car
+ * every tick on the server and on each client, so players there stand on it, see it and use its controls. A far copy
+ * has no controller, is never saved and ticks no actors on the server; its chests open the car's own storage
+ * ({@link #openCarStorage}); seated riders are handed between the copies at each plane ({@link #handOverRiders}).
+ * The floors of the pulley's column and of each far column form one list ({@link #link}): each sees the others' floors
+ * in its own frame, and a call from a far floor targets the home column.
  */
 public final class IPElevatorPortals {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -60,12 +61,20 @@ public final class IPElevatorPortals {
     /** {@code -Dip_aeronautics.debug.elevatorTrace=true}: a line per running elevator with a shaft each second. */
     private static final boolean TRACE = Boolean.getBoolean("ip_aeronautics.debug.elevatorTrace");
 
-    /** Far copies by the pulley they stand for, per side (server and client). */
-    private static final Map<ResourceKey<Level>, Map<BlockPos, ControlledContraptionEntity>> SERVER_COPIES = new HashMap<>();
-    private static final Map<ResourceKey<Level>, Map<BlockPos, ControlledContraptionEntity>> CLIENT_COPIES = new HashMap<>();
+    /** A far copy's place in the tables: the pulley it stands for, and past which portal of its chain. */
+    record CopyKey(BlockPos pulley, int index) {
+    }
 
-    /** The other column of a linked pair; {@code dy}: a contact at y here is at {@code y + dy} there. */
-    public record Link(ServerLevel other, ElevatorColumn.ColumnCoords otherCoords, int dy, boolean home, long until) {
+    /** Far copies by home dimension, pulley and portal, per side (server and client). */
+    private static final Map<ResourceKey<Level>, Map<CopyKey, ControlledContraptionEntity>> SERVER_COPIES = new HashMap<>();
+    private static final Map<ResourceKey<Level>, Map<CopyKey, ControlledContraptionEntity>> CLIENT_COPIES = new HashMap<>();
+
+    /** Another column of a linked group; {@code dy}: a contact at y here is at {@code y + dy} there; {@code home}: the pulley's. */
+    public record Member(ServerLevel level, ElevatorColumn.ColumnCoords coords, int dy, boolean home) {
+    }
+
+    /** A column's linked group: the pulley's column and the column past each portal of its shaft, this one left out. */
+    public record Link(List<Member> others, long until) {
     }
 
     private static final Map<LevelAccessor, Map<ElevatorColumn.ColumnCoords, Link>> LINKS = new WeakHashMap<>();
@@ -95,33 +104,30 @@ public final class IPElevatorPortals {
         final AbstractContraptionEntity home = pulley.movedContraption;
         final long now = level.getServer().getTickCount();
         if (!pulley.running || home == null || !home.isAlive() || !(home.getContraption() instanceof ElevatorContraption ec)) {
-            if (holder.ip$shaft() != null) {
-                holder.ip$setShaft(null);
+            if (!holder.ip$chain().isEmpty()) {
+                holder.ip$setChain(List.of());
                 pulley.sendData();
-                sendShaft(level, pos, null);
+                sendShaft(level, pos, List.of());
                 if (home != null && home.isAlive()) {
                     IPElevatorFrames.refreshCollider(home);
                 }
             }
-            removeCopy(level, pos, "the elevator stopped");
+            removeCopies(level, pos, "the elevator stopped");
             return;
         }
         if (now - holder.ip$lastScan() >= SCAN_TICKS) {
             holder.ip$setLastScan(now);
-            final IPElevatorShaft found = IPElevatorShaft.find(level, pos, home.getBoundingBox());
-            if (found == null && !IPElevatorShaft.lastRejections.isEmpty()
+            final List<IPElevatorShaft> found = IPElevatorShaft.findChain(level, pos, home.getBoundingBox());
+            if (!IPElevatorShaft.lastRejections.isEmpty()
                 && !IPElevatorShaft.lastRejections.equals(REJECTIONS.put(pos.immutable(), IPElevatorShaft.lastRejections))) {
-                LOGGER.info("[IPElevator] pulley {} in {}: no shaft; turned down {}", pos.toShortString(), level.dimension().location(),
-                    IPElevatorShaft.lastRejections);
+                LOGGER.info("[IPElevator] pulley {} in {}: {}; turned down {}", pos.toShortString(), level.dimension().location(),
+                    found.isEmpty() ? "no shaft" : "the shaft ends after " + found.size() + " portal(s)", IPElevatorShaft.lastRejections);
             }
-            if (!java.util.Objects.equals(found, holder.ip$shaft())) {
+            if (!found.equals(holder.ip$chain())) {
                 LOGGER.info("[IPElevator] pulley {} in {}: {}", pos.toShortString(), level.dimension().location(),
-                    found == null ? "no shaft through a portal"
-                        : "shaft through portal " + found.portalId() + " at y " + found.planeY() + " into "
-                        + found.farDim().location() + ", shift " + found.shift().toShortString()
-                        + (found.turns() == 0 ? "" : ", turned " + 90 * found.turns() + " degrees"));
-                final boolean hadShaft = holder.ip$shaft() != null;
-                holder.ip$setShaft(found);
+                    found.isEmpty() ? "no shaft through a portal" : "shaft through " + describe(found));
+                final boolean hadShaft = !holder.ip$chain().isEmpty();
+                holder.ip$setChain(found);
                 pulley.sendData();
                 sendShaft(level, pos, found);
                 IPElevatorFrames.refreshCollider(home);
@@ -129,52 +135,78 @@ public final class IPElevatorPortals {
                     // a far copy stands in its shaft's far frame and carries that shaft: made again below in the new one.
                     // Moved instead, a copy left in the world when the far end went onto a ship (or taken into the ship's
                     // plot by its assembly) was drawn nowhere
-                    removeCopy(level, pos, "its shaft changed");
+                    removeCopies(level, pos, "its shaft changed");
                 }
             }
         }
-        final IPElevatorShaft shaft = holder.ip$shaft();
-        if (shaft != null) {
+        final List<IPElevatorShaft> chain = holder.ip$chain();
+        if (!chain.isEmpty()) {
             SHAFT_PULLEYS.computeIfAbsent(level.dimension(), k -> new java.util.HashSet<>()).add(pos.immutable());
         }
-        if (shaft != null && now % SHAFT_RESEND_TICKS == 0) {
-            sendShaft(level, pos, shaft);
+        if (!chain.isEmpty() && now % SHAFT_RESEND_TICKS == 0) {
+            sendShaft(level, pos, chain);
         }
         if (TRACE && now % 20 == 0) {
-            final ControlledContraptionEntity c = copyOf(SERVER_COPIES, level.dimension(), pos, ofServer(level));
-            LOGGER.info("[IPElevatorTrace] pulley {} car y {} minY {} shaft {} copy {} offset {} floors {}", pos.toShortString(),
-                home.getY(), home.getBoundingBox().minY, shaft != null, c == null ? "none" : c.getId() + " y " + c.getY(), pulley.offset,
+            final ControlledContraptionEntity c = copyOf(SERVER_COPIES, level.dimension(), pos, 0, ofServer(level));
+            LOGGER.info("[IPElevatorTrace] pulley {} car y {} minY {} portals {} copy {} offset {} floors {}", pos.toShortString(),
+                home.getY(), home.getBoundingBox().minY, chain.size(), c == null ? "none" : c.getId() + " y " + c.getY(), pulley.offset,
                 ec.namesList.stream().map(f -> f.getFirst() + "=" + f.getSecond().getFirst()).toList());
         }
-        final ServerLevel far = shaft == null ? null : level.getServer().getLevel(shaft.farDim());
-        if (shaft == null || far == null) {
-            removeCopy(level, pos, "no shaft");
+        if (chain.isEmpty()) {
+            removeCopies(level, pos, "no shaft");
             return;
         }
-        final ElevatorColumn.ColumnCoords column = ec.getGlobalColumn();
-        link(level, column, far, farColumn(column, shaft), shaft.shift().getY(), now);
-        ControlledContraptionEntity copy = copyOf(SERVER_COPIES, level.dimension(), pos, ofServer(level));
-        // the far copy is made a little before the car reaches the plane, so that each client has it, and Flywheel its
-        // visual, by the time the car is cut there (cut below its own plane, it shows nothing until then)
+        link(level, ec.getGlobalColumn(), chain, now);
+        // a far copy is made a little before the car reaches its plane, so that each client has it, and Flywheel its
+        // visual, by the time the car is cut there (cut below its own plane, it shows nothing until then); the same
+        // below, for a car coming up to the next portal's plane from past it
         // (a car's previous place means nothing in its first ticks: it was just assembled)
         final double speed = home.tickCount < 3 ? 0.0 : Math.min(2.0, Math.abs(home.getY() - home.yo));
         final double lead = COPY_LEAD + COPY_LEAD_TICKS * speed;
-        if (home.getBoundingBox().minY >= shaft.planeY() + lead + (copy != null ? 1.0 : 0.0)) {
-            removeCopy(level, pos, "the car is above the plane");
-            return;
-        }
-        if (copy == null) {
-            if (!far.isLoaded(BlockPos.containing(shaft.entityToFar(home.position())))) {
-                return;
+        final AABB box = home.getBoundingBox();
+        final ControlledContraptionEntity[] copies = new ControlledContraptionEntity[chain.size()];
+        for (int k = 0; k < chain.size(); k++) {
+            final IPElevatorShaft shaft = chain.get(k);
+            final double bottom = k + 1 < chain.size() ? chain.get(k + 1).planeY() : Double.NEGATIVE_INFINITY;
+            final ServerLevel far = level.getServer().getLevel(shaft.farDim());
+            ControlledContraptionEntity copy = copyOf(SERVER_COPIES, level.dimension(), pos, k, ofServer(level));
+            final double keepFor = copy != null ? 1.0 : 0.0;
+            if (far == null) {
+                removeCopy(level, pos, k, "its level is not there");
+                continue;
             }
-            copy = makeCopy(level, far, pulley, home, shaft);
+            if (box.minY >= shaft.planeY() + lead + keepFor) {
+                removeCopy(level, pos, k, "the car is above its plane");
+                continue;
+            }
+            if (box.maxY <= bottom - lead - keepFor) {
+                removeCopy(level, pos, k, "the car is past the next plane");
+                continue;
+            }
             if (copy == null) {
-                return;
+                if (!far.isLoaded(BlockPos.containing(shaft.entityToFar(home.position())))) {
+                    continue;
+                }
+                copy = makeCopy(level, far, pulley, home, k, shaft, bottom);
+                if (copy == null) {
+                    continue;
+                }
             }
+            place(home, copy, shaft);
+            ((IPElevatorFarCopy) copy).ip$setLastPush(now);
+            copies[k] = copy;
         }
-        place(home, copy, shaft);
-        ((IPElevatorFarCopy) copy).ip$setLastPush(now);
-        handOverRiders(far, home, copy, shaft);
+        handOverRiders(home, chain, copies);
+    }
+
+    private static String describe(final List<IPElevatorShaft> chain) {
+        final StringBuilder text = new StringBuilder();
+        for (final IPElevatorShaft shaft : chain) {
+            text.append(text.isEmpty() ? "" : ", then ").append("portal ").append(shaft.portalId()).append(" at y ").append(shaft.planeY())
+                .append(" into ").append(shaft.farDim().location()).append(" (shift ").append(shaft.shift().toShortString())
+                .append(shaft.turns() == 0 ? "" : ", turned " + 90 * shaft.turns() + " degrees").append(')');
+        }
+        return text.toString();
     }
 
     /**
@@ -225,13 +257,13 @@ public final class IPElevatorPortals {
     private static final String CLIENT = "qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortalsClient.RemoteCallables.";
 
     /**
-     * Sends a pulley's shaft to every client (null: none). The pulley's own block entity data carries it too, but for a
+     * Sends a pulley's shaft to every client (empty: none). The pulley's own block entity data carries it too, but for a
      * pulley on a ship that data reached a client late or not at all (only data sent with the ship's whole chunk came),
      * and a client without the shaft drew the car past the plane whole. Every player, since a car is seen through portals
      * from other dimensions; the message is small and goes out once every two seconds per elevator with a shaft.
      */
-    private static void sendShaft(final ServerLevel level, final BlockPos pulley, @Nullable final IPElevatorShaft shaft) {
-        final CompoundTag tag = shaft == null ? new CompoundTag() : shaft.write();
+    private static void sendShaft(final ServerLevel level, final BlockPos pulley, final List<IPElevatorShaft> chain) {
+        final CompoundTag tag = chain.isEmpty() ? new CompoundTag() : IPElevatorShaft.writeChain(chain);
         for (final net.minecraft.server.level.ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
             qouteall.q_misc_util.api.McRemoteProcedureCall.tellClientToInvoke(player, CLIENT + "setShaft", level.dimension(),
                 pulley, tag);
@@ -244,31 +276,43 @@ public final class IPElevatorPortals {
     private static final double SEAT_HEAD = 1.2;
 
     /**
-     * Server: the riders of each seat sit on the copy on whose side of the plane their head is, handed between the car
-     * and its far copy as it crosses (players with IP's seamless teleport, other riders with IP's entity teleport), with
-     * a small band so a rider at the plane is not handed to and fro.
+     * Server: the riders of each seat sit on the copy between whose planes their head is, handed between the car and
+     * the far copies as it crosses (players with IP's seamless teleport, other riders with IP's entity teleport), with a
+     * small band so a rider at a plane is not handed to and fro. {@code copies[k]}: the copy past portal k, or null.
      */
-    private static void handOverRiders(final ServerLevel far, final AbstractContraptionEntity home,
-                                       final ControlledContraptionEntity copy, final IPElevatorShaft shaft) {
+    private static void handOverRiders(final AbstractContraptionEntity home, final List<IPElevatorShaft> chain,
+                                       final ControlledContraptionEntity[] copies) {
         final Contraption contraption = home.getContraption();
-        if (contraption == null || (home.getPassengers().isEmpty() && copy.getPassengers().isEmpty())) {
+        if (contraption == null) {
             return;
         }
         final List<BlockPos> seats = contraption.getSeats();
-        for (final Entity rider : List.copyOf(home.getPassengers())) {
-            final Integer seat = contraption.getSeatMapping().get(rider.getUUID());
-            if (seat != null && seat < seats.size() && headY(home, seats.get(seat)) < shaft.planeY() - SEAT_MARGIN) {
-                moveRider(rider, home, copy, far, seat, shaft::toFar);
+        // -1 is the car, k the copy past portal k
+        for (int i = -1; i < chain.size(); i++) {
+            final AbstractContraptionEntity from = i < 0 ? home : copies[i];
+            if (from == null || from.getPassengers().isEmpty() || from.getContraption() == null) {
+                continue;
             }
-        }
-        final Contraption farContraption = copy.getContraption();
-        if (farContraption == null || !(home.level() instanceof ServerLevel homeLevel)) {
-            return;
-        }
-        for (final Entity rider : List.copyOf(copy.getPassengers())) {
-            final Integer seat = farContraption.getSeatMapping().get(rider.getUUID());
-            if (seat != null && seat < seats.size() && headY(copy, seats.get(seat)) > shaft.farPlaneY() + SEAT_MARGIN) {
-                moveRider(rider, copy, home, homeLevel, seat, shaft::fromFar);
+            final IPElevatorShaft fromShaft = i < 0 ? null : chain.get(i);
+            final double top = fromShaft == null ? Double.POSITIVE_INFINITY : fromShaft.planeY();
+            final double bottom = i + 1 < chain.size() ? chain.get(i + 1).planeY() : Double.NEGATIVE_INFINITY;
+            for (final Entity rider : List.copyOf(from.getPassengers())) {
+                final Integer seat = from.getContraption().getSeatMapping().get(rider.getUUID());
+                if (seat == null || seat >= seats.size()) {
+                    continue;
+                }
+                // the head's height in the pulley's frame
+                final double head = headY(from, seats.get(seat)) - (fromShaft == null ? 0 : fromShaft.shift().getY());
+                final int to = head < bottom - SEAT_MARGIN ? i + 1 : head > top + SEAT_MARGIN ? i - 1 : i;
+                final AbstractContraptionEntity target = to == i ? null : to < 0 ? home : copies[to];
+                if (target == null || !(target.level() instanceof ServerLevel toLevel)) {
+                    continue;
+                }
+                final IPElevatorShaft toShaft = to < 0 ? null : chain.get(to);
+                moveRider(rider, from, target, toLevel, seat, p -> {
+                    final Vec3 inPulleyFrame = fromShaft == null ? p : fromShaft.fromFar(p);
+                    return toShaft == null ? inPulleyFrame : toShaft.toFar(inPulleyFrame);
+                });
             }
         }
     }
@@ -303,25 +347,31 @@ public final class IPElevatorPortals {
     }
 
     private static void tickClient(final Level level, final ElevatorPulleyBlockEntity pulley) {
-        final IPElevatorShaft shaft = ((IPElevatorPulley) pulley).ip$shaft();
         final AbstractContraptionEntity home = pulley.movedContraption;
-        if (shaft == null || home == null) {
+        final Map<CopyKey, ControlledContraptionEntity> byKey = CLIENT_COPIES.get(level.dimension());
+        if (((IPElevatorPulley) pulley).ip$chain().isEmpty() || home == null || byKey == null || byKey.isEmpty()) {
             return;
         }
-        final ControlledContraptionEntity copy = copyOf(CLIENT_COPIES, level.dimension(), pulley.getBlockPos(),
-            IPElevatorPortalsClient::isLive);
-        if (copy == null) {
-            return;
-        }
-        place(home, copy, shaft);
-        IPElevatorPortalsClient.ensureFarVisual(copy);
-        // while the car is about to cross, at it or just past it, its portal is drawn every frame: the car may fill the
-        // opening and hide it until its floor or roof is past the plane, and IP draws a portal that was hidden last frame
-        // one frame late
-        qouteall.imm_ptl.core.render.IPPortalVisibility.keepDrawn(shaft.portalId(), 250);
-        if (home.getContraption() instanceof ElevatorContraption ec && copy.getContraption() instanceof ElevatorContraption fec) {
-            fec.arrived = ec.arrived;
-            fec.setClientYTarget(ec.clientYTarget + shaft.shift().getY());
+        for (final Map.Entry<CopyKey, ControlledContraptionEntity> entry : List.copyOf(byKey.entrySet())) {
+            if (!entry.getKey().pulley().equals(pulley.getBlockPos())) {
+                continue;
+            }
+            final ControlledContraptionEntity copy = copyOf(CLIENT_COPIES, level.dimension(), entry.getKey().pulley(), entry.getKey().index(),
+                IPElevatorPortalsClient::isLive);
+            final IPElevatorFarCopy.FarInfo info = copy == null ? null : farInfo(copy);
+            if (info == null) {
+                continue;
+            }
+            final IPElevatorShaft shaft = info.shaft();
+            place(home, copy, shaft);
+            IPElevatorPortalsClient.ensureFarVisual(copy);
+            // while the car is about to cross, at it or just past it, its portal is drawn every frame: the car may fill the
+            // opening and hide it until its floor or roof is past the plane, and IP draws a portal that was hidden last frame
+            // one frame late
+            qouteall.imm_ptl.core.render.IPPortalVisibility.keepDrawn(shaft.portalId(), 250);
+            if (home.getContraption() instanceof ElevatorContraption ec && copy.getContraption() instanceof ElevatorContraption fec) {
+                fec.setClientYTarget(ec.clientYTarget + shaft.shift().getY());
+            }
         }
     }
 
@@ -332,6 +382,9 @@ public final class IPElevatorPortals {
         ((IPElevatorFarCopy) copy).ip$setTargets(target, prev);
         applyTargets(copy);
         copy.setContraptionMotion(shaft.turn(home.getDeltaMovement()));
+        if (home.getContraption() instanceof ElevatorContraption ec && copy.getContraption() instanceof ElevatorContraption fec) {
+            fec.arrived = ec.arrived; // a copy of an arrived car is at rest too (MixinControlledContraptionEntity_ElevatorAtRest)
+        }
     }
 
     /** Called at the end of a far copy's own tick too, which reset its previous position. */
@@ -382,7 +435,8 @@ public final class IPElevatorPortals {
 
     private static @Nullable ControlledContraptionEntity makeCopy(final ServerLevel level, final ServerLevel far,
                                                                   final ElevatorPulleyBlockEntity pulley,
-                                                                  final AbstractContraptionEntity home, final IPElevatorShaft shaft) {
+                                                                  final AbstractContraptionEntity home, final int index,
+                                                                  final IPElevatorShaft shaft, final double bottomPlane) {
         final CompoundTag tag = new CompoundTag();
         home.saveWithoutId(tag);
         tag.remove("UUID");
@@ -408,7 +462,8 @@ public final class IPElevatorPortals {
             fec.maxContactY += shaft.shift().getY();
             fec.minContactY += shaft.shift().getY();
         }
-        ((IPElevatorFarCopy) copy).ip$setFarInfo(new IPElevatorFarCopy.FarInfo(level.dimension(), pulley.getBlockPos(), shaft));
+        ((IPElevatorFarCopy) copy).ip$setFarInfo(new IPElevatorFarCopy.FarInfo(level.dimension(), pulley.getBlockPos(), index, shaft,
+            bottomPlane));
         final Vec3 at = shaft.entityToFar(home.position());
         copy.setPos(at.x, at.y, at.z);
         turnLikeItsPortal(copy); // before it is sent: its spawn data carries the turn
@@ -416,9 +471,10 @@ public final class IPElevatorPortals {
         if (!far.addFreshEntity(copy)) {
             return null;
         }
-        SERVER_COPIES.computeIfAbsent(level.dimension(), k -> new HashMap<>()).put(pulley.getBlockPos(), copy);
-        LOGGER.info("[IPElevator] pulley {} in {}: far copy {} of car {} made in {} at {}", pulley.getBlockPos().toShortString(),
-            level.dimension().location(), copy.getId(), home.getId(), far.dimension().location(), at);
+        SERVER_COPIES.computeIfAbsent(level.dimension(), k -> new HashMap<>()).put(new CopyKey(pulley.getBlockPos().immutable(), index), copy);
+        LOGGER.info("[IPElevator] pulley {} in {}: far copy {} of car {} past portal {} of {} made in {} at {}", pulley.getBlockPos().toShortString(),
+            level.dimension().location(), copy.getId(), home.getId(), index + 1, ((IPElevatorPulley) pulley).ip$chain().size(),
+            far.dimension().location(), at);
         return copy;
     }
 
@@ -428,13 +484,14 @@ public final class IPElevatorPortals {
      * in a world no longer there, placed every tick but drawn nowhere, while no new copy was made (the car was missing
      * past the portal); discarding it then crashed in the old world's physics. Such a copy is dropped, not discarded.
      */
-    private static @Nullable ControlledContraptionEntity copyOf(final Map<ResourceKey<Level>, Map<BlockPos, ControlledContraptionEntity>> copies,
-                                                               final ResourceKey<Level> homeDim, final BlockPos pulley,
+    private static @Nullable ControlledContraptionEntity copyOf(final Map<ResourceKey<Level>, Map<CopyKey, ControlledContraptionEntity>> copies,
+                                                               final ResourceKey<Level> homeDim, final BlockPos pulley, final int index,
                                                                final java.util.function.Predicate<Entity> live) {
-        final Map<BlockPos, ControlledContraptionEntity> byPulley = copies.get(homeDim);
-        final ControlledContraptionEntity copy = byPulley == null ? null : byPulley.get(pulley);
+        final Map<CopyKey, ControlledContraptionEntity> byKey = copies.get(homeDim);
+        final CopyKey key = new CopyKey(pulley, index);
+        final ControlledContraptionEntity copy = byKey == null ? null : byKey.get(key);
         if (copy != null && (copy.isRemoved() || !live.test(copy))) {
-            byPulley.remove(pulley);
+            byKey.remove(key);
             return null;
         }
         return copy;
@@ -445,18 +502,32 @@ public final class IPElevatorPortals {
         return copy -> copy.getServer() == level.getServer();
     }
 
-    private static void removeCopy(final ServerLevel level, final BlockPos pulley, final String why) {
+    private static void removeCopy(final ServerLevel level, final BlockPos pulley, final int index, final String why) {
         final ResourceKey<Level> homeDim = level.dimension();
-        final Map<BlockPos, ControlledContraptionEntity> byPulley = SERVER_COPIES.get(homeDim);
-        final ControlledContraptionEntity copy = byPulley == null ? null : byPulley.remove(pulley);
+        final Map<CopyKey, ControlledContraptionEntity> byKey = SERVER_COPIES.get(homeDim);
+        final ControlledContraptionEntity copy = byKey == null ? null : byKey.remove(new CopyKey(pulley, index));
         if (copy != null && !copy.isRemoved() && ofServer(level).test(copy)) {
-            LOGGER.info("[IPElevator] pulley {} in {}: far copy {} removed ({})", pulley.toShortString(), homeDim.location(), copy.getId(), why);
+            LOGGER.info("[IPElevator] pulley {} in {}: far copy {} past portal {} removed ({})", pulley.toShortString(), homeDim.location(),
+                copy.getId(), index + 1, why);
             copy.discard();
         }
     }
 
-    /** Client: the far copies known on this client, by home dimension and pulley. */
-    static Map<ResourceKey<Level>, Map<BlockPos, ControlledContraptionEntity>> clientCopies() {
+    /** Removes every far copy of a pulley. */
+    private static void removeCopies(final ServerLevel level, final BlockPos pulley, final String why) {
+        final Map<CopyKey, ControlledContraptionEntity> byKey = SERVER_COPIES.get(level.dimension());
+        if (byKey == null || byKey.isEmpty()) {
+            return;
+        }
+        for (final CopyKey key : List.copyOf(byKey.keySet())) {
+            if (key.pulley().equals(pulley)) {
+                removeCopy(level, pulley, key.index(), why);
+            }
+        }
+    }
+
+    /** Client: the far copies known on this client, by home dimension, pulley and portal. */
+    static Map<ResourceKey<Level>, Map<CopyKey, ControlledContraptionEntity>> clientCopies() {
         return CLIENT_COPIES;
     }
 
@@ -468,7 +539,7 @@ public final class IPElevatorPortals {
 
     /** Client: a far copy arrived from the server; its car's pulley places it from now on. */
     public static void onClientFarCopy(final ControlledContraptionEntity copy, final IPElevatorFarCopy.FarInfo info) {
-        CLIENT_COPIES.computeIfAbsent(info.homeDim(), k -> new HashMap<>()).put(info.pulleyPos(), copy);
+        CLIENT_COPIES.computeIfAbsent(info.homeDim(), k -> new HashMap<>()).put(new CopyKey(info.pulleyPos(), info.index()), copy);
         // its floors: the server sends them only when they change, and a far copy has no pulley here to ask for them
         net.createmod.catnip.platform.CatnipServices.NETWORK.sendToServer(
             new com.simibubi.create.content.contraptions.elevator.ElevatorFloorListPacket.RequestFloorList(copy));
@@ -523,7 +594,11 @@ public final class IPElevatorPortals {
         return ((IPElevatorPulley) pulley).ip$shaft();
     }
 
-    /** Which side of which plane of a car or far copy is drawn: the home car above its shaft's plane, a far copy below its own. */
+    /**
+     * Which side of which plane of a car or far copy is drawn: the home car above its shaft's first plane, a far copy
+     * below its own, or above the next portal's plane when it reaches past that one instead (never both: the shaft's
+     * portals are at least the car's height apart).
+     */
     public record Keep(double planeY, boolean above) {
         public boolean keeps(final double y) {
             return above ? y >= planeY : y <= planeY;
@@ -534,6 +609,10 @@ public final class IPElevatorPortals {
     public static @Nullable Keep keep(final Entity entity) {
         final IPElevatorFarCopy.FarInfo far = farInfo(entity);
         if (far != null) {
+            final AABB box = entity.getBoundingBox();
+            if (far.hasBottom() && box.minY < far.farBottomPlaneY() && box.maxY <= far.shaft().farPlaneY()) {
+                return new Keep(far.farBottomPlaneY(), true);
+            }
             return new Keep(far.shaft().farPlaneY(), false);
         }
         if (!(entity instanceof AbstractContraptionEntity contraption)) {
@@ -544,8 +623,8 @@ public final class IPElevatorPortals {
     }
 
     /**
-     * Whether a car or far copy leaves this entity alone: it is wholly behind the portal on the copy's side (the part of
-     * the car there belongs to the other level). Entities straddling the plane collide with both.
+     * Whether a car or far copy leaves this entity alone: it is wholly behind a portal on the copy's side (the part of
+     * the car there belongs to the other level). Entities straddling a plane collide with both.
      */
     public static boolean skipsCollision(final AbstractContraptionEntity contraption, final Entity other) {
         final IPElevatorFarCopy.FarInfo far = farInfo(contraption);
@@ -555,7 +634,10 @@ public final class IPElevatorPortals {
         }
         // the entity's box in the contraption's frame (a ship's plot for a contraption on a ship)
         final double[] y = IPElevatorFrames.frameYRange(contraption, other.getBoundingBox());
-        return far != null ? y[0] >= far.shaft().farPlaneY() - EPS : y[1] <= shaft.planeY() + EPS;
+        if (far != null) {
+            return y[0] >= far.shaft().farPlaneY() - EPS || (far.hasBottom() && y[1] <= far.farBottomPlaneY() + EPS);
+        }
+        return y[1] <= shaft.planeY() + EPS;
     }
 
     /** Whether this is an elevator car's far copy (any object; false for anything else). */
@@ -613,26 +695,48 @@ public final class IPElevatorPortals {
     }
 
     /**
-     * Links the two columns, refreshed every tick. A new link turns the redstone contacts of the far column into elevator
-     * contacts, as Create does in the pulley's own column when the elevator is assembled, and has both columns' floor
-     * lists compiled again.
+     * Links the pulley's column and the column past each portal of its shaft into one group, refreshed every tick. A
+     * new link turns the redstone contacts of the far columns into elevator contacts, as Create does in the pulley's own
+     * column when the elevator is assembled, and has every column's floor list compiled again.
      */
-    private static void link(final ServerLevel home, final ElevatorColumn.ColumnCoords homeColumn, final ServerLevel far,
-                             final ElevatorColumn.ColumnCoords farColumn, final int dy, final long now) {
-        final Map<ElevatorColumn.ColumnCoords, Link> homeLinks = LINKS.computeIfAbsent(home, k -> new HashMap<>());
-        final Link before = homeLinks.get(homeColumn);
-        final boolean fresh = before == null || before.until() < now || before.other() != far
-            || !before.otherCoords().equals(farColumn) || before.dy() != dy;
-        homeLinks.put(homeColumn, new Link(far, farColumn, dy, false, now + LINK_TICKS));
-        LINKS.computeIfAbsent(far, k -> new HashMap<>()).put(farColumn, new Link(home, homeColumn, -dy, true, now + LINK_TICKS));
+    private static void link(final ServerLevel home, final ElevatorColumn.ColumnCoords homeColumn, final List<IPElevatorShaft> chain,
+                             final long now) {
+        // every column of the group, dy from the pulley's frame
+        final List<Member> all = new ArrayList<>();
+        all.add(new Member(home, homeColumn, 0, true));
+        for (final IPElevatorShaft shaft : chain) {
+            final ServerLevel far = home.getServer().getLevel(shaft.farDim());
+            final Member member = far == null ? null : new Member(far, farColumn(homeColumn, shaft), shaft.shift().getY(), false);
+            // a column met twice (a portal into the same column of the same level) is linked once
+            if (member != null && all.stream().noneMatch(m -> m.level() == member.level() && m.coords().equals(member.coords()))) {
+                all.add(member);
+            }
+        }
+        boolean fresh = false;
+        for (final Member self : all) {
+            final List<Member> others = new ArrayList<>();
+            for (final Member m : all) {
+                if (m != self) {
+                    others.add(new Member(m.level(), m.coords(), m.dy() - self.dy(), m.home()));
+                }
+            }
+            final Map<ElevatorColumn.ColumnCoords, Link> byCoords = LINKS.computeIfAbsent(self.level(), k -> new HashMap<>());
+            final Link before = byCoords.get(self.coords());
+            fresh |= before == null || before.until() < now || !before.others().equals(others);
+            byCoords.put(self.coords(), new Link(List.copyOf(others), now + LINK_TICKS));
+        }
         if (!fresh) {
             return;
         }
-        final ElevatorColumn farOne = ElevatorColumn.getOrCreate(far, farColumn);
         mirroring = true;
         try {
-            farOne.gatherAll();
-            farOne.namesListVersion++;
+            for (final Member member : all) {
+                if (!member.home()) {
+                    final ElevatorColumn farOne = ElevatorColumn.getOrCreate(member.level(), member.coords());
+                    farOne.gatherAll();
+                    farOne.namesListVersion++;
+                }
+            }
             final ElevatorColumn homeOne = ElevatorColumn.get(home, homeColumn);
             if (homeOne != null) {
                 homeOne.namesListVersion++;
@@ -644,11 +748,15 @@ public final class IPElevatorPortals {
         if (homeOne != null) {
             initNamesMerged(homeOne);
         }
-        LOGGER.info("[IPElevator] column {} {} in {} linked to column {} {} in {}", homeColumn.x(), homeColumn.z(), home.dimension().location(),
-            farColumn.x(), farColumn.z(), far.dimension().location());
+        final StringBuilder text = new StringBuilder();
+        for (final Member member : all.subList(1, all.size())) {
+            text.append(text.isEmpty() ? "" : ", ").append("column ").append(member.coords().x()).append(' ').append(member.coords().z())
+                .append(" in ").append(member.level().dimension().location());
+        }
+        LOGGER.info("[IPElevator] column {} {} in {} linked to {}", homeColumn.x(), homeColumn.z(), home.dimension().location(), text);
     }
 
-    /** The column linked to this one, or null. */
+    /** The group linked to this column, or null. */
     public static @Nullable Link linkOf(final ElevatorColumn column) {
         final IPElevatorColumnAccessor access = (IPElevatorColumnAccessor) column;
         if (!(access.ip_getLevel() instanceof ServerLevel level)) {
@@ -663,22 +771,26 @@ public final class IPElevatorPortals {
         return link;
     }
 
-    private static @Nullable ElevatorColumn other(final Link link) {
-        return ElevatorColumn.get(link.other(), link.otherCoords());
+    private static @Nullable ElevatorColumn column(final Member member) {
+        return ElevatorColumn.get(member.level(), member.coords());
     }
 
-    /** This column's floors and the linked column's, in this column's frame, by height. */
+    /** This column's floors and the linked columns', in this column's frame, by height. */
     public static List<IntAttached<Couple<String>>> mergedNames(final ElevatorColumn column, final List<IntAttached<Couple<String>>> own) {
         final Link link = mirroring ? null : linkOf(column);
-        final ElevatorColumn other = link == null ? null : other(link);
-        if (other == null) {
+        if (link == null) {
             return own;
         }
         final List<IntAttached<Couple<String>>> merged = new ArrayList<>(own);
         mirroring = true;
         try {
-            for (final IntAttached<Couple<String>> floor : other.compileNamesList()) {
-                merged.add(IntAttached.with(floor.getFirst() - link.dy(), floor.getSecond()));
+            for (final Member member : link.others()) {
+                final ElevatorColumn other = column(member);
+                if (other != null) {
+                    for (final IntAttached<Couple<String>> floor : other.compileNamesList()) {
+                        merged.add(IntAttached.with(floor.getFirst() - member.dy(), floor.getSecond()));
+                    }
+                }
             }
         } finally {
             mirroring = false;
@@ -687,25 +799,29 @@ public final class IPElevatorPortals {
         return merged;
     }
 
-    /** Runs {@code call} on the linked column, if any, without mirroring it back. */
-    public static void mirror(final ElevatorColumn column, final java.util.function.BiConsumer<ElevatorColumn, Link> call) {
+    /** Runs {@code call} on each linked column there is, without mirroring it back. */
+    public static void mirror(final ElevatorColumn column, final java.util.function.BiConsumer<ElevatorColumn, Member> call) {
         final Link link = mirroring ? null : linkOf(column);
-        final ElevatorColumn other = link == null ? null : other(link);
-        if (other == null) {
+        if (link == null) {
             return;
         }
         mirroring = true;
         try {
-            call.accept(other, link);
+            for (final Member member : link.others()) {
+                final ElevatorColumn other = column(member);
+                if (other != null) {
+                    call.accept(other, member);
+                }
+            }
         } finally {
             mirroring = false;
         }
     }
 
     /**
-     * Either column was given a target: the other gets the same floor in its own frame. The car reads the home column;
-     * the far column must follow it too, since each contact saves its column's target and restores it on load (a far
-     * column left at an old far floor called the car back there after a reload).
+     * A column of a group was given a target: the others get the same floor in their own frames. The car reads the
+     * home column; the far columns must follow it too, since each contact saves its column's target and restores it on
+     * load (a far column left at an old far floor called the car back there after a reload).
      */
     public static void onTarget(final ElevatorColumn column, final int y) {
         final Link link = mirroring ? null : linkOf(column);
@@ -714,9 +830,11 @@ public final class IPElevatorPortals {
         }
         mirroring = true;
         try {
-            final ElevatorColumn other = link.home() ? ElevatorColumn.getOrCreate(link.other(), link.otherCoords()) : other(link);
-            if (other != null) {
-                other.target(y + link.dy());
+            for (final Member member : link.others()) {
+                final ElevatorColumn other = member.home() ? ElevatorColumn.getOrCreate(member.level(), member.coords()) : column(member);
+                if (other != null) {
+                    other.target(y + member.dy());
+                }
             }
         } finally {
             mirroring = false;
@@ -724,7 +842,7 @@ public final class IPElevatorPortals {
     }
 
     /**
-     * Numbers the floors of a linked pair as one column, the way Create numbers one column ({@code ElevatorColumn.initNames}):
+     * Numbers the floors of a linked group as one column, the way Create numbers one column ({@code ElevatorColumn.initNames}):
      * from the bottom up, keeping names that are not numbers, counting on from a number already given. Numbered per
      * column, the lowest floor on each side was "0", and the car's controls showed the same name for both. False when the
      * column is not linked (Create numbers it).
@@ -734,11 +852,13 @@ public final class IPElevatorPortals {
         if (link == null) {
             return false;
         }
-        final ElevatorColumn other = other(link);
         final List<IntAttached<ElevatorContactBlockEntity>> floors = new ArrayList<>();
         collectFloors(column, 0, floors);
-        if (other != null) {
-            collectFloors(other, -link.dy(), floors);
+        for (final Member member : link.others()) {
+            final ElevatorColumn other = column(member);
+            if (other != null) {
+                collectFloors(other, -member.dy(), floors);
+            }
         }
         floors.sort((a, b) -> Integer.compare(a.getFirst(), b.getFirst()));
         mirroring = true;
@@ -799,28 +919,34 @@ public final class IPElevatorPortals {
         }
     }
 
-    /** A floor was called: the other column's contacts stop showing a call, as Create does for the rest of one column. */
+    /** A floor was called: the other columns' contacts stop showing a call, as Create does for the rest of one column. */
     public static void onCalled(final ElevatorColumn column) {
-        mirror(column, (other, link) -> {
+        mirror(column, (other, member) -> {
             for (final BlockPos pos : other.getContacts()) {
-                final BlockState state = link.other().getBlockState(pos);
+                final BlockState state = member.level().getBlockState(pos);
                 if (AllBlocks.ELEVATOR_CONTACT.has(state) && state.getValue(ElevatorContactBlock.CALLING)) {
-                    link.other().setBlock(pos, state.setValue(ElevatorContactBlock.CALLING, false), 18);
-                    ((ElevatorContactBlock) AllBlocks.ELEVATOR_CONTACT.get()).scheduleActivation(link.other(), pos);
+                    member.level().setBlock(pos, state.setValue(ElevatorContactBlock.CALLING, false), 18);
+                    ((ElevatorContactBlock) AllBlocks.ELEVATOR_CONTACT.get()).scheduleActivation(member.level(), pos);
                 }
             }
         });
     }
 
     /**
-     * The car arrived at a floor past the plane: light that far contact as Create lights the home one. False when the
+     * The car arrived at a floor past a plane: light that far contact as Create lights the home one. False when the
      * floor is on the pulley's side (Create handles it).
      */
     public static boolean triggerFarContact(final ElevatorPulleyBlockEntity pulley, final ElevatorContraption ec, final int targetLevel) {
-        final IPElevatorShaft shaft = ((IPElevatorPulley) pulley).ip$shaft();
+        final List<IPElevatorShaft> chain = ((IPElevatorPulley) pulley).ip$chain();
         final int contactY = targetLevel + ec.getContactYOffset();
-        if (shaft == null || contactY >= shaft.planeY() || !(pulley.getLevel() instanceof ServerLevel level)) {
+        if (chain.isEmpty() || contactY >= chain.get(0).planeY() || !(pulley.getLevel() instanceof ServerLevel level)) {
             return false;
+        }
+        IPElevatorShaft shaft = chain.get(0);
+        for (final IPElevatorShaft below : chain) {
+            if (contactY < below.planeY()) {
+                shaft = below; // the lowest portal above the contact: the contact is in the level past it
+            }
         }
         final ServerLevel far = level.getServer().getLevel(shaft.farDim());
         if (far == null) {
@@ -877,16 +1003,18 @@ public final class IPElevatorPortals {
     /** Calls the car to the floor at {@code homeY} in the pulley's frame, in whichever column it is. */
     private static void callFloor(final ServerLevel homeLevel, final ElevatorPulleyBlockEntity pulley, final ElevatorContraption ec,
                                   final int homeY) {
-        final IPElevatorShaft shaft = ((IPElevatorPulley) pulley).ip$shaft();
         final ElevatorColumn homeColumn = ElevatorColumn.get(homeLevel, ec.getGlobalColumn());
         if (homeColumn != null && ((IPElevatorColumnAccessor) homeColumn).ip_getContacts().contains(homeY)) {
             call(homeColumn, homeLevel, homeColumn.contactAt(homeY));
-        } else if (shaft != null) {
+            return;
+        }
+        for (final IPElevatorShaft shaft : ((IPElevatorPulley) pulley).ip$chain()) {
             final ServerLevel farLevel = homeLevel.getServer().getLevel(shaft.farDim());
             final ElevatorColumn farColumn = farLevel == null ? null : ElevatorColumn.get(farLevel, farColumn(ec.getGlobalColumn(), shaft));
             final int farY = homeY + shaft.shift().getY();
             if (farColumn != null && ((IPElevatorColumnAccessor) farColumn).ip_getContacts().contains(farY)) {
                 call(farColumn, farLevel, farColumn.contactAt(farY));
+                return;
             }
         }
     }

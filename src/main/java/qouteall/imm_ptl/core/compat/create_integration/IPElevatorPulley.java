@@ -3,13 +3,21 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import java.util.List;
 import org.jetbrains.annotations.Nullable;
 
-/** An elevator pulley's shaft through a portal ({@code MixinElevatorPulleyBlockEntity_Portals}); synced to clients. */
+/** An elevator pulley's shaft through portals ({@code MixinElevatorPulleyBlockEntity_Portals}); synced to clients. */
 public interface IPElevatorPulley {
-    @Nullable IPElevatorShaft ip$shaft();
+    /** The portals the shaft runs through, top down ({@link IPElevatorShaft#findChain}); empty if none. */
+    List<IPElevatorShaft> ip$chain();
 
-    void ip$setShaft(@Nullable IPElevatorShaft shaft);
+    void ip$setChain(List<IPElevatorShaft> chain);
+
+    /** The first portal of the shaft, or null. */
+    default @Nullable IPElevatorShaft ip$shaft() {
+        final List<IPElevatorShaft> chain = ip$chain();
+        return chain.isEmpty() ? null : chain.get(0);
+    }
 
     /** Server tick of the last shaft search. */
     long ip$lastScan();

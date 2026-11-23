@@ -7,7 +7,7 @@ import com.simibubi.create.content.contraptions.elevator.ElevatorContraption;
 import com.simibubi.create.content.contraptions.elevator.ElevatorPulleyBlockEntity;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import org.jetbrains.annotations.Nullable;
+import java.util.List;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,18 +25,18 @@ import qouteall.imm_ptl.core.compat.create_integration.IPElevatorShaft;
 @Mixin(value = ElevatorPulleyBlockEntity.class, remap = false)
 public class MixinElevatorPulleyBlockEntity_Portals implements IPElevatorPulley {
     @Unique
-    private @Nullable IPElevatorShaft ip$shaft;
+    private List<IPElevatorShaft> ip$chain = List.of();
     @Unique
     private long ip$lastScan = Long.MIN_VALUE / 2;
 
     @Override
-    public @Nullable IPElevatorShaft ip$shaft() {
-        return ip$shaft;
+    public List<IPElevatorShaft> ip$chain() {
+        return ip$chain;
     }
 
     @Override
-    public void ip$setShaft(@Nullable IPElevatorShaft shaft) {
-        ip$shaft = shaft;
+    public void ip$setChain(List<IPElevatorShaft> chain) {
+        ip$chain = List.copyOf(chain);
     }
 
     @Override
@@ -57,15 +57,15 @@ public class MixinElevatorPulleyBlockEntity_Portals implements IPElevatorPulley 
 
     @Inject(method = "write", at = @At("TAIL"))
     private void ip$writeShaft(CompoundTag compound, HolderLookup.Provider registries, boolean clientPacket, CallbackInfo ci) {
-        if (clientPacket && ip$shaft != null) {
-            compound.put("IPElevatorShaft", ip$shaft.write());
+        if (clientPacket && !ip$chain.isEmpty()) {
+            compound.put("IPElevatorChain", IPElevatorShaft.writeChain(ip$chain));
         }
     }
 
     @Inject(method = "read", at = @At("TAIL"))
     private void ip$readShaft(CompoundTag compound, HolderLookup.Provider registries, boolean clientPacket, CallbackInfo ci) {
         if (clientPacket) {
-            ip$shaft = compound.contains("IPElevatorShaft") ? IPElevatorShaft.read(compound.getCompound("IPElevatorShaft")) : null;
+            ip$chain = compound.contains("IPElevatorChain") ? IPElevatorShaft.readChain(compound.getCompound("IPElevatorChain")) : List.of();
         }
     }
 

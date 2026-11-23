@@ -1,0 +1,73 @@
+# Posts a release's notes to the Discord server when the release is published, through the DISCORD_WEBHOOK secret
+# (a channel webhook URL). The notes go as message text, split at line breaks into Discord's 2000-character messages,
+# with no mentions allowed. Run by hand with a tag to post (or repost) an already published release.
+name: Discord
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to post, e.g. v2.10.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    name: Post the release notes
+    if: github.repository == 'Alex-Guha/immersive-portals-aeronautics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          [ -n "$DISCORD_WEBHOOK" ] || { echo "::error::the DISCORD_WEBHOOK secret is not set"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json name,body,url,isDraft,isPrerelease > "$RUNNER_TEMP/release.json"
+          python3 - "$RUNNER_TEMP/release.json" <<'EOF'
+          import json, os, sys, time, urllib.request
+
+          release = json.load(open(sys.argv[1]))
+          if release["isDraft"]:
+              sys.exit(f"{os.environ['TAG']} is a draft: publish it first")
+          title = f"## Immersive Portals: Aeronautics {release['name']}"
+          if release["isPrerelease"]:
+              title += " (pre-release)"
+          text = f"{title}\n<{release['url']}>\n\n{release['body'].strip()}".replace("\r\n", "\n")
+
+          LIMIT = 2000
+          messages, current = [], ""
+          for line in text.split("\n"):
+              while len(line) > LIMIT:                  # a single overlong line: cut it hard
+                  if current:
+                      messages.append(current)
+                      current = ""
+                  messages.append(line[:LIMIT])
+                  line = line[LIMIT:]
+              candidate = f"{current}\n{line}" if current else line
+              if len(candidate) > LIMIT:
+                  messages.append(current)
+                  current = line
+              else:
+                  current = candidate
+          if current.strip():
+              messages.append(current)
+
+          for i, content in enumerate(messages):
+              payload = {"content": content, "allowed_mentions": {"parse": []}}
+              request = urllib.request.Request(
+                  os.environ["DISCORD_WEBHOOK"] + "?wait=true",
+                  data=json.dumps(payload).encode(),
+                  headers={"Content-Type": "application/json",
+                           "User-Agent": "DiscordBot (https://github.com/Alex-Guha/immersive-portals-aeronautics, 1)"},
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  print(f"message {i + 1}/{len(messages)}: HTTP {response.status}")
+              time.sleep(1)
+          EOF

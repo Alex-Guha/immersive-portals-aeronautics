@@ -90,7 +90,9 @@ public abstract class MixinClipContext implements IERayTraceContext {
                     // (a ship-mounted portal): without this it took clicks meant for what is behind it, and broke
                     if (intersectingWithPortal
                         || qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction.isShipPortalBlock(world, blockPos)) {
-                        cir.setReturnValue(Shapes.empty());
+                        // Immersive Aeronautics: except a Create part's lone bridge piece in it, which the crosshair hits
+                        VoxelShape piece = PortalPlaceholderBlock.bridgePiece(world, blockPos);
+                        cir.setReturnValue(piece != null ? piece : Shapes.empty());
                     }
                 }
             }

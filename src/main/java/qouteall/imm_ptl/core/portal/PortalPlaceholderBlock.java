@@ -78,6 +78,11 @@ public class PortalPlaceholderBlock extends Block {
     public VoxelShape getShape(
         BlockState state, BlockGetter world, BlockPos blockPos, CollisionContext shapeContext
     ) {
+        // Immersive Aeronautics: a Create part's lone bridge piece in this block is what the crosshair outlines (client)
+        VoxelShape piece = bridgePiece(world, blockPos);
+        if (piece != null) {
+            return piece;
+        }
         switch (state.getValue(AXIS)) {
             case Z:
                 return Z_AABB;
@@ -96,6 +101,55 @@ public class PortalPlaceholderBlock extends Block {
     
     // Immersive Aeronautics: Create tracks laid up to a portal before it opened get their bridge into it now
     private static final boolean CREATE = net.neoforged.fml.ModList.get().isLoaded("create");
+    
+    /**
+     * Immersive Aeronautics: the shape of the lone bridge piece a Create part draws in this portal block, in a client
+     * world, or null ({@code IPCreatePortalPieceTargets}). The crosshair hits it, and a block placed against its open
+     * end goes where the part would continue.
+     */
+    @org.jetbrains.annotations.Nullable
+    public static VoxelShape bridgePiece(BlockGetter world, BlockPos blockPos) {
+        if (!CREATE) {
+            return null;
+        }
+        qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.Piece piece =
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.at(world, blockPos);
+        return piece == null ? null : piece.shape();
+    }
+    
+    // Immersive Aeronautics: with a shaft in hand, any face of a half shaft coming out of the portal continues it, as
+    // Create's placement helper does on a shaft (IPCreatePortalShaftPlacement)
+    @Override
+    protected net.minecraft.world.ItemInteractionResult useItemOn(
+        net.minecraft.world.item.ItemStack stack, BlockState state, Level level, BlockPos pos,
+        net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand, BlockHitResult hitResult
+    ) {
+        if (CREATE) {
+            net.minecraft.world.ItemInteractionResult placed =
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftPlacement.useItemOn(
+                    stack, state, level, pos, player, hand, hitResult
+                );
+            if (placed != null) {
+                return placed;
+            }
+        }
+        return super.useItemOn(stack, state, level, pos, player, hand, hitResult);
+    }
+    
+    // Immersive Aeronautics: middle-click on a bridge piece picks the part it belongs to
+    @Override
+    public net.minecraft.world.item.ItemStack getCloneItemStack(
+        net.minecraft.world.level.LevelReader level, BlockPos pos, BlockState state
+    ) {
+        if (CREATE) {
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.Piece piece =
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.at(level, pos);
+            if (piece != null) {
+                return new net.minecraft.world.item.ItemStack(piece.item());
+            }
+        }
+        return super.getCloneItemStack(level, pos, state);
+    }
     
     @Override
     protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {

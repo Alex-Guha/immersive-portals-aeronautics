@@ -101,7 +101,9 @@ public class BlockManipulationClient {
             Portal portal = pair.getFirst();
             Vec3 hitPos = pair.getSecond().hitPos();
             double distanceToPortalPointing = hitPos.distanceTo(cameraPos);
-            if (distanceToPortalPointing < getCurrentTargetDistance() + 0.2) {
+            // Immersive Aeronautics: a bridge piece lies in front of its portal's plane, so the portal is never in
+            // front of it; with the slack the portal took rays that hit a piece's side within 0.2 of the plane
+            if (distanceToPortalPointing < getCurrentTargetDistance() + (isBridgePieceHit() ? 0 : 0.2)) {
                 client.hitResult = createMissedHitResult(cameraPos, hitPos);
                 targetDistance[0] = distanceToPortalPointing;
                 
@@ -142,13 +144,21 @@ public class BlockManipulationClient {
         
         if (client.hitResult instanceof BlockHitResult) {
             BlockPos hitPos = ((BlockHitResult) client.hitResult).getBlockPos();
-            if (client.level.getBlockState(hitPos).getBlock() == PortalPlaceholderBlock.instance) {
+            if (client.level.getBlockState(hitPos).getBlock() == PortalPlaceholderBlock.instance
+                && !isBridgePieceHit()) {
                 return 23333;
             }
         }
         
         // Immersive Aeronautics: a hit on a Sable ship is in plot coordinates; measure where the ship is
         return cameraPos.distanceTo(IPShipBlockInteraction.toWorld(client.level, client.hitResult.getLocation()));
+    }
+    
+    /** Immersive Aeronautics: the crosshair is on a Create part's lone bridge piece in a portal block. */
+    private static boolean isBridgePieceHit() {
+        return client.hitResult instanceof BlockHitResult blockHit && blockHit.getType() == HitResult.Type.BLOCK
+            && client.level.getBlockState(blockHit.getBlockPos()).getBlock() == PortalPlaceholderBlock.instance
+            && PortalPlaceholderBlock.bridgePiece(client.level, blockHit.getBlockPos()) != null;
     }
     
     private static void updateTargetedBlockThroughPortal(

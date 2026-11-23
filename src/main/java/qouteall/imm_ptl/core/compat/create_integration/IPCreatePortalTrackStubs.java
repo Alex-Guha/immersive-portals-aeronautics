@@ -5,6 +5,7 @@ package qouteall.imm_ptl.core.compat.create_integration;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.simibubi.create.AllShapes;
 import com.simibubi.create.content.trains.track.TrackBlock;
 import com.simibubi.create.content.trains.track.TrackShape;
 import java.util.Collection;
@@ -29,6 +30,7 @@ import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.event.AddSectionGeometryEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
@@ -65,6 +67,10 @@ public final class IPCreatePortalTrackStubs {
     private record Stub(BlockPos cell, BlockPos spot, BlockState track) {
     }
 
+    /** A stub's shape, by the way it runs out of the plane: a straight track's ({@link IPCreatePortalPieceTargets}). */
+    private static final VoxelShape[] PIECES = IPCreatePortalPieceTargets.halves(
+        d -> d.getAxis().isVertical() ? net.minecraft.world.phys.shapes.Shapes.empty() : AllShapes.TRACK_ORTHO.get(d));
+
     /** Per dimension, per section ({@link SectionPos#asLong}) of the far portal block, the stubs in it. */
     private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> stubs = Map.of();
 
@@ -74,6 +80,8 @@ public final class IPCreatePortalTrackStubs {
     /** The stubs found in a walk: portals in the world, between world tracks. */
     static final class TrackScan implements IPCreatePortalEndScan.Scan {
         private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
+        /** The same, for the crosshair. */
+        private final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets = new HashMap<>();
 
         @Override
         public boolean wants(final IPCreatePortalEndScan.Side side) {
@@ -115,12 +123,15 @@ public final class IPCreatePortalTrackStubs {
             found.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
                 .computeIfAbsent(SectionPos.asLong(farCell), s -> new ArrayList<>())
                 .add(new Stub(farCell.immutable(), spot.immutable(), track.setValue(TrackBlock.SHAPE, farShape)));
+            targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
+                .put(farCell.immutable(), new IPCreatePortalPieceTargets.Piece(PIECES[out.ordinal()], track.getBlock().asItem()));
         }
 
         @Override
         public void finish(final Collection<ClientLevel> worlds, final boolean important) {
             final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previous = stubs;
             stubs = found;
+            IPCreatePortalPieceTargets.set(IPCreatePortalPieceTargets.Kind.TRACK, targets);
             markChanged(previous, found, important);
             markChanged(found, previous, important);
         }

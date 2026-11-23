@@ -6,6 +6,7 @@ package qouteall.imm_ptl.core.compat.create_integration;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllShapes;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.fluids.FluidPropagator;
 import com.simibubi.create.content.fluids.FluidTransportBehaviour;
@@ -53,6 +54,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.event.AddSectionGeometryEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
@@ -98,6 +100,9 @@ public final class IPCreatePortalPipeStubs {
     private record ShipStub(BlockPos pos, Direction toward, IPCreatePortalShafts.Frame ship, @Nullable VisualEmbedding embedding) {
     }
 
+    /** A stub's shape, by the way it runs out of the plane: the pipe's arm ({@link IPCreatePortalPieceTargets}). */
+    private static final VoxelShape[] PIECES = IPCreatePortalPieceTargets.halves(d -> AllShapes.EIGHT_VOXEL_POLE.get(d.getAxis()));
+
     /** Per client world, the effect drawing its ship stubs (weak: client worlds come and go). */
     private static final Map<ClientLevel, ShipStubs> SHIP_EFFECTS = new WeakHashMap<>();
 
@@ -115,6 +120,8 @@ public final class IPCreatePortalPipeStubs {
         private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
         private final Map<ClientLevel, List<ShipStub>> onShips = new IdentityHashMap<>();
         private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> outranked = new HashMap<>();
+        /** Every stub, for the crosshair. */
+        private final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets = new HashMap<>();
 
         @Override
         public boolean wants(final IPCreatePortalEndScan.Side side) {
@@ -138,12 +145,12 @@ public final class IPCreatePortalPipeStubs {
             if (farShip == null) {
                 final Map<Long, List<Stub>> outrankedHere = outranked.computeIfAbsent(world.dimension(), d -> new HashMap<>());
                 stub(farWorld, null, farCentre, toFarWorld, behind, found, onShips,
-                    frame == null ? new Stub(cell.relative(front).immutable(), behind) : null, outrankedHere);
+                    frame == null ? new Stub(cell.relative(front).immutable(), behind) : null, outrankedHere, targets);
             } else if (SABLE) {
                 // the other side of a ship-mounted portal is on a ship
                 for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
                     if (ship.ship().equals(farShip)
-                        && stub(farWorld, ship, farCentre, toFarWorld, behind, found, onShips, null, new HashMap<>())) {
+                        && stub(farWorld, ship, farCentre, toFarWorld, behind, found, onShips, null, new HashMap<>(), targets)) {
                         break;
                     }
                 }
@@ -154,6 +161,7 @@ public final class IPCreatePortalPipeStubs {
         public void finish(final Collection<ClientLevel> worlds, final boolean important) {
             final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previous = stubs;
             stubs = found;
+            IPCreatePortalPieceTargets.set(IPCreatePortalPieceTargets.Kind.PIPE, targets);
             markChanged(previous, found, important);
             markChanged(found, previous, important);
             final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previouslyOutranked = outrankedFaces;
@@ -197,7 +205,8 @@ public final class IPCreatePortalPipeStubs {
     private static boolean stub(
         final ClientLevel farWorld, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 farCentre, final Quaternionf toFarWorld,
         final Direction behind, final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips,
-        final @Nullable Stub outrankedFace, final Map<Long, List<Stub>> outranked
+        final @Nullable Stub outrankedFace, final Map<Long, List<Stub>> outranked,
+        final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets
     ) {
         final Vec3 local = frame == null ? farCentre : frame.toLocal(farCentre);
         final BlockPos farCell = BlockPos.containing(local);
@@ -227,6 +236,8 @@ public final class IPCreatePortalPipeStubs {
         } else {
             onShips.computeIfAbsent(farWorld, w -> new ArrayList<>()).add(new ShipStub(farCell.immutable(), farOut, frame, null));
         }
+        targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
+            .put(farCell.immutable(), new IPCreatePortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.FLUID_PIPE.asItem()));
         return true;
     }
 

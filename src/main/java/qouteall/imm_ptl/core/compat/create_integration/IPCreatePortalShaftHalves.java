@@ -5,7 +5,9 @@ package qouteall.imm_ptl.core.compat.create_integration;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllPartialModels;
+import com.simibubi.create.AllShapes;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
@@ -29,6 +31,7 @@ import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +50,7 @@ import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -54,6 +58,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -118,6 +123,8 @@ public final class IPCreatePortalShaftHalves {
 
     /** Per client world, its effect (weak: client worlds come and go). */
     private static final Map<ClientLevel, Halves> EFFECTS = new WeakHashMap<>();
+    /** A lone half's shape, by the direction it runs out of the plane ({@link IPCreatePortalPieceTargets}). */
+    private static final VoxelShape[] PIECES = IPCreatePortalPieceTargets.halves(d -> AllShapes.SIX_VOXEL_POLE.get(d.getAxis()));
 
     private IPCreatePortalShaftHalves() {
     }
@@ -126,6 +133,8 @@ public final class IPCreatePortalShaftHalves {
     static final class ShaftScan implements IPCreatePortalEndScan.Scan {
         private final Map<ClientLevel, List<Half>> found = new IdentityHashMap<>();
         private final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts = IPCreatePortalShaftPhase.newFound();
+        /** The lone halves, for the crosshair. */
+        private final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets = new HashMap<>();
 
         @Override
         public boolean wants(final IPCreatePortalEndScan.Side side) {
@@ -162,12 +171,12 @@ public final class IPCreatePortalShaftHalves {
             }
             final Vec3 farCentre = portal.transformPoint(worldCentre);
             if (farShip == null) {
-                stub(farWorld, null, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts);
+                stub(farWorld, null, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts, targets);
             } else if (SABLE) {
                 // the other side of a ship-mounted portal is on a ship
                 for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
                     if (ship.ship().equals(farShip)
-                        && stub(farWorld, ship, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts)) {
+                        && stub(farWorld, ship, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts, targets)) {
                         break;
                     }
                 }
@@ -177,6 +186,7 @@ public final class IPCreatePortalShaftHalves {
         @Override
         public void finish(final Collection<ClientLevel> worlds, final boolean important) {
             IPCreatePortalShaftPhase.update(shifts);
+            IPCreatePortalPieceTargets.set(IPCreatePortalPieceTargets.Kind.SHAFT, targets);
             for (final ClientLevel world : worlds) {
                 final List<Half> halves = found.getOrDefault(world, List.of());
                 Halves effect = EFFECTS.get(world);
@@ -274,7 +284,8 @@ public final class IPCreatePortalShaftHalves {
     private static boolean stub(
         final ClientLevel farWorld, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 farCentre, final Quaternionf toFarWorld,
         final Direction behind, final Vector3f axisVector, final float offset, final KineticBlockEntity source,
-        final Map<ClientLevel, List<Half>> found, final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts
+        final Map<ClientLevel, List<Half>> found, final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts,
+        final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets
     ) {
         final Vec3 local = frame == null ? farCentre : frame.toLocal(farCentre);
         final BlockPos farCell = BlockPos.containing(local);
@@ -301,6 +312,8 @@ public final class IPCreatePortalShaftHalves {
         final Vector3f farAxis = toLocal.transform(new Vector3f(axisVector));
         farAxis.set(Math.round(farAxis.x), Math.round(farAxis.y), Math.round(farAxis.z));
         add(found, farWorld, new Half(farCell.immutable(), base, farAxis, offset, source, behind, frame, null));
+        targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
+            .put(farCell.immutable(), new IPCreatePortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.SHAFT.asItem()));
         return true;
     }
 

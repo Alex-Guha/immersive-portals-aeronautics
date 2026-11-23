@@ -8,6 +8,7 @@
   },
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "MixinRotatedPillarKineticBlock_PortalShafts",
     "MixinRequestFloorList_AnyDimension",
     "MixinSimAssembly_ElevatorThroughPortal",
     "MixinPhysicsAssembler_ElevatorThroughPortal",
@@ -89,6 +90,7 @@
     "defaultRequire": 0
   },
   "client": [
+    "MixinMultiPlayerGameMode_BridgePieces",
     "MixinElevatorPulleyRenderer_Portals",
     "MixinContraptionCollider_ShipSafetyLock",
     "MixinLevelRenderer_ElevatorFarCopy",

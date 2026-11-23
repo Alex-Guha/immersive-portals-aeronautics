@@ -42,6 +42,12 @@ public class IPModEntry {
         }
 
         onInitialize(modEventBus);
+        
+        // Immersive Aeronautics: Create's shaft placement helper on half shafts coming out of portals (main thread)
+        if (ModList.get().isLoaded("create")) {
+            modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class, event -> event.enqueueWork(
+                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftPlacement::register));
+        }
 
         SubCommandArgumentType.init(modEventBus);
         TimingFunctionArgumentType.init(modEventBus);

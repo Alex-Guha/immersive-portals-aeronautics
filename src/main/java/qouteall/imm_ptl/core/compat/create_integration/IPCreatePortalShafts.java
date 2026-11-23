@@ -424,6 +424,59 @@ public final class IPCreatePortalShafts {
     }
 
     /**
+     * Create's preferred axis for a kinetic block placed at {@code pos} ({@code RotatedPillarKineticBlock.getPreferredAxis},
+     * {@code original}: Create's answer from the neighbouring blocks), with a shaft across a portal counted as a
+     * neighbour: a shaft placed against a half shaft coming out of a portal, or next to a portal block whose far side
+     * has a shaft, lines up with it, as next to a shaft. Shafts on two axes leave no preference, as in Create. Server
+     * and client (the client's placement is a guess the server corrects, so both answer the same).
+     */
+    public static Direction.@Nullable Axis preferredAxis(final Direction.@Nullable Axis original, final Level level, final BlockPos pos) {
+        Direction.Axis across = null;
+        for (final Direction side : Direction.values()) {
+            if (!IPCreatePortalPipes.isPlaceholderFacing(level.getBlockState(pos.relative(side)), side) || !shaftAcross(level, pos, side)) {
+                continue;
+            }
+            if (across != null && across != side.getAxis()) {
+                return null;
+            }
+            across = side.getAxis();
+        }
+        if (across == null || original == across) {
+            return original;
+        }
+        if (original != null) {
+            return null;
+        }
+        // Create found none: no shaft next to it, or shafts on two axes
+        for (final Direction side : Direction.values()) {
+            final BlockPos next = pos.relative(side);
+            if (hasShaft(level, next, level.getBlockState(next), side.getOpposite())) {
+                return null;
+            }
+        }
+        return across;
+    }
+
+    /** Whether the face {@code side} of {@code pos} meets a portal with a shaft at its far end facing back. */
+    static boolean shaftAcross(final Level level, final BlockPos pos, final Direction side) {
+        final Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
+        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        for (final Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
+            final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+            if (opening == null) {
+                continue;
+            }
+            final Level farLevel = opening.farLevel();
+            final Boolean found = IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) ->
+                IPCreatePortalEnds.kind(farLevel, candidate, out.getOpposite()) == IPCreatePortalEnds.Kind.SHAFT ? Boolean.TRUE : null);
+            if (found != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Whether a near end in {@code frame} (null: the world) is where {@code portal}'s own side is: on the ship carrying
      * that side, or in the world for a side fixed there. Server and client.
      */

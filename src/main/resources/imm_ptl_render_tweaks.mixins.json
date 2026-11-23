@@ -10,6 +10,7 @@
   "client": [
     "MixinIrisBufferedSource_PortalClip",
     "MixinLodestonePostProcess_PortalPassSkip",
+    "MixinPunchyShoulderCamera_PortalViews",
     "MixinDatabankPostShaders_PortalPassSkip",
     "MixinSodiumDynamicLights_PerDimensionUpdate",
     "MixinSodiumDynamicLights_StraddleLights",

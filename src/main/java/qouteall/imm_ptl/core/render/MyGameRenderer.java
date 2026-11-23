@@ -24,6 +24,7 @@ import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -155,6 +156,9 @@ public class MyGameRenderer {
         ObjectArrayList<SectionRenderDispatcher.RenderSection> oldChunkInfoList =
             ((IEWorldRenderer) oldWorldRenderer).portal_getChunkInfoList();
         HitResult oldCrosshairTarget = client.hitResult;
+        // Immersive Aeronautics: camera mods that pick from the camera in every LevelRenderer.renderLevel set this
+        // to an entity of the viewed world
+        Entity oldCrosshairPickEntity = client.crosshairPickEntity;
         Camera oldCamera = client.gameRenderer.getMainCamera();
         PostChain oldTransparencyShader = ((IEWorldRenderer) worldRenderer).portal_getTransparencyShader();
         RenderBuffers oldRenderBuffers = ((IEWorldRenderer) worldRenderer).ip_getRenderBuffers();
@@ -268,6 +272,7 @@ public class MyGameRenderer {
         
         ((IEParticleManager) client.particleEngine).ip_setWorld(oldWorld);
         client.hitResult = oldCrosshairTarget;
+        client.crosshairPickEntity = oldCrosshairPickEntity;
         ieGameRenderer.ip_setCamera(oldCamera);
         
         ((IEWorldRenderer) worldRenderer).portal_setTransparencyShader(oldTransparencyShader);

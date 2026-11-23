@@ -48,7 +48,8 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("com.terraformersmc.mod_menu.", "mod_menu"),
         Map.entry("dev.djefrey.colorwheel.", "colorwheel"),
         Map.entry("com.misterblusky9.pym.", "pym"),
-        Map.entry("com.misterblusky9.pocket.", "pocket")
+        Map.entry("com.misterblusky9.pocket.", "pocket"),
+        Map.entry("punchymoves.", "punchy_moves")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(

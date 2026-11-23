@@ -6,7 +6,7 @@
 
 </div>
 
-Picking up where [Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsModForNeo) left off, this mod **replaces** it, allowing portals to work alongside Create as well as Create Aeronautics (or more generally, Sable).
+The premier version of [Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsModForNeo) for Neoforge 1.21.1, especially with Create, DH/Voxy, Shaders, and/or Create: Aeronautics. Seamlessly fly through portals on Sable ships, or ride trains through dimensions, and so, so much more.
 
 ![Aeronautics ship viewed through a portal from the Nether](https://media.forgecdn.net/attachments/2049/160/2026-10-13_05-34-50-png.png)
 

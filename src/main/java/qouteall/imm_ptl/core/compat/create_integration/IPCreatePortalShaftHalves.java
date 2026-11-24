@@ -3,6 +3,12 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalWorldEffect;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceKind;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceWalk;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFramesClient;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllBlocks;
@@ -16,7 +22,6 @@ import com.simibubi.create.content.kinetics.base.RotatingInstance;
 import com.simibubi.create.foundation.render.AllInstanceTypes;
 import dev.engine_room.flywheel.api.instance.Instancer;
 import dev.engine_room.flywheel.api.visual.DynamicVisual;
-import dev.engine_room.flywheel.api.visual.Effect;
 import dev.engine_room.flywheel.api.visual.EffectVisual;
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
@@ -35,7 +40,6 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.WeakHashMap;
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.render.SuperBufferFactory;
@@ -53,10 +57,8 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
@@ -70,9 +72,8 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.compat.mixin_create.IPRotationPropagatorInvoker;
-import qouteall.imm_ptl.core.portal.Portal;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
 
 /**
  * The shaft inside a portal block. A shaft going into a nether-style portal ends at the portal block's face, half a
@@ -88,7 +89,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * or portal block changes. Frameless portals get none (their plane may lie on the shaft's own face).
  * <p>
  * Ships: a portal mounted on a ship has its portal blocks in the ship's plot; half shafts there are instances of the
- * embedding Sable draws that ship with ({@link IPCreateShaftShipsClient}), so they move with it. The fixed far side of
+ * embedding Sable draws that ship with ({@link IPPortalShipFramesClient}), so they move with it. The fixed far side of
  * such a portal gets its half shafts in the world, and the half past the plane goes to the other side's frame.
  */
 public final class IPCreatePortalShaftHalves {
@@ -102,7 +103,7 @@ public final class IPCreatePortalShaftHalves {
      */
     record Half(
         BlockPos cell, Quaternionf base, Vector3f axis, float offset, KineticBlockEntity source, Direction sourceSide,
-        IPCreatePortalShafts.@Nullable Frame ship, @Nullable VisualEmbedding embedding
+        @Nullable IPPortalFrame ship, @Nullable VisualEmbedding embedding
     ) {
         Half withEmbedding(final VisualEmbedding embedding) {
             return new Half(cell, base, axis, offset, source, sourceSide, ship, embedding);
@@ -123,32 +124,28 @@ public final class IPCreatePortalShaftHalves {
 
     /** Per client world, its effect (weak: client worlds come and go). */
     private static final Map<ClientLevel, Halves> EFFECTS = new WeakHashMap<>();
-    /** A lone half's shape, by the direction it runs out of the plane ({@link IPCreatePortalPieceTargets}). */
-    private static final VoxelShape[] PIECES = IPCreatePortalPieceTargets.halves(d -> AllShapes.SIX_VOXEL_POLE.get(d.getAxis()));
+    /** A lone half's shape, by the direction it runs out of the plane ({@link IPPortalPieceTargets}). */
+    private static final VoxelShape[] PIECES = IPPortalPieceTargets.halves(d -> AllShapes.SIX_VOXEL_POLE.get(d.getAxis()));
 
     private IPCreatePortalShaftHalves() {
     }
 
     /** The half shafts found in a walk. */
-    static final class ShaftScan implements IPCreatePortalEndScan.Scan {
+    static final class ShaftScan implements IPPortalPieceWalk.Scan {
         private final Map<ClientLevel, List<Half>> found = new IdentityHashMap<>();
         private final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts = IPCreatePortalShaftPhase.newFound();
         /** The lone halves, for the crosshair. */
-        private final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets = new HashMap<>();
+        private final Map<ResourceKey<Level>, Map<BlockPos, IPPortalPieceTargets.Piece>> targets = new HashMap<>();
 
         @Override
-        public boolean wants(final IPCreatePortalEndScan.Side side) {
+        public boolean wants(final IPPortalPieceWalk.Side side) {
             return true;
         }
 
         @Override
-        public void cell(final IPCreatePortalEndScan.Side side, final BlockPos cell, final Vec3 worldCentre) {
+        public void cell(final IPPortalPieceWalk.Side side, final BlockPos cell, final Vec3 worldCentre) {
             final ClientLevel world = side.world();
-            final Portal portal = side.portal();
-            final IPCreatePortalShafts.Frame frame = side.frame();
-            final ClientLevel farWorld = side.farWorld();
-            final UUID farShip = side.farShip();
-            final Quaternionf toFarWorld = side.toFarWorld();
+            final IPPortalFrame frame = side.frame();
             final Direction front = side.front();
             final Direction behind = front.getOpposite();
             final Direction.Axis axis = front.getAxis();
@@ -158,44 +155,27 @@ public final class IPCreatePortalShaftHalves {
             if (source == null) {
                 return;
             }
-            if (farWorld != null && farShip == null && IPCreatePortalEnds.farKind(
-                farWorld, portal.transformPoint(worldCentre), toFarWorld, behind).outranks(IPCreatePortalEnds.Kind.SHAFT)) {
+            final IPPortalPieceWalk.FarCell far = side.far(worldCentre);
+            if (far != null && IPPortalPieceKind.at(far.world(), far.end(), far.out().getOpposite()).outranks(IPCreatePortalEnds.SHAFT)) {
                 return; // a belt across the portal owns the space between ({@link IPCreatePortalEnds})
             }
             final float offset = KineticBlockEntityVisual.rotationOffset(source.getBlockState(), axis, endPos)
                 + source.getRotationAngleOffset(axis);
             add(found, world, new Half(cell.immutable(), pointing(front), axisVector, offset, source, behind, frame, null));
-
-            if (farWorld == null) {
-                return;
-            }
-            final Vec3 farCentre = portal.transformPoint(worldCentre);
-            if (farShip == null) {
-                stub(farWorld, null, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts, targets);
-            } else if (SABLE) {
-                // the other side of a ship-mounted portal is on a ship
-                for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
-                    if (ship.ship().equals(farShip)
-                        && stub(farWorld, ship, farCentre, toFarWorld, behind, axisVector, offset, source, found, shifts, targets)) {
-                        break;
-                    }
-                }
+            if (far != null) {
+                stub(far, behind, axisVector, offset, source, found, shifts, targets);
             }
         }
 
         @Override
         public void finish(final Collection<ClientLevel> worlds, final boolean important) {
             IPCreatePortalShaftPhase.update(shifts);
-            IPCreatePortalPieceTargets.set(IPCreatePortalPieceTargets.Kind.SHAFT, targets);
+            IPPortalPieceTargets.set(IPCreatePortalEnds.SHAFT, targets);
             for (final ClientLevel world : worlds) {
                 final List<Half> halves = found.getOrDefault(world, List.of());
-                Halves effect = EFFECTS.get(world);
+                final Halves effect = IPPortalWorldEffect.of(EFFECTS, world, !halves.isEmpty(), Halves::new);
                 if (effect == null) {
-                    if (halves.isEmpty()) {
-                        continue;
-                    }
-                    effect = new Halves(world);
-                    EFFECTS.put(world, effect);
+                    continue;
                 }
                 if (!effect.all.equals(halves)) {
                     effect.all = List.copyOf(halves);
@@ -208,7 +188,7 @@ public final class IPCreatePortalShaftHalves {
                         continue;
                     }
                     // drawn with the ship's own embedding, once Sable has made one
-                    final VisualEmbedding embedding = manager == null || !SABLE ? null : IPCreateShaftShipsClient.embeddingOf(manager, half.ship());
+                    final VisualEmbedding embedding = manager == null || !SABLE ? null : IPPortalShipFramesClient.embeddingOf(manager, half.ship());
                     if (embedding != null) {
                         drawn.add(half.withEmbedding(embedding));
                     }
@@ -249,7 +229,7 @@ public final class IPCreatePortalShaftHalves {
                 // drawing space is the world's minus the camera, as for block entities
                 final Matrix4d place = new Matrix4d().translation(-camera.x, -camera.y, -camera.z);
                 if (half.ship() != null) {
-                    final Matrix4d ship = SABLE ? IPCreateShaftShipsClient.renderPose(half.ship()) : null;
+                    final Matrix4d ship = SABLE ? IPPortalShipFramesClient.renderPose(half.ship()) : null;
                     if (ship == null) {
                         continue;
                     }
@@ -277,44 +257,32 @@ public final class IPCreatePortalShaftHalves {
         buffers.endBatch(RenderType.solid());
     }
 
-    /**
-     * The half past the near plane, as the portal shows it, in the far portal block at {@code farCentre} (in
-     * {@code frame}, null: the world) unless a shaft there draws its own. False if no far portal block is there.
-     */
-    private static boolean stub(
-        final ClientLevel farWorld, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 farCentre, final Quaternionf toFarWorld,
-        final Direction behind, final Vector3f axisVector, final float offset, final KineticBlockEntity source,
-        final Map<ClientLevel, List<Half>> found, final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts,
-        final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets
+    /** The half past the near plane, as the portal shows it, in the far portal block unless a shaft there draws its own. */
+    private static void stub(
+        final IPPortalPieceWalk.FarCell far, final Direction behind, final Vector3f axisVector, final float offset,
+        final KineticBlockEntity source, final Map<ClientLevel, List<Half>> found,
+        final Map<IPCreatePortalShaftPhase.Key, IPCreatePortalShaftPhase.Shift> shifts,
+        final Map<ResourceKey<Level>, Map<BlockPos, IPPortalPieceTargets.Piece>> targets
     ) {
-        final Vec3 local = frame == null ? farCentre : frame.toLocal(farCentre);
-        final BlockPos farCell = BlockPos.containing(local);
-        if (frame != null && !frame.holds(farWorld, farCell)) {
-            return false;
-        }
-        // near directions -> far frame's, snapped to the block grid (the two frames meet square, up to rounding)
-        final Quaternionf toLocal = IPCreatePortalEnds.snap(frame == null ? new Quaternionf(toFarWorld) : new Quaternionf(frame.rotation()).conjugate().mul(toFarWorld));
-        final Vector3f outVector = toLocal.transform(new Vector3f(behind.getStepX(), behind.getStepY(), behind.getStepZ()));
-        final Direction farOut = Direction.getNearest(outVector.x, outVector.y, outVector.z);
-        if (!IPCreatePortalPipes.isPlaceholderFacing(farWorld.getBlockState(farCell), farOut)) {
-            return false;
-        }
+        final ClientLevel farWorld = far.world();
+        final BlockPos farCell = far.cell();
+        final Direction farOut = far.out();
+        final Quaternionf toLocal = far.turn();
         final KineticBlockEntity farShaft = shaftEnd(farWorld, farCell.relative(farOut), farOut.getOpposite());
         if (farShaft != null) {
             // the far shaft draws its own half; the side driven through the portal is turned to line up
             phase(source, behind, axisVector, offset, toLocal, farShaft, farOut, shifts);
-            return true;
+            return;
         }
-        if (IPCreatePortalEnds.outranked(farWorld, farCell.relative(farOut), farOut.getOpposite(), IPCreatePortalEnds.Kind.SHAFT)) {
-            return true; // a belt there owns the space between
+        if (IPPortalPieceKind.outranked(farWorld, far.end(), farOut.getOpposite(), IPCreatePortalEnds.SHAFT)) {
+            return; // a belt there owns the space between
         }
         final Quaternionf base = new Quaternionf(toLocal).mul(pointing(behind));
         final Vector3f farAxis = toLocal.transform(new Vector3f(axisVector));
         farAxis.set(Math.round(farAxis.x), Math.round(farAxis.y), Math.round(farAxis.z));
-        add(found, farWorld, new Half(farCell.immutable(), base, farAxis, offset, source, behind, frame, null));
+        add(found, farWorld, new Half(farCell, base, farAxis, offset, source, behind, far.frame(), null));
         targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
-            .put(farCell.immutable(), new IPCreatePortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.SHAFT.asItem()));
-        return true;
+            .put(farCell, new IPPortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.SHAFT.asItem()));
     }
 
     /**
@@ -428,47 +396,19 @@ public final class IPCreatePortalShaftHalves {
     }
 
     /** The half shafts of one client world, as one Flywheel effect in that world's visualization. */
-    private static final class Halves implements Effect {
-        private final ClientLevel level;
+    private static final class Halves extends IPPortalWorldEffect {
         /** What Flywheel draws: the world's halves and the ship halves whose embedding exists. */
         volatile List<Half> halves = List.of();
         /** Every half found in the world, for {@link #onRenderStage}. */
         List<Half> all = List.of();
-        private WeakReference<VisualizationManagerImpl> manager = new WeakReference<>(null);
 
         Halves(final ClientLevel level) {
-            this.level = level;
-        }
-
-        @Override
-        public LevelAccessor level() {
-            return level;
+            super(level);
         }
 
         @Override
         public EffectVisual<?> visualize(final VisualizationContext context, final float partialTick) {
             return new HalvesVisual(context, this);
-        }
-
-        /**
-         * Adds the effect to its world's visualization, again whenever Flywheel made a new one (a backend change).
-         * Flywheel serves a world's visualization only while it is {@code Minecraft.level}.
-         */
-        @Nullable VisualizationManagerImpl attach() {
-            final Minecraft minecraft = Minecraft.getInstance();
-            final ClientLevel current = minecraft.level;
-            final VisualizationManagerImpl now;
-            minecraft.level = level;
-            try {
-                now = VisualizationManagerImpl.get(level);
-            } finally {
-                minecraft.level = current;
-            }
-            if (now != null && now != manager.get()) {
-                manager = new WeakReference<>(now);
-                now.effects().queueAdd(this);
-            }
-            return now;
         }
     }
 
@@ -491,7 +431,7 @@ public final class IPCreatePortalShaftHalves {
             if (now != shown) {
                 rebuild(now);
             }
-            final long time = effect.level.getGameTime();
+            final long time = effect.world().getGameTime();
             final boolean relight = Math.abs(time - litAt) >= LIGHT_TICKS;
             if (relight) {
                 litAt = time;
@@ -507,7 +447,7 @@ public final class IPCreatePortalShaftHalves {
                     dirty = true;
                 }
                 if (relight) {
-                    instance.light(LevelRenderer.getLightColor(effect.level, half.cell()));
+                    instance.light(LevelRenderer.getLightColor(effect.world(), half.cell()));
                     dirty = true;
                 }
                 if (dirty) {
@@ -537,11 +477,11 @@ public final class IPCreatePortalShaftHalves {
                 instance.setRotationAxis(half.axis())
                     .setRotationOffset(half.offset())
                     .setPosition(half.cell().getX() - origin.getX(), half.cell().getY() - origin.getY(), half.cell().getZ() - origin.getZ());
-                instance.light(LevelRenderer.getLightColor(effect.level, half.cell()));
+                instance.light(LevelRenderer.getLightColor(effect.world(), half.cell()));
                 instance.setChanged();
                 instances.add(instance);
             }
-            litAt = effect.level.getGameTime();
+            litAt = effect.world().getGameTime();
         }
 
         private void deleteInstances() {

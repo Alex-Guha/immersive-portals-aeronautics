@@ -3,8 +3,8 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalWorldEffect;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
-import dev.engine_room.flywheel.lib.visualization.VisualizationHelper;
 import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -13,7 +13,6 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -119,17 +118,7 @@ public final class IPCreatePortalShaftPhase {
                 }
             }
         }
-        // Flywheel serves a world's visualization only while it is Minecraft.level
-        final Minecraft minecraft = Minecraft.getInstance();
-        final ClientLevel current = minecraft.level;
-        minecraft.level = level;
-        try {
-            for (final KineticBlockEntity be : seen) {
-                VisualizationHelper.queueUpdate(be);
-            }
-        } finally {
-            minecraft.level = current;
-        }
+        IPPortalWorldEffect.queueUpdates(level, seen);
     }
 
     /** A fresh map for a search. */

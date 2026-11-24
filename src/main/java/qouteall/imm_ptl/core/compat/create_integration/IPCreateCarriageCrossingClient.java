@@ -3,6 +3,8 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
 import com.simibubi.create.content.contraptions.Contraption;
@@ -427,13 +429,13 @@ public final class IPCreateCarriageCrossingClient {
         final Vec3 middle = first.add(second).scale(0.5);
         final Vec3 axis = first.subtract(second).normalize();
         final AABB box = entity.getBoundingBox();
-        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(entity.level(), middle);
+        final IPPortalFrame frame = IPCreateTrainPortal.frameAt(entity.level(), middle);
         final Vec3 worldMiddle = frame == null ? middle : frame.toWorld(middle);
         final List<Portal> portals = IPPortalLookup.touching(entity.level(), frame == null ? box.inflate(0.5)
                 : new AABB(worldMiddle, worldMiddle).inflate(box.getSize() + 0.5),
             p -> !(p instanceof Mirror) && p.getTeleportable()
                 && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
-                && (frame == null || IPCreatePortalShafts.onOwnSide(p, frame)));
+                && (frame == null || IPPortalFaces.onOwnSide(p, frame)));
         IPCreateTrainPortal best = null;
         Vec3 bestHit = null;
         double bestDistance = Double.MAX_VALUE;
@@ -592,13 +594,13 @@ public final class IPCreateCarriageCrossingClient {
     @Nullable
     private static IPCreateTrainPortal portalBack(final net.minecraft.world.level.Level level, final Vec3 point,
                                                   final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> leaderDim) {
-        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(level, point);
+        final IPPortalFrame frame = IPCreateTrainPortal.frameAt(level, point);
         final Vec3 world = frame == null ? point : frame.toWorld(point);
         IPCreateTrainPortal best = null;
         double bestDistance = 1.0;
         for (final Portal candidate : IPPortalLookup.touching(level, new AABB(world, world).inflate(1.5),
             p -> !(p instanceof Mirror) && p.getTeleportable() && leaderDim.equals(p.getDestDim())
-                && IPCreatePortalShafts.onOwnSide(p, frame)
+                && IPPortalFaces.onOwnSide(p, frame)
                 && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale()))) {
             final double distance = candidate.getDistanceToNearestPointInPortal(world);
             final IPCreateTrainPortal via = distance < bestDistance ? IPCreateTrainPortal.of(candidate, frame) : null;

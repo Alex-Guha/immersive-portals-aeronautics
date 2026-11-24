@@ -3,6 +3,10 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceKind;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.fluids.FlowSource;
 import com.simibubi.create.content.fluids.FluidNetwork;
@@ -21,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Predicate;
 import net.createmod.catnip.data.Pair;
 import net.createmod.catnip.math.BlockFace;
@@ -33,8 +36,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
@@ -44,11 +45,9 @@ import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.compat.mixin_create.IPFluidNetworkAccessor;
 import qouteall.imm_ptl.core.compat.mixin_create.IPPipeConnectionAccessor;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
-import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
 
 /**
  * Create's fluid pipes through IP portals. A pipe end that opens onto a portal (its face within a block of the portal
@@ -100,12 +99,6 @@ public final class IPCreatePortalPipes {
     // ---------------------------------------------------------------------------------------------------------------
     // Finding portal faces
 
-    /** A placeholder block (IP's nether-style portals) whose portal plane faces a pipe face on {@code side}. */
-    public static boolean isPlaceholderFacing(final BlockState neighbour, final Direction side) {
-        return neighbour.getBlock() == PortalPlaceholderBlock.instance
-            && neighbour.getValue(PortalPlaceholderBlock.AXIS) == side.getAxis();
-    }
-
     /**
      * Whether the pipe face of {@code pos} on {@code side} opens onto a portal. Next to a placeholder block on any side
      * (so the client, the pipe's block state and the window before the portal entity spawns all agree); on the server
@@ -113,7 +106,7 @@ public final class IPCreatePortalPipes {
      */
     public static boolean isPortalFace(final BlockGetter level, final BlockPos pos, final Direction side) {
         final BlockPos neighbourPos = pos.relative(side);
-        if (isPlaceholderFacing(level.getBlockState(neighbourPos), side)) {
+        if (IPPortalFaces.facesPortalBlock(level.getBlockState(neighbourPos), side)) {
             return true;
         }
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -128,13 +121,13 @@ public final class IPCreatePortalPipes {
 
     /** The portal a pipe face opens onto and the far end, or null. */
     public static @Nullable Link link(final ServerLevel level, final BlockPos pos, final Direction side) {
-        final IPCreatePortalShafts.Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
-        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        final IPPortalFrame frame = SABLE ? IPPortalShipFrames.frameAt(level, pos) : null;
+        final IPPortalFaces.Face face = IPPortalFaces.face(frame, pos, side);
         for (final Portal portal : IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
             final Link found = linkVia(portal, face, frame);
             if (found != null) {
                 // a belt or shaft across the portal owns the space between: nothing passes ({@link IPCreatePortalEnds})
-                return IPCreatePortalEnds.outranked(found.farLevel(), found.farPos(), found.farSide(), IPCreatePortalEnds.Kind.PIPE)
+                return IPPortalPieceKind.outranked(found.farLevel(), found.farPos(), found.farSide(), IPCreatePortalEnds.PIPE)
                     ? null : found;
             }
         }
@@ -142,17 +135,17 @@ public final class IPCreatePortalPipes {
     }
 
     /**
-     * The far end of {@code face} through {@code portal}: the block past the far plane ({@link IPCreatePortalEnds#far}:
+     * The far end of {@code face} through {@code portal}: the block past the far plane ({@link IPPortalFaces#far}:
      * a pipe on a ship at its own portal joins the far side, fixed or on a ship, and back). Else null.
      */
     private static @Nullable Link linkVia(
-        final Portal portal, final IPCreatePortalEnds.Face face, final IPCreatePortalShafts.@Nullable Frame frame
+        final Portal portal, final IPPortalFaces.Face face, final @Nullable IPPortalFrame frame
     ) {
-        final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+        final IPPortalFaces.Opening opening = IPPortalFaces.opening(portal, frame, face);
         if (opening == null || !(opening.farLevel() instanceof ServerLevel farLevel)) {
             return null;
         }
-        return IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) -> new Link(portal, farLevel, candidate, out.getOpposite()));
+        return IPPortalFaces.far(opening, (farFrame, candidate, out, gap, plane) -> new Link(portal, farLevel, candidate, out.getOpposite()));
     }
 
     /** The far pipe of a link when loaded and open towards the portal, else null. */

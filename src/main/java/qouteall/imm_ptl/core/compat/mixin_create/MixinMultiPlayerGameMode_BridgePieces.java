@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_create;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.core.BlockPos;
@@ -14,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
 /**
- * A Create part's lone bridge piece is in a portal block ({@code IPCreatePortalPieceTargets}): the crosshair hits it so
+ * A Create part's lone bridge piece is in a portal block ({@code IPPortalPieceTargets}): the crosshair hits it so
  * blocks can be placed against it, but hitting it must not break the portal block under it.
  */
 @Mixin(MultiPlayerGameMode.class)

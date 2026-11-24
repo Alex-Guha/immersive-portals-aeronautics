@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
@@ -20,7 +21,7 @@ final class IPCreateTrainShipsClient {
     }
 
     private static boolean noShips() {
-        return !IPCreatePortalEnds.SABLE;
+        return !IPPortalFaces.SABLE;
     }
 
     static Vec3 renderPoint(final Entity entity, final Vec3 point) {

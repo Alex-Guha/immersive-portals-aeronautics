@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.mixin_create;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
 import com.simibubi.create.content.fluids.pipes.FluidPipeBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -24,7 +25,7 @@ public abstract class MixinFluidPipeBlock_PortalPipes {
     private static void ip$connectToPortal(
         BlockAndTintGetter world, BlockPos neighbourPos, BlockState neighbour, Direction direction, CallbackInfoReturnable<Boolean> cir
     ) {
-        if (IPCreatePortalPipes.isPlaceholderFacing(neighbour, direction)) {
+        if (IPPortalFaces.facesPortalBlock(neighbour, direction)) {
             cir.setReturnValue(true);
         }
     }

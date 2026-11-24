@@ -3,6 +3,9 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,19 +31,19 @@ public final class IPCreateTrainPortal {
     private static final double AXIS_COS = 1.0 - 1.0e-3;
 
     private final Portal portal;
-    private final IPCreatePortalShafts.@Nullable Frame near;
-    private final IPCreatePortalShafts.@Nullable Frame far;
+    private final @Nullable IPPortalFrame near;
+    private final @Nullable IPPortalFrame far;
 
-    private IPCreateTrainPortal(final Portal portal, final IPCreatePortalShafts.@Nullable Frame near,
-                                final IPCreatePortalShafts.@Nullable Frame far) {
+    private IPCreateTrainPortal(final Portal portal, final @Nullable IPPortalFrame near,
+                                final @Nullable IPPortalFrame far) {
         this.portal = portal;
         this.near = near;
         this.far = far;
     }
 
     /** The frame of the track at {@code position} in {@code level}: its ship, or null in the world. */
-    static IPCreatePortalShafts.@Nullable Frame frameAt(final Level level, final Vec3 position) {
-        return IPCreatePortalEnds.SABLE ? IPCreateShaftShips.frameAt(level, BlockPos.containing(position)) : null;
+    static @Nullable IPPortalFrame frameAt(final Level level, final Vec3 position) {
+        return IPPortalFaces.SABLE ? IPPortalShipFrames.frameAt(level, BlockPos.containing(position)) : null;
     }
 
     /**
@@ -49,18 +52,18 @@ public final class IPCreateTrainPortal {
      * plot, as {@code pos} may lie past the plot's chunks.
      */
     public static BlockPos inWorld(final Level level, final Vec3 copy, final BlockPos pos) {
-        final IPCreatePortalShafts.Frame frame = frameAt(level, copy);
+        final IPPortalFrame frame = frameAt(level, copy);
         return frame == null ? pos : BlockPos.containing(frame.toWorld(Vec3.atCenterOf(pos)));
     }
 
     /** @return {@code portal} seen from a track in {@code near}, or null when its far ship is not loaded here */
-    static @Nullable IPCreateTrainPortal of(final Portal portal, final IPCreatePortalShafts.@Nullable Frame near) {
+    static @Nullable IPCreateTrainPortal of(final Portal portal, final @Nullable IPPortalFrame near) {
         final UUID farShip = IPShipPortals.farSideCarrier(portal);
         if (farShip == null) {
             return new IPCreateTrainPortal(portal, near, null);
         }
-        final Level farLevel = IPCreatePortalEnds.SABLE ? portal.getDestWorld() : null;
-        final IPCreatePortalShafts.Frame far = farLevel == null ? null : IPCreateShaftShips.frameOf(farLevel, farShip);
+        final Level farLevel = IPPortalFaces.SABLE ? portal.getDestWorld() : null;
+        final IPPortalFrame far = farLevel == null ? null : IPPortalShipFrames.frameOf(farLevel, farShip);
         return far == null ? null : new IPCreateTrainPortal(portal, near, far);
     }
 
@@ -127,8 +130,8 @@ public final class IPCreateTrainPortal {
      * leave.
      */
     public Vec3 riderThrough(final Vec3 seat) {
-        final boolean inPlot = near != null && IPCreatePortalEnds.SABLE
-            && IPCreateShaftShips.frameAt(portal.level(), net.minecraft.core.BlockPos.containing(seat)) != null;
+        final boolean inPlot = near != null && IPPortalFaces.SABLE
+            && IPPortalShipFrames.frameAt(portal.level(), net.minecraft.core.BlockPos.containing(seat)) != null;
         return portal.transformPoint(inPlot ? toWorld(seat) : seat);
     }
 

@@ -3,6 +3,8 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.trains.entity.Carriage;
 import com.simibubi.create.content.trains.entity.CarriageBogey;
@@ -257,13 +259,13 @@ public final class IPCreateCarriageCrossing {
     private static Approach search(final Level level, final ResourceKey<Level> key, final Carriage carriage,
                                    final Vec3 middle, final Vec3 axis, @Nullable final Approach previous, final long now) {
         final Vec3 wheel = wheelIn(carriage, key);
-        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(level, middle);
+        final IPPortalFrame frame = IPCreateTrainPortal.frameAt(level, middle);
         final Vec3 worldMiddle = frame == null ? middle : frame.toWorld(middle);
         final List<Portal> candidates = IPPortalLookup.touching(
             level, new AABB(worldMiddle, worldMiddle).inflate(SEARCH),
             p -> !(p instanceof Mirror) && p.getTeleportable()
                 && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
-                && IPCreatePortalShafts.onOwnSide(p, frame)
+                && IPPortalFaces.onOwnSide(p, frame)
         );
         Portal best = null;
         Vec3 bestOrigin = null;
@@ -401,7 +403,7 @@ public final class IPCreateCarriageCrossing {
                                                 final TrackNodeLocation node, final ResourceKey<Level> otherKey,
                                                 final TrackNodeLocation otherNode) {
         final Vec3 location = node.getLocation();
-        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(level, location);
+        final IPPortalFrame frame = IPCreateTrainPortal.frameAt(level, location);
         final CachedPortal cached = PORTALS.get(dce);
         if (cached != null && cached.node().equals(node) && cached.otherKey().equals(otherKey)
             && !cached.portal().isRemoved() && cached.portal().level() == level) {
@@ -414,7 +416,7 @@ public final class IPCreateCarriageCrossing {
         final List<Portal> candidates = IPPortalLookup.touching(
             level, new AABB(worldLocation, worldLocation).inflate(1.5),
             p -> !(p instanceof Mirror) && p.getTeleportable() && otherDim.equals(p.getDestDim())
-                && IPCreatePortalShafts.onOwnSide(p, frame)
+                && IPPortalFaces.onOwnSide(p, frame)
                 && IPCreatePortalTracks.trainsCross(p, frame == null ? 1.0 : frame.scale())
         );
         IPCreateTrainPortal best = null;

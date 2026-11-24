@@ -1,7 +1,7 @@
 /*
  * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  */
-package qouteall.imm_ptl.core.compat.create_integration;
+package qouteall.imm_ptl.core.compat.portal_pieces;
 
 import qouteall.imm_ptl.core.compat.sable_straddle.IPShipScale;
 import dev.ryanhcode.sable.Sable;
@@ -18,15 +18,14 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
 
 /**
- * The Sable side of shafts through portals ({@link IPCreatePortalShafts}): a ship's blocks live in its plot, so
- * their place in the world is the ship's current pose applied to plot coordinates. Only loaded when Sable is.
+ * The Sable side of parts at portals ({@link IPPortalFaces}): a ship's blocks live in its plot, so their place in the world is the ship's current pose applied to plot coordinates. Only loaded when Sable is.
  */
-final class IPCreateShaftShips {
-    private IPCreateShaftShips() {
+public final class IPPortalShipFrames {
+    private IPPortalShipFrames() {
     }
 
     /** A ship's plot as a frame: plot coordinates to world coordinates by the ship's current (logical) pose. */
-    record ShipFrame(SubLevel subLevel) implements IPCreatePortalShafts.Frame {
+    public record ShipFrame(SubLevel subLevel) implements IPPortalFrame {
         @Override
         public Vec3 toWorld(final Vec3 local) {
             return subLevel.logicalPose().transformPosition(local);
@@ -74,20 +73,20 @@ final class IPCreateShaftShips {
     }
 
     /** The frame of the ship with this id in {@code level}, or null when it is not there. */
-    static IPCreatePortalShafts.@Nullable Frame frameOf(final Level level, final UUID ship) {
+    public static @Nullable IPPortalFrame frameOf(final Level level, final UUID ship) {
         final dev.ryanhcode.sable.api.sublevel.SubLevelContainer container = dev.ryanhcode.sable.api.sublevel.SubLevelContainer.getContainer(level);
         final SubLevel subLevel = container == null ? null : container.getSubLevel(ship);
         return subLevel == null ? null : new ShipFrame(subLevel);
     }
 
     /** The frame of the ship whose plot holds {@code pos}, or null for a world block. */
-    static IPCreatePortalShafts.@Nullable Frame frameAt(final Level level, final BlockPos pos) {
+    public static @Nullable IPPortalFrame frameAt(final Level level, final BlockPos pos) {
         final SubLevel ship = Sable.HELPER.getContaining(level, pos);
         return ship == null ? null : new ShipFrame(ship);
     }
 
     /** The positions of the block entities of {@code frame}'s ship from {@code min} to {@code max} (plot coordinates). */
-    static List<BlockPos> blockEntitiesIn(final IPCreatePortalShafts.Frame frame, final BlockPos min, final BlockPos max) {
+    public static List<BlockPos> blockEntitiesIn(final IPPortalFrame frame, final BlockPos min, final BlockPos max) {
         final List<BlockPos> found = new ArrayList<>();
         for (final var holder : ((ShipFrame) frame).subLevel().getPlot().getLoadedChunks()) {
             for (final BlockPos pos : holder.getChunk().getBlockEntities().keySet()) {
@@ -101,8 +100,8 @@ final class IPCreateShaftShips {
     }
 
     /** The frames of the ships whose bounds reach into {@code world}. */
-    static List<IPCreatePortalShafts.Frame> shipsTouching(final Level level, final AABB world) {
-        final List<IPCreatePortalShafts.Frame> frames = new ArrayList<>();
+    public static List<IPPortalFrame> shipsTouching(final Level level, final AABB world) {
+        final List<IPPortalFrame> frames = new ArrayList<>();
         for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(world))) {
             frames.add(new ShipFrame(ship));
         }

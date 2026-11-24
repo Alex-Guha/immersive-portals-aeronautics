@@ -3,6 +3,9 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.simibubi.create.content.kinetics.belt.BeltBlock;
 import com.simibubi.create.content.kinetics.belt.BeltBlockEntity;
 import com.simibubi.create.content.kinetics.belt.BeltHelper;
@@ -29,7 +32,7 @@ import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.teleportation.ServerTeleportationManager;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
 
 /**
  * Riders on a belt that runs into a nether-style portal (players, mobs, dropped items). Create carries an entity only
@@ -81,10 +84,10 @@ public final class IPCreatePortalBeltRiders {
             final BlockPos end = BeltHelper.getPositionForOffset(controller, atEnd ? controller.beltLength - 1 : 0);
             final Direction out = atEnd ? facing : facing.getOpposite();
             final BlockPos cell = end.relative(out);
-            if (!level.isLoaded(cell) || !IPCreatePortalPipes.isPlaceholderFacing(level.getBlockState(cell), out)) {
+            if (!level.isLoaded(cell) || !IPPortalFaces.facesPortalBlock(level.getBlockState(cell), out)) {
                 continue;
             }
-            carryIn(level, controller, cell, out, movement, SABLE ? IPCreateShaftShips.frameAt(level, cell) : null);
+            carryIn(level, controller, cell, out, movement, SABLE ? IPPortalShipFrames.frameAt(level, cell) : null);
         }
     }
 
@@ -94,7 +97,7 @@ public final class IPCreatePortalBeltRiders {
      */
     private static void carryIn(
         final Level level, final BeltBlockEntity controller, final BlockPos cell, final Direction out, final Vec3 movement,
-        final IPCreatePortalShafts.@Nullable Frame frame
+        final @Nullable IPPortalFrame frame
     ) {
         final Vec3 n = Vec3.atLowerCornerOf(out.getNormal());
         final Vec3 face = Vec3.atCenterOf(cell).subtract(n.scale(0.5));
@@ -172,7 +175,7 @@ public final class IPCreatePortalBeltRiders {
     }
 
     /** The world box around a box in a ship's plot. */
-    private static AABB worldBounds(final IPCreatePortalShafts.Frame frame, final AABB local) {
+    private static AABB worldBounds(final IPPortalFrame frame, final AABB local) {
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < 8; i++) {

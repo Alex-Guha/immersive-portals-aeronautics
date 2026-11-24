@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets;
 import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.simibubi.create.content.kinetics.simpleRelays.AbstractSimpleShaftBlock;
 import com.simibubi.create.content.kinetics.simpleRelays.ShaftBlock;
@@ -25,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
 /**
- * Create's shaft placement helper for a half shaft coming out of a portal ({@link IPCreatePortalPieceTargets}): with a
+ * Create's shaft placement helper for a half shaft coming out of a portal ({@link IPPortalPieceTargets}): with a
  * shaft in hand, clicking any face of the piece places the shaft where it continues, and Create's ghost shows it there
  * first, as on a shaft ({@code ShaftBlock.PlacementHelper}). Create's own helper never sees the piece: the block hit is
  * the portal block.

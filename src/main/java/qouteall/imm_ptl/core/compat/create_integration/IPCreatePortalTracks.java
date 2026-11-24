@@ -3,6 +3,9 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.AllTags;
 import com.simibubi.create.content.trains.graph.TrackNodeLocation;
@@ -296,13 +299,13 @@ public final class IPCreatePortalTracks {
 
     /**
      * Whether trains go through {@code portal} from a track in a frame of {@code nearScale} (a scaled ship's, 1 in the
-     * world): when it takes one track block to one track block ({@link IPCreatePortalEnds#blockForBlock}). A portal on a
+     * world): when it takes one track block to one track block ({@link IPPortalFaces#blockForBlock}). A portal on a
      * ship scaled by Create: Pocket Sized does, so a train leaving the ship's tracks (drawn at the ship's size by Pym,
      * which scales contraptions by the ship they are on) comes out at the size of the tracks it arrives on. A scaled
      * portal between two unscaled sides does not: a track block there faces half a block or two.
      */
     public static boolean trainsCross(final Portal portal, final double nearScale) {
-        return IPCreatePortalEnds.blockForBlock(portal, nearScale);
+        return IPPortalFaces.blockForBlock(portal, nearScale);
     }
 
     /** {@link #trainsCross(Portal, double)} from the portal's own side. */
@@ -328,7 +331,7 @@ public final class IPCreatePortalTracks {
         final java.util.UUID carrier = qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.ownSideCarrier(portal);
         AABB cells = around;
         if (carrier != null) {
-            final IPCreatePortalShafts.Frame frame = IPCreatePortalEnds.SABLE ? IPCreateShaftShips.frameOf(level, carrier) : null;
+            final IPPortalFrame frame = IPPortalFaces.SABLE ? IPPortalShipFrames.frameOf(level, carrier) : null;
             if (frame == null) {
                 return;
             }

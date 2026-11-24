@@ -7,6 +7,7 @@
  */
 package qouteall.imm_ptl.core.portal;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -104,7 +105,7 @@ public class PortalPlaceholderBlock extends Block {
     
     /**
      * Immersive Aeronautics: the shape of the lone bridge piece a Create part draws in this portal block, in a client
-     * world, or null ({@code IPCreatePortalPieceTargets}). The crosshair hits it, and a block placed against its open
+     * world, or null ({@code IPPortalPieceTargets}). The crosshair hits it, and a block placed against its open
      * end goes where the part would continue.
      */
     @org.jetbrains.annotations.Nullable
@@ -112,8 +113,8 @@ public class PortalPlaceholderBlock extends Block {
         if (!CREATE) {
             return null;
         }
-        qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.Piece piece =
-            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.at(world, blockPos);
+        qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets.Piece piece =
+            qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets.at(world, blockPos);
         return piece == null ? null : piece.shape();
     }
     
@@ -142,8 +143,8 @@ public class PortalPlaceholderBlock extends Block {
         net.minecraft.world.level.LevelReader level, BlockPos pos, BlockState state
     ) {
         if (CREATE) {
-            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.Piece piece =
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieceTargets.at(level, pos);
+            qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets.Piece piece =
+                qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets.at(level, pos);
             if (piece != null) {
                 return new net.minecraft.world.item.ItemStack(piece.item());
             }

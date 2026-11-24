@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFramesClient;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.content.kinetics.belt.BeltBlock;
 import com.simibubi.create.content.kinetics.belt.BeltBlockEntity;
@@ -33,7 +34,6 @@ import org.joml.Vector3f;
 import qouteall.imm_ptl.core.compat.iris_integration.IPIrisCompat;
 import qouteall.imm_ptl.core.compat.mixin_create.IPBeltRendererInvoker;
 import qouteall.imm_ptl.core.compat.sable_straddle.client.IPPlaneClippingBufferSource;
-import qouteall.imm_ptl.core.portal.Portal;
 
 /**
  * Items on belts at a portal ({@link IPCreatePortalBelts}), drawn as one item passing through: Create draws a belt's
@@ -202,7 +202,7 @@ public final class IPCreatePortalBeltsClient {
         if (exit.farFrame() == null) {
             return new Matrix4d();
         }
-        return IPCreateShaftShipsClient.renderPose(exit.farFrame());
+        return IPPortalShipFramesClient.renderPose(exit.farFrame());
     }
 
     /** A world plane in a block entity's drawing space, through its pose. @return {normal, anchor} */

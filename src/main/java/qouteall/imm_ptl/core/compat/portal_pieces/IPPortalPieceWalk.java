@@ -1,9 +1,8 @@
 /*
  * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  */
-package qouteall.imm_ptl.core.compat.create_integration;
+package qouteall.imm_ptl.core.compat.portal_pieces;
 
-import com.simibubi.create.content.trains.track.TrackBlock;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -17,30 +16,32 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.IPGlobal;
 import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.PortalPlaceholderBlock;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.PLANE_EPSILON;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SHIP_COS;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SHIP_GAP;
 
 /**
- * The client's one walk over the portal blocks of every client world, for what Create parts draw at a portal: half
- * shafts, pipe stubs, track stubs and belt looks each take the portal blocks from it ({@link Scan}). Every 10 ticks
- * (some things change without a block change: belts reverse) and in the frame after a block change, so both sides
- * change together.
+ * The client's one walk over the portal blocks of every client world, for what parts draw at a portal (Create's half
+ * shafts, pipe stubs, track stubs and belt looks): each registered {@link Scanner} takes the portal blocks from it
+ * through a {@link Scan} of its own. Every 10 ticks (some things change without a block change: belts reverse) and in
+ * the frame after a block change, so both sides change together.
  */
-public final class IPCreatePortalEndScan {
+public final class IPPortalPieceWalk {
     private static final int SCAN_TICKS = 10;
     /** Portal blocks walked per portal at most: a 64x64 portal, a block wider each way and two deep on a ship. */
     private static final int MAX_CELLS = 66 * 66 * 2;
@@ -49,8 +50,10 @@ public final class IPCreatePortalEndScan {
     /** A block that matters changed since the last walk; {@link #changedImportant}: one the player changed. */
     private static boolean changed;
     private static boolean changedImportant;
+    /** The kinds of part the walk serves, in the order they were registered. Main thread. */
+    private static final List<Scanner> SCANNERS = new ArrayList<>();
 
-    private IPCreatePortalEndScan() {
+    private IPPortalPieceWalk() {
     }
 
     /**
@@ -62,8 +65,90 @@ public final class IPCreatePortalEndScan {
      * @param farShip the ship carrying the far side, null when it is fixed in the world
      * @param toFarWorld a direction of {@code frame} to the far world's
      */
-    public record Side(ClientLevel world, Portal portal, IPCreatePortalShafts.@Nullable Frame frame, Direction front,
+    public record Side(ClientLevel world, Portal portal, @Nullable IPPortalFrame frame, Direction front,
                        @Nullable ClientLevel farWorld, @Nullable UUID farShip, Quaternionf toFarWorld) {
+        /**
+         * The portal block across the portal from this side's portal block centred at {@code worldCentre}: on the ship
+         * carrying the far side, or in the far world at a fixed side, its plane facing the way a part going into the
+         * portal here comes out. Null while the far world is not loaded, or where no such portal block is.
+         */
+        public @Nullable FarCell far(final Vec3 worldCentre) {
+            if (farWorld == null) {
+                return null;
+            }
+            final Vec3 farCentre = portal.transformPoint(worldCentre);
+            if (farShip == null) {
+                return farIn(null, farCentre);
+            }
+            if (!SABLE) {
+                return null;
+            }
+            // the other side of a ship-mounted portal is on a ship
+            for (final IPPortalFrame ship : IPPortalShipFrames.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
+                if (ship.ship().equals(farShip)) {
+                    final FarCell found = farIn(ship, farCentre);
+                    if (found != null) {
+                        return found;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private @Nullable FarCell farIn(final @Nullable IPPortalFrame farFrame, final Vec3 farCentre) {
+            final BlockPos cell = BlockPos.containing(farFrame == null ? farCentre : farFrame.toLocal(farCentre));
+            if (farFrame != null && !farFrame.holds(farWorld, cell)) {
+                return null;
+            }
+            // near directions -> far frame's, snapped to the block grid (the two frames meet square, up to rounding)
+            final Quaternionf turn = IPPortalFaces.snap(
+                farFrame == null ? new Quaternionf(toFarWorld) : new Quaternionf(farFrame.rotation()).conjugate().mul(toFarWorld));
+            final Direction behind = front.getOpposite();
+            final Vector3f out = turn.transform(new Vector3f(behind.getStepX(), behind.getStepY(), behind.getStepZ()));
+            final Direction farOut = Direction.getNearest(out.x, out.y, out.z);
+            if (!IPPortalFaces.facesPortalBlock(farWorld.getBlockState(cell), farOut)) {
+                return null;
+            }
+            return new FarCell(farWorld, farFrame, cell.immutable(), farOut, turn);
+        }
+    }
+
+    /**
+     * A far portal block ({@link Side#far}).
+     *
+     * @param frame the ship holding it, null in the world
+     * @param out the way out of the far plane there, in {@code frame}'s coordinates
+     * @param turn near frame directions to {@code frame}'s, by quarter turns
+     */
+    public record FarCell(ClientLevel world, @Nullable IPPortalFrame frame, BlockPos cell, Direction out, Quaternionf turn) {
+        /** The block past the far plane, where a part taking one up from the near side would be. */
+        public BlockPos end() {
+            return cell.relative(out);
+        }
+
+        @Override
+        public Quaternionf turn() {
+            return new Quaternionf(turn);
+        }
+    }
+
+    /** A kind of part the walk serves: a new {@link Scan} for each walk, and which block changes call for one. */
+    public interface Scanner {
+        Scan newScan();
+
+        /** Whether a change from or to {@code state} calls for a walk; block entities and portal blocks always do. */
+        default boolean matters(final BlockState state) {
+            return false;
+        }
+
+        /** Every client block change, after it was weighed for a walk (main thread; a missing state is air). */
+        default void onBlockChanged(final Level level, final BlockPos pos, final BlockState oldState, final BlockState newState) {
+        }
+    }
+
+    /** Adds a kind of part to every walk from now on, after those registered before it. Client setup. */
+    public static void register(final Scanner scanner) {
+        SCANNERS.add(scanner);
     }
 
     /** What one kind of part gathers during a walk. */
@@ -79,7 +164,8 @@ public final class IPCreatePortalEndScan {
     }
 
     /**
-     * Client block change in any world (main thread). Only block entities, tracks and portal blocks matter.
+     * Client block change in any world (main thread). Block entities, portal blocks and what a {@link Scanner} names
+     * matter.
      * Vanilla's renderer ignores both states, so some mods pass null for one (Elevator Mod does, loading its block
      * entity): a missing state counts as air.
      */
@@ -90,13 +176,27 @@ public final class IPCreatePortalEndScan {
         if (newState == null) {
             newState = Blocks.AIR.defaultBlockState();
         }
+        if (SCANNERS.isEmpty()) {
+            return;
+        }
         if (oldState.hasBlockEntity() || newState.hasBlockEntity()
             || oldState.getBlock() == PortalPlaceholderBlock.instance || newState.getBlock() == PortalPlaceholderBlock.instance
-            || oldState.getBlock() instanceof TrackBlock || newState.getBlock() instanceof TrackBlock) {
+            || matters(oldState) || matters(newState)) {
             changed = true;
             changedImportant |= (flags & Block.UPDATE_IMMEDIATE) != 0;
         }
-        IPCreatePortalBeltLook.onBlockChanged(level, pos, oldState, newState);
+        for (final Scanner scanner : SCANNERS) {
+            scanner.onBlockChanged(level, pos, oldState, newState);
+        }
+    }
+
+    private static boolean matters(final BlockState state) {
+        for (final Scanner scanner : SCANNERS) {
+            if (scanner.matters(state)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void onClientTick(final IPGlobal.PostClientTickEvent event) {
@@ -114,7 +214,7 @@ public final class IPCreatePortalEndScan {
 
     private static void search(final boolean important) {
         // IP's world list is empty from a vanilla dimension change (respawn packet) until IP sets it up again
-        if (!ClientWorldLoader.getIsInitialized()) {
+        if (SCANNERS.isEmpty() || !ClientWorldLoader.getIsInitialized()) {
             return;
         }
         changed = false;
@@ -123,8 +223,7 @@ public final class IPCreatePortalEndScan {
         for (final ClientLevel world : ClientWorldLoader.getClientWorlds()) {
             worlds.put(world.dimension(), world);
         }
-        final List<Scan> scans = List.of(new IPCreatePortalShaftHalves.ShaftScan(), new IPCreatePortalPipeStubs.PipeScan(),
-            new IPCreatePortalTrackStubs.TrackScan(), new IPCreatePortalBeltLook.BeltScan());
+        final List<Scan> scans = SCANNERS.stream().map(Scanner::newScan).toList();
         for (final ClientLevel world : worlds.values()) {
             for (final Entity entity : world.entitiesForRendering()) {
                 if (entity instanceof final Portal portal) {
@@ -139,7 +238,7 @@ public final class IPCreatePortalEndScan {
 
     private static void walk(final ClientLevel world, final Portal portal, final Map<ResourceKey<Level>, ClientLevel> worlds, final List<Scan> scans) {
         if (portal.isRemoved() || !portal.isTeleportable()
-                || !IPCreatePortalEnds.blockForBlock(portal, IPShipPortals.sideScale(portal, true))) {
+                || !IPPortalFaces.blockForBlock(portal, IPShipPortals.sideScale(portal, true))) {
             return;
         }
         final UUID ownShip = IPShipPortals.ownSideCarrier(portal);
@@ -147,7 +246,7 @@ public final class IPCreatePortalEndScan {
         if (ownShip == null) {
             walkFrame(world, portal, null, portal.getBoundingBox().deflate(PLANE_EPSILON), worlds, scans);
         } else if (SABLE) {
-            for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(world, portal.getBoundingBox().inflate(1))) {
+            for (final IPPortalFrame ship : IPPortalShipFrames.shipsTouching(world, portal.getBoundingBox().inflate(1))) {
                 if (ship.ship().equals(ownShip)) {
                     walkFrame(world, portal, ship, plotBounds(portal, ship), worlds, scans);
                 }
@@ -159,7 +258,7 @@ public final class IPCreatePortalEndScan {
      * The portal's area in {@code ship}'s plot. Taken from its corners: the bounds of its world box would grow with the
      * ship's tilt, past {@link #MAX_CELLS} for a portal 14 blocks wide at 45 degrees.
      */
-    private static AABB plotBounds(final Portal portal, final IPCreatePortalShafts.Frame ship) {
+    private static AABB plotBounds(final Portal portal, final IPPortalFrame ship) {
         final Vec3 w = portal.getAxisW().scale(portal.getWidth() / 2);
         final Vec3 h = portal.getAxisH().scale(portal.getHeight() / 2);
         final Vec3 origin = portal.getOriginPos();
@@ -178,15 +277,15 @@ public final class IPCreatePortalEndScan {
      * blocks of a moving ship lay 0.07-0.2 blocks off the plane and were skipped now and then, and the shaft piece in
      * them vanished. By the render pose they lie 0.0000 off the plane every time.
      */
-    private static Vec3 drawnAt(final IPCreatePortalShafts.Frame frame, final Vec3 local) {
-        if (frame instanceof final IPCreateShaftShips.ShipFrame shipFrame
+    private static Vec3 drawnAt(final IPPortalFrame frame, final Vec3 local) {
+        if (frame instanceof final IPPortalShipFrames.ShipFrame shipFrame
                 && shipFrame.subLevel() instanceof final dev.ryanhcode.sable.sublevel.ClientSubLevel client) {
             return client.renderPose().transformPosition(local);
         }
         return frame.toWorld(local);
     }
 
-    private static void walkFrame(final ClientLevel world, final Portal portal, final IPCreatePortalShafts.@Nullable Frame frame, final AABB cells,
+    private static void walkFrame(final ClientLevel world, final Portal portal, final @Nullable IPPortalFrame frame, final AABB cells,
                                   final Map<ResourceKey<Level>, ClientLevel> worlds, final List<Scan> scans) {
         final boolean ship = IPShipPortals.isShipMounted(portal);
         final Vec3 normal = frame == null ? portal.getNormal() : frame.toLocalDirection(portal.getNormal()).normalize();
@@ -216,7 +315,7 @@ public final class IPCreatePortalEndScan {
             final Vec3 worldCentre = frame == null ? centre : drawnAt(frame, centre);
             final double distance = portal.getDistanceToPlane(worldCentre);
             if (Math.abs(distance) > planeSlack
-                || !IPCreatePortalPipes.isPlaceholderFacing(world.getBlockState(cell), front)) {
+                || !IPPortalFaces.facesPortalBlock(world.getBlockState(cell), front)) {
                 continue;
             }
             for (final Scan scan : wanting) {

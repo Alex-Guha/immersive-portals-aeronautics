@@ -3,6 +3,9 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.kinetics.belt.BeltBlock;
 import com.simibubi.create.content.kinetics.belt.BeltBlockEntity;
@@ -13,7 +16,6 @@ import com.simibubi.create.content.kinetics.belt.transport.TransportedItemStack;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
@@ -21,7 +23,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4d;
@@ -29,10 +30,9 @@ import org.joml.Quaterniond;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.compat.IPPortalLookup;
 import qouteall.imm_ptl.core.compat.mixin_create.IPBeltInventoryAccessor;
-import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
 
 /**
  * Create's belts through IP portals. A belt whose end opens onto a portal (the end's face within a block of the portal
@@ -76,14 +76,14 @@ public final class IPCreatePortalBelts {
      * face lie from their planes (half a block at a nether portal, none at a frameless portal on a block face).
      * {@code into}: the direction from the near end into the portal; {@code nearOnPlane}/{@code farOnPlane}: where the
      * middle of the end's face meets the plane, on each side. Each side in its own coordinates: a ship's plot
-     * ({@code nearFrame}/{@code farFrame}, as for shafts, {@link IPCreatePortalShafts.Frame}) or the world (null);
+     * ({@code nearFrame}/{@code farFrame}, as for shafts, {@link IPPortalFrame}) or the world (null);
      * {@code nearToFar} takes near coordinates to far ones through the portal (for a portal mounted on the ship, a fixed
      * map however the ship moves).
      */
     public record Exit(
         Portal portal, Level farLevel, BlockPos farPos, Direction farFacing, float nearGap, float farGap, Vec3 into,
-        Vec3 nearOnPlane, Vec3 farOnPlane, IPCreatePortalShafts.@Nullable Frame nearFrame,
-        IPCreatePortalShafts.@Nullable Frame farFrame, Matrix4d nearToFar
+        Vec3 nearOnPlane, Vec3 farOnPlane, @Nullable IPPortalFrame nearFrame,
+        @Nullable IPPortalFrame farFrame, Matrix4d nearToFar
     ) {
     }
 
@@ -113,14 +113,14 @@ public final class IPCreatePortalBelts {
      * a ship-mounted portal to the ship, as for shafts and pipes.
      */
     private static @Nullable Exit through(final Level level, final BlockPos pos, final Direction side) {
-        final IPCreatePortalShafts.Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
-        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        final IPPortalFrame frame = SABLE ? IPPortalShipFrames.frameAt(level, pos) : null;
+        final IPPortalFaces.Face face = IPPortalFaces.face(frame, pos, side);
         for (final Portal portal : IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
-            final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+            final IPPortalFaces.Opening opening = IPPortalFaces.opening(portal, frame, face);
             if (opening != null) {
                 final Near near = new Near(portal, frame, face.localNormal(), frame == null ? opening.onPlane() : frame.toLocal(opening.onPlane()),
                     (float) Math.max(opening.gap(), 0));
-                final Exit exit = IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) -> exit(near, opening.farLevel(), farFrame, candidate, out, gap, plane));
+                final Exit exit = IPPortalFaces.far(opening, (farFrame, candidate, out, gap, plane) -> exit(near, opening.farLevel(), farFrame, candidate, out, gap, plane));
                 if (exit != null) {
                     return exit;
                 }
@@ -130,11 +130,11 @@ public final class IPCreatePortalBelts {
     }
 
     /** The near side of an exit being worked out, in the near belt's coordinates. */
-    private record Near(Portal portal, IPCreatePortalShafts.@Nullable Frame frame, Vec3 into, Vec3 onPlane, float gap) {
+    private record Near(Portal portal, @Nullable IPPortalFrame frame, Vec3 into, Vec3 onPlane, float gap) {
     }
 
     private static Exit exit(
-        final Near near, final Level farLevel, final IPCreatePortalShafts.@Nullable Frame farFrame, final BlockPos candidate,
+        final Near near, final Level farLevel, final @Nullable IPPortalFrame farFrame, final BlockPos candidate,
         final Direction farOut, final double farGap, final Vec3 plane
     ) {
         final Matrix4d nearToFar = inverse(frameMatrix(farFrame)).mul(portalMatrix(near.portal())).mul(frameMatrix(near.frame()));
@@ -143,7 +143,7 @@ public final class IPCreatePortalBelts {
     }
 
     /** A frame's coordinates to the world's (the identity for the world), a scaled ship's scale included. */
-    private static Matrix4d frameMatrix(final IPCreatePortalShafts.@Nullable Frame frame) {
+    private static Matrix4d frameMatrix(final @Nullable IPPortalFrame frame) {
         return frame == null ? new Matrix4d() : frame.matrix();
     }
 

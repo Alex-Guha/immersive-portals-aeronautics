@@ -3,6 +3,10 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceKind;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -28,7 +32,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -39,10 +42,10 @@ import qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals;
 import qouteall.imm_ptl.core.portal.Portal;
 import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.PLANE_EPSILON;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_COS;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SHIP_GAP;
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.PLANE_EPSILON;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SHIP_COS;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SHIP_GAP;
+import static qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces.SABLE;
 
 /**
  * Create shafts through IP portals. A kinetic block with a shaft on the face that opens onto a portal (the face
@@ -102,38 +105,6 @@ public final class IPCreatePortalShafts {
     private static final int LOOP_COOLDOWN_TICKS = 100;
     /** Cells looked at per portal at most (a 64x64 portal, two deep). */
     private static final int MAX_CELLS = 64 * 64 * 2;
-
-    /** Where a block's coordinates sit in the world: a ship's plot, moved by the ship. World blocks have none (null). */
-    interface Frame {
-        Vec3 toWorld(Vec3 local);
-
-        Vec3 toWorldDirection(Vec3 local);
-
-        Vec3 toLocal(Vec3 world);
-
-        Vec3 toLocalDirection(Vec3 world);
-
-        /** Whether {@code pos} is a block of this frame (of this ship's plot). */
-        boolean holds(Level level, BlockPos pos);
-
-        /** The ship's id. */
-        java.util.UUID ship();
-
-        /** The rotation from frame to world directions. */
-        org.joml.Quaternionf rotation();
-
-        /** How many world blocks one of the frame's blocks spans (a ship's Pym scale). */
-        default double scale() {
-            return 1.0;
-        }
-
-        /** The frame's coordinates to the world's, scale included. */
-        default org.joml.Matrix4d matrix() {
-            final Vec3 origin = toWorld(Vec3.ZERO);
-            return new org.joml.Matrix4d().translation(origin.x, origin.y, origin.z)
-                .rotate(new org.joml.Quaterniond(rotation())).scale(scale());
-        }
-    }
 
     /** A shaft face that opens onto a portal. */
     record End(ResourceKey<Level> dimension, BlockPos pos, Direction side) {
@@ -234,7 +205,7 @@ public final class IPCreatePortalShafts {
         final BlockPos pos = be.getBlockPos();
         for (final Direction side : Direction.values()) {
             final BlockPos next = pos.relative(side);
-            if (level.isLoaded(next) && IPCreatePortalPipes.isPlaceholderFacing(level.getBlockState(next), side)) {
+            if (level.isLoaded(next) && IPPortalFaces.facesPortalBlock(level.getBlockState(next), side)) {
                 scanSoon = true;
                 return;
             }
@@ -301,7 +272,7 @@ public final class IPCreatePortalShafts {
 
     private static void scanPortal(final ServerLevel level, final Portal portal, final Set<Pair> seen) {
         final double nearScale = IPShipPortals.sideScale(portal, true);
-        if (portal.isRemoved() || !portal.isTeleportable() || !IPCreatePortalEnds.blockForBlock(portal, nearScale)) {
+        if (portal.isRemoved() || !portal.isTeleportable() || !IPPortalFaces.blockForBlock(portal, nearScale)) {
             return;
         }
         final Vec3 normal = portal.getNormal();
@@ -314,7 +285,7 @@ public final class IPCreatePortalShafts {
         }
         if (SABLE && ownShip != null) {
             // the shafts of the ship carrying the portal's side
-            for (final Frame ship : IPCreateShaftShips.shipsTouching(level, region.inflate(nearScale))) {
+            for (final IPPortalFrame ship : IPPortalShipFrames.shipsTouching(level, region.inflate(nearScale))) {
                 if (ship.ship().equals(ownShip)) {
                     scanCells(level, portal, toLocalBounds(ship, region.inflate(0.5 * nearScale)), ship, null, seen);
                 }
@@ -327,7 +298,7 @@ public final class IPCreatePortalShafts {
      * any side when null, that open onto {@code portal}.
      */
     private static void scanCells(
-        final ServerLevel level, final Portal portal, final AABB cells, final @Nullable Frame frame,
+        final ServerLevel level, final Portal portal, final AABB cells, final @Nullable IPPortalFrame frame,
         final @Nullable Direction onlySide, final Set<Pair> seen
     ) {
         final BlockPos min = BlockPos.containing(cells.minX, cells.minY, cells.minZ);
@@ -335,7 +306,7 @@ public final class IPCreatePortalShafts {
         final Iterable<BlockPos> candidates;
         if (frame != null) {
             // in a ship's coordinates the bounds of a tilted portal hold far more cells than the portal: ask the ship
-            candidates = IPCreateShaftShips.blockEntitiesIn(frame, min, max);
+            candidates = IPPortalShipFrames.blockEntitiesIn(frame, min, max);
         } else if ((long) (max.getX() - min.getX() + 1) * (max.getY() - min.getY() + 1) * (max.getZ() - min.getZ() + 1) > MAX_CELLS) {
             return;
         } else {
@@ -367,7 +338,7 @@ public final class IPCreatePortalShafts {
         }
         final UUID farShip = IPShipPortals.farSideCarrier(portal);
         return farShip == null || !SABLE
-            || IPCreateShaftShips.shipsTouching(farLevel, AABB.ofSize(portal.getDestPos(), 2, 2, 2)).stream().anyMatch(ship -> ship.ship().equals(farShip));
+            || IPPortalShipFrames.shipsTouching(farLevel, AABB.ofSize(portal.getDestPos(), 2, 2, 2)).stream().anyMatch(ship -> ship.ship().equals(farShip));
     }
 
     private static void found(
@@ -409,9 +380,9 @@ public final class IPCreatePortalShafts {
      * (a ship's shaft at its own portal), in the world at a fixed side ({@link #onOwnSide}). Both ends may be on ships,
      * one ship or two.
      */
-    private static @Nullable FarEnd link(final Portal portal, final ServerLevel level, final BlockPos pos, final Direction side, final @Nullable Frame frame) {
-        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
-        final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+    private static @Nullable FarEnd link(final Portal portal, final ServerLevel level, final BlockPos pos, final Direction side, final @Nullable IPPortalFrame frame) {
+        final IPPortalFaces.Face face = IPPortalFaces.face(frame, pos, side);
+        final IPPortalFaces.Opening opening = IPPortalFaces.opening(portal, frame, face);
         if (opening == null || !(opening.farLevel() instanceof ServerLevel farLevel)) {
             return null;
         }
@@ -419,7 +390,7 @@ public final class IPCreatePortalShafts {
         final boolean belt = isBeltEnd(nearState, side);
         final Vec3 localAxis = Vec3.atLowerCornerOf(Direction.get(Direction.AxisDirection.POSITIVE, side.getAxis()).getNormal());
         final Vec3 axisThere = portal.transformLocalVecNonScale(frame == null ? localAxis : frame.toWorldDirection(localAxis));
-        return IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) ->
+        return IPPortalFaces.far(opening, (farFrame, candidate, out, gap, plane) ->
             farCandidate(farLevel, axisThere, farFrame, candidate, out, belt ? nearState : null, side));
     }
 
@@ -433,7 +404,7 @@ public final class IPCreatePortalShafts {
     public static Direction.@Nullable Axis preferredAxis(final Direction.@Nullable Axis original, final Level level, final BlockPos pos) {
         Direction.Axis across = null;
         for (final Direction side : Direction.values()) {
-            if (!IPCreatePortalPipes.isPlaceholderFacing(level.getBlockState(pos.relative(side)), side) || !shaftAcross(level, pos, side)) {
+            if (!IPPortalFaces.facesPortalBlock(level.getBlockState(pos.relative(side)), side) || !shaftAcross(level, pos, side)) {
                 continue;
             }
             if (across != null && across != side.getAxis()) {
@@ -459,16 +430,16 @@ public final class IPCreatePortalShafts {
 
     /** Whether the face {@code side} of {@code pos} meets a portal with a shaft at its far end facing back. */
     static boolean shaftAcross(final Level level, final BlockPos pos, final Direction side) {
-        final Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pos) : null;
-        final IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, pos, side);
+        final IPPortalFrame frame = SABLE ? IPPortalShipFrames.frameAt(level, pos) : null;
+        final IPPortalFaces.Face face = IPPortalFaces.face(frame, pos, side);
         for (final Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, face.search(), p -> p.isTeleportable() && !p.isRemoved())) {
-            final IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+            final IPPortalFaces.Opening opening = IPPortalFaces.opening(portal, frame, face);
             if (opening == null) {
                 continue;
             }
             final Level farLevel = opening.farLevel();
-            final Boolean found = IPCreatePortalEnds.far(opening, (farFrame, candidate, out, gap, plane) ->
-                IPCreatePortalEnds.kind(farLevel, candidate, out.getOpposite()) == IPCreatePortalEnds.Kind.SHAFT ? Boolean.TRUE : null);
+            final Boolean found = IPPortalFaces.far(opening, (farFrame, candidate, out, gap, plane) ->
+                IPPortalPieceKind.at(farLevel, candidate, out.getOpposite()) == IPCreatePortalEnds.SHAFT ? Boolean.TRUE : null);
             if (found != null) {
                 return true;
             }
@@ -477,19 +448,11 @@ public final class IPCreatePortalShafts {
     }
 
     /**
-     * Whether a near end in {@code frame} (null: the world) is where {@code portal}'s own side is: on the ship carrying
-     * that side, or in the world for a side fixed there. Server and client.
-     */
-    static boolean onOwnSide(final Portal portal, final @Nullable Frame frame) {
-        return Objects.equals(frame == null ? null : frame.ship(), IPShipPortals.ownSideCarrier(portal));
-    }
-
-    /**
      * The kinetic block at {@code candidate} past the far plane, in {@code frame} (null: the world), if it lines up: a
      * shaft for a shaft, a belt's end for a belt's end ({@code nearBelt}: the near belt's state, its end on {@code nearSide}).
      */
     private static @Nullable FarEnd farCandidate(
-        final ServerLevel farLevel, final Vec3 axisThere, final @Nullable Frame frame, final BlockPos candidate, final Direction out,
+        final ServerLevel farLevel, final Vec3 axisThere, final @Nullable IPPortalFrame frame, final BlockPos candidate, final Direction out,
         final @Nullable BlockState nearBelt, final Direction nearSide
     ) {
         if (!farLevel.isLoaded(candidate) || !(farLevel.getBlockEntity(candidate) instanceof KineticBlockEntity be)) {
@@ -513,7 +476,7 @@ public final class IPCreatePortalShafts {
         return new FarEnd(farLevel, new End(farLevel.dimension(), candidate.immutable(), farSide), be, sign, frame != null);
     }
 
-    static AABB toLocalBounds(final Frame frame, final AABB world) {
+    static AABB toLocalBounds(final IPPortalFrame frame, final AABB world) {
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < 8; i++) {
@@ -656,7 +619,7 @@ public final class IPCreatePortalShafts {
         if (level == null) {
             return false;
         }
-        final Frame frame = SABLE ? IPCreateShaftShips.frameAt(level, pair.portalEnd.pos()) : null;
+        final IPPortalFrame frame = SABLE ? IPPortalShipFrames.frameAt(level, pair.portalEnd.pos()) : null;
         final FarEnd far = link(pair.portal, level, pair.portalEnd.pos(), pair.portalEnd.side(), frame);
         if (far == null || !far.end().equals(pair.other(pair.portalEnd))) {
             return false;

@@ -8,6 +8,9 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFrames;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.api.contraption.train.PortalTrackProvider;
 import java.util.List;
@@ -124,17 +127,17 @@ public final class IPCreatePortalTrackProvider implements PortalTrackProvider {
      * moves with its portal's end, so nothing here depends on where the ship is.
      */
     private static @Nullable ExitSpot shipPortalExitSpot(ServerLevel level, BlockFace inboundTrack) {
-        if (!IPCreatePortalEnds.SABLE) {
+        if (!IPPortalFaces.SABLE) {
             return null;
         }
-        IPCreatePortalShafts.Frame frame = IPCreateShaftShips.frameAt(level, inboundTrack.getPos());
-        IPCreatePortalEnds.Face face = IPCreatePortalEnds.face(frame, inboundTrack.getPos(), inboundTrack.getFace());
+        IPPortalFrame frame = IPPortalShipFrames.frameAt(level, inboundTrack.getPos());
+        IPPortalFaces.Face face = IPPortalFaces.face(frame, inboundTrack.getPos(), inboundTrack.getFace());
         for (Portal portal : qouteall.imm_ptl.core.compat.IPPortalLookup.touching(level, face.search(),
             p -> p.getTeleportable() && !(p instanceof qouteall.imm_ptl.core.portal.Mirror)
                 && qouteall.imm_ptl.core.compat.ship_portals.IPShipPortals.isShipMounted(p))) {
-            IPCreatePortalEnds.Opening opening = IPCreatePortalEnds.opening(portal, frame, face);
+            IPPortalFaces.Opening opening = IPPortalFaces.opening(portal, frame, face);
             if (opening != null && opening.farLevel() instanceof ServerLevel farLevel) {
-                ExitSpot spot = IPCreatePortalEnds.far(opening, (farFrame, pos, out, gap, plane) ->
+                ExitSpot spot = IPPortalFaces.far(opening, (farFrame, pos, out, gap, plane) ->
                     farLevel.getBlockState(pos).getBlock() == PortalPlaceholderBlock.instance ? null : new ExitSpot(farLevel, pos, out.getOpposite()));
                 if (spot != null) {
                     return spot;

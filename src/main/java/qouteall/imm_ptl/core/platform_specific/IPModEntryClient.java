@@ -95,23 +95,19 @@ public class IPModEntryClient {
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackModel::onModifyBakingResult
             );
             // Immersive Aeronautics: the one walk over the portal blocks for what Create parts draw at portals
+            qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieces.initClient();
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PostClientTickEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEndScan::onClientTick
+                qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceWalk::onClientTick
             );
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 IPGlobal.PreGameRenderEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEndScan::onPreGameRender
+                qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceWalk::onPreGameRender
             );
-            // Immersive Aeronautics: the far half of a pipe going into a portal with no pipe on the other side
+            // Immersive Aeronautics: pieces in portal blocks drawn into the chunk mesh (pipe ends, track halves past a portal)
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPipeStubs::onAddSectionGeometry
-            );
-            // Immersive Aeronautics: the far half of a track's bridge into a portal with no track at the other end
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                net.neoforged.neoforge.client.event.AddSectionGeometryEvent.class,
-                qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalTrackStubs::onAddSectionGeometry
+                qouteall.imm_ptl.core.compat.portal_pieces.IPPortalSectionPieces::onAddSectionGeometry
             );
             // Immersive Aeronautics: the turning half shafts inside portal blocks, between a shaft and the portal plane
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(

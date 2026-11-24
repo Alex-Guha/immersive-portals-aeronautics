@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFaces;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.fluids.FluidPropagator;
 import com.simibubi.create.content.fluids.FluidTransportBehaviour;
@@ -144,7 +145,7 @@ public final class IPPnpPortalRelay {
             return null;
         }
         final Direction face = side.getOpposite();
-        if (!IPCreatePortalPipes.isPlaceholderFacing(level.getBlockState(pos), face)) {
+        if (!IPPortalFaces.facesPortalBlock(level.getBlockState(pos), face)) {
             return null;
         }
         final BlockPos pipePos = pos.relative(side);

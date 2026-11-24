@@ -3,6 +3,7 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
 import com.simibubi.create.content.contraptions.actors.trainControls.ControlsServerHandler;
@@ -263,7 +264,7 @@ public final class IPCreateTrainControls {
 
     /** A position of a carriage copy, in the world: on a ship through its pose. */
     static Vec3 worldPosition(final AbstractContraptionEntity entity, final Vec3 position) {
-        final IPCreatePortalShafts.Frame frame = IPCreateTrainPortal.frameAt(entity.level(), position);
+        final IPPortalFrame frame = IPCreateTrainPortal.frameAt(entity.level(), position);
         return frame == null ? position : frame.toWorld(position);
     }
 

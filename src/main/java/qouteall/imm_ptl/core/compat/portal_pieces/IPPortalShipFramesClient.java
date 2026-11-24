@@ -1,7 +1,7 @@
 /*
  * Immersive Portals Revamped, 2026 (PolyForm Shield License 1.0.0). See NOTICE and LICENSE.
  */
-package qouteall.imm_ptl.core.compat.create_integration;
+package qouteall.imm_ptl.core.compat.portal_pieces;
 
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
 import dev.engine_room.flywheel.impl.visualization.VisualManagerImpl;
@@ -13,22 +13,22 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4d;
 
 /**
- * The client Sable side of the half shafts in portal blocks ({@link IPCreatePortalShaftHalves}): a ship's Flywheel
+ * The client Sable side of pieces in portal blocks on ships (half shafts, pipe ends): a ship's Flywheel
  * visuals are drawn in one embedding per ship, which Sable moves with the ship each frame
- * ({@code BlockEntityStorageMixin}); half shafts on a ship are instances of that embedding, so they follow the ship
+ * ({@code BlockEntityStorageMixin}); pieces on a ship are instances of that embedding, so they follow the ship
  * and get its light and IP's straddle cut as its block entities do. With Flywheel's backend off they are drawn
  * through the ship's render pose instead ({@link #renderPose}). Only loaded when Sable is.
  */
-final class IPCreateShaftShipsClient {
-    private IPCreateShaftShipsClient() {
+public final class IPPortalShipFramesClient {
+    private IPPortalShipFramesClient() {
     }
 
     /**
      * The embedding Sable draws {@code frame}'s ship with in {@code manager}, or null while it has none (no block entity
      * visual on the ship yet). Main thread, outside Flywheel's frame plan (which adds embeddings).
      */
-    static @Nullable VisualEmbedding embeddingOf(final VisualizationManagerImpl manager, final IPCreatePortalShafts.Frame frame) {
-        if (!(frame instanceof IPCreateShaftShips.ShipFrame ship)
+    public static @Nullable VisualEmbedding embeddingOf(final VisualizationManagerImpl manager, final IPPortalFrame frame) {
+        if (!(frame instanceof IPPortalShipFrames.ShipFrame ship)
             || !(manager.blockEntities() instanceof VisualManagerImpl<?, ?> blockEntities)
             || !(blockEntities.getStorage() instanceof BlockEntityStorageExtension storage)) {
             return null;
@@ -42,8 +42,8 @@ final class IPCreateShaftShipsClient {
     }
 
     /** Plot coordinates to world coordinates as {@code frame}'s ship is drawn this frame, or null if it is not a ship. */
-    static @Nullable Matrix4d renderPose(final IPCreatePortalShafts.Frame frame) {
-        if (!(frame instanceof IPCreateShaftShips.ShipFrame ship) || !(ship.subLevel() instanceof ClientSubLevel client)) {
+    public static @Nullable Matrix4d renderPose(final IPPortalFrame frame) {
+        if (!(frame instanceof IPPortalShipFrames.ShipFrame ship) || !(ship.subLevel() instanceof ClientSubLevel client)) {
             return null;
         }
         return client.renderPose().bakeIntoMatrix(new Matrix4d());

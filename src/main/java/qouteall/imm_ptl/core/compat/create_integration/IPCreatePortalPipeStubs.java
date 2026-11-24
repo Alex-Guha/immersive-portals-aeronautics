@@ -3,8 +3,14 @@
  */
 package qouteall.imm_ptl.core.compat.create_integration;
 
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalWorldEffect;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalSectionPieces;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceKind;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceWalk;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalFrame;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalPieceTargets;
+import qouteall.imm_ptl.core.compat.portal_pieces.IPPortalShipFramesClient;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllShapes;
 import com.simibubi.create.AllPartialModels;
@@ -12,7 +18,6 @@ import com.simibubi.create.content.fluids.FluidPropagator;
 import com.simibubi.create.content.fluids.FluidTransportBehaviour;
 import com.simibubi.create.content.fluids.FluidTransportBehaviour.AttachmentTypes.ComponentPartials;
 import dev.engine_room.flywheel.api.visual.DynamicVisual;
-import dev.engine_room.flywheel.api.visual.Effect;
 import dev.engine_room.flywheel.api.visual.EffectVisual;
 import dev.engine_room.flywheel.api.visualization.VisualEmbedding;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
@@ -21,7 +26,6 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
 import dev.engine_room.flywheel.lib.model.Models;
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
-import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,40 +33,26 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.WeakHashMap;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.Vec3i;
-import net.minecraft.world.level.LevelAccessor;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.event.AddSectionGeometryEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
-import qouteall.imm_ptl.core.ClientWorldLoader;
 import qouteall.imm_ptl.core.compat.mixin_create.IPLevelRendererSectionInvoker;
-import qouteall.imm_ptl.core.portal.Portal;
 
-import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds.SABLE;
 
 /**
  * The far half of a pipe going into a portal when no pipe waits on the other side. {@link IPCreatePortalPipeModel}
@@ -78,7 +68,7 @@ import static qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEnds
  * re-meshed.
  * <p>
  * The search runs before the frame after a pipe or portal block changes in any client world, and every
- * {@code IPCreatePortalEndScan.SCAN_TICKS} ticks for the rest (portals and chunks coming and going). The far section is re-meshed with the
+ * {@code IPPortalPieceWalk.SCAN_TICKS} ticks for the rest (portals and chunks coming and going). The far section is re-meshed with the
  * change's own priority: a block the player places or breaks is meshed in the frame it changes (vanilla and Sodium,
  * within 16 blocks of the camera), so the far half must be too, or one half of the pipe shows up before the other.
  * <p>
@@ -97,95 +87,93 @@ public final class IPCreatePortalPipeStubs {
     }
 
     /** The same on a ship: a portal block in {@code ship}'s plot, drawn with the ship's {@code embedding}. */
-    private record ShipStub(BlockPos pos, Direction toward, IPCreatePortalShafts.Frame ship, @Nullable VisualEmbedding embedding) {
+    private record ShipStub(BlockPos pos, Direction toward, IPPortalFrame ship, @Nullable VisualEmbedding embedding) {
     }
 
-    /** A stub's shape, by the way it runs out of the plane: the pipe's arm ({@link IPCreatePortalPieceTargets}). */
-    private static final VoxelShape[] PIECES = IPCreatePortalPieceTargets.halves(d -> AllShapes.EIGHT_VOXEL_POLE.get(d.getAxis()));
+    /** A stub's shape, by the way it runs out of the plane: the pipe's arm ({@link IPPortalPieceTargets}). */
+    private static final VoxelShape[] PIECES = IPPortalPieceTargets.halves(d -> AllShapes.EIGHT_VOXEL_POLE.get(d.getAxis()));
 
     /** Per client world, the effect drawing its ship stubs (weak: client worlds come and go). */
     private static final Map<ClientLevel, ShipStubs> SHIP_EFFECTS = new WeakHashMap<>();
 
-    /** Per dimension, per section ({@link SectionPos#asLong}), the stubs in it. Replaced whole by the scan. */
-    private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> stubs = Map.of();
-    /** World pipe faces at a portal block whose space a belt or shaft across the portal owns, by section. */
-    private static volatile Map<ResourceKey<Level>, Map<Long, List<Stub>>> outrankedFaces = Map.of();
+    /** The stubs in the world's chunk mesh, by section. */
+    private static final IPPortalSectionPieces<Stub> STUBS = IPPortalSectionPieces.create(IPCreatePortalPipeStubs::render);
+    /**
+     * Pipe faces at a portal block (world or ship plot) whose space a belt or shaft across the portal owns, by section: not drawn, but
+     * the pipe's own model changes with them ({@link IPCreatePortalPipeModel}).
+     */
+    private static final IPPortalSectionPieces<Stub> OUTRANKED_FACES = IPPortalSectionPieces.create(null);
     /** The same as keys ({@link #faceKey}), for the pipe model on Sodium's worker threads. */
     private static volatile Set<Long> outrankedKeys = Set.of();
     private IPCreatePortalPipeStubs() {
     }
 
     /** The stubs found in a walk. */
-    static final class PipeScan implements IPCreatePortalEndScan.Scan {
+    static final class PipeScan implements IPPortalPieceWalk.Scan {
         private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found = new HashMap<>();
         private final Map<ClientLevel, List<ShipStub>> onShips = new IdentityHashMap<>();
         private final Map<ResourceKey<Level>, Map<Long, List<Stub>>> outranked = new HashMap<>();
         /** Every stub, for the crosshair. */
-        private final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets = new HashMap<>();
+        private final Map<ResourceKey<Level>, Map<BlockPos, IPPortalPieceTargets.Piece>> targets = new HashMap<>();
 
         @Override
-        public boolean wants(final IPCreatePortalEndScan.Side side) {
+        public boolean wants(final IPPortalPieceWalk.Side side) {
             return side.farWorld() != null;
         }
 
         @Override
-        public void cell(final IPCreatePortalEndScan.Side side, final BlockPos cell, final Vec3 worldCentre) {
+        public void cell(final IPPortalPieceWalk.Side side, final BlockPos cell, final Vec3 worldCentre) {
             final ClientLevel world = side.world();
             final Direction front = side.front();
             final Direction behind = front.getOpposite();
             if (!opensTowards(world, cell.relative(front), behind)) {
                 return;
             }
-            final Portal portal = side.portal();
-            final IPCreatePortalShafts.Frame frame = side.frame();
-            final ClientLevel farWorld = side.farWorld();
-            final UUID farShip = side.farShip();
-            final Quaternionf toFarWorld = side.toFarWorld();
-            final Vec3 farCentre = portal.transformPoint(worldCentre);
-            if (farShip == null) {
-                final Map<Long, List<Stub>> outrankedHere = outranked.computeIfAbsent(world.dimension(), d -> new HashMap<>());
-                stub(farWorld, null, farCentre, toFarWorld, behind, found, onShips,
-                    frame == null ? new Stub(cell.relative(front).immutable(), behind) : null, outrankedHere, targets);
-            } else if (SABLE) {
-                // the other side of a ship-mounted portal is on a ship
-                for (final IPCreatePortalShafts.Frame ship : IPCreateShaftShips.shipsTouching(farWorld, AABB.ofSize(farCentre, 2, 2, 2))) {
-                    if (ship.ship().equals(farShip)
-                        && stub(farWorld, ship, farCentre, toFarWorld, behind, found, onShips, null, new HashMap<>(), targets)) {
-                        break;
-                    }
-                }
+            final IPPortalPieceWalk.FarCell far = side.far(worldCentre);
+            if (far == null) {
+                return;
             }
+            final ClientLevel farWorld = far.world();
+            final BlockPos farCell = far.cell();
+            final Direction farOut = far.out();
+            if (opensTowards(farWorld, far.end(), farOut.getOpposite())) {
+                return; // the far pipe draws the rest itself
+            }
+            if (IPPortalPieceKind.outranked(farWorld, far.end(), farOut.getOpposite(), IPCreatePortalEnds.PIPE)) {
+                // a belt or shaft there owns the space between: no stub, and the pipe here draws no filler (in the
+                // world or on a ship: a ship's plot sections are re-meshed through the world's renderer too)
+                final BlockPos end = cell.relative(front).immutable();
+                IPPortalSectionPieces.add(outranked, world.dimension(), end, new Stub(end, behind));
+                return;
+            }
+            if (far.frame() == null) {
+                IPPortalSectionPieces.add(found, farWorld.dimension(), farCell, new Stub(farCell, farOut));
+            } else {
+                onShips.computeIfAbsent(farWorld, w -> new ArrayList<>()).add(new ShipStub(farCell, farOut, far.frame(), null));
+            }
+            targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
+                .put(farCell, new IPPortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.FLUID_PIPE.asItem()));
         }
 
         @Override
         public void finish(final Collection<ClientLevel> worlds, final boolean important) {
-            final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previous = stubs;
-            stubs = found;
-            IPCreatePortalPieceTargets.set(IPCreatePortalPieceTargets.Kind.PIPE, targets);
-            markChanged(previous, found, important);
-            markChanged(found, previous, important);
-            final Map<ResourceKey<Level>, Map<Long, List<Stub>>> previouslyOutranked = outrankedFaces;
-            outrankedFaces = outranked;
+            STUBS.publish(found, important);
+            IPPortalPieceTargets.set(IPCreatePortalEnds.PIPE, targets);
             final Set<Long> keys = new HashSet<>();
             outranked.values().forEach(sections -> sections.values().forEach(list -> list.forEach(face -> keys.add(faceKey(face.pos(), face.toward())))));
             outrankedKeys = keys;
-            markChanged(previouslyOutranked, outranked, important);
-            markChanged(outranked, previouslyOutranked, important);
+            OUTRANKED_FACES.publish(outranked, important);
 
             for (final ClientLevel world : worlds) {
                 final List<ShipStub> here = onShips.getOrDefault(world, List.of());
-                ShipStubs effect = SHIP_EFFECTS.get(world);
+                final ShipStubs effect = IPPortalWorldEffect.of(SHIP_EFFECTS, world, !here.isEmpty(), ShipStubs::new);
                 if (effect == null) {
-                    if (here.isEmpty()) {
-                        continue;
-                    }
-                    effect = new ShipStubs(world);
-                    SHIP_EFFECTS.put(world, effect);
+                    continue;
                 }
                 final VisualizationManagerImpl manager = effect.attach();
                 final List<ShipStub> drawn = new ArrayList<>(here.size());
                 for (final ShipStub stub : here) {
-                    final VisualEmbedding embedding = manager == null ? null : IPCreateShaftShipsClient.embeddingOf(manager, stub.ship());
+                    final VisualEmbedding embedding = manager == null ? null : IPPortalShipFramesClient.embeddingOf(manager, stub.ship());
                     if (embedding != null) {
                         drawn.add(new ShipStub(stub.pos(), stub.toward(), stub.ship(), embedding));
                     }
@@ -195,50 +183,6 @@ public final class IPCreatePortalPipeStubs {
                 }
             }
         }
-    }
-
-    /**
-     * The far half for a pipe whose portal block maps to {@code farCentre} (in {@code frame}, null: the world), unless a
-     * pipe there is open towards it, or a belt or shaft there owns the space between ({@link IPCreatePortalEnds}): then
-     * {@code outrankedFace} (the near pipe's face, a world pipe's) is added to {@code outranked}. False if no far portal block is there.
-     */
-    private static boolean stub(
-        final ClientLevel farWorld, final IPCreatePortalShafts.@Nullable Frame frame, final Vec3 farCentre, final Quaternionf toFarWorld,
-        final Direction behind, final Map<ResourceKey<Level>, Map<Long, List<Stub>>> found, final Map<ClientLevel, List<ShipStub>> onShips,
-        final @Nullable Stub outrankedFace, final Map<Long, List<Stub>> outranked,
-        final Map<ResourceKey<Level>, Map<BlockPos, IPCreatePortalPieceTargets.Piece>> targets
-    ) {
-        final Vec3 local = frame == null ? farCentre : frame.toLocal(farCentre);
-        final BlockPos farCell = BlockPos.containing(local);
-        if (frame != null && !frame.holds(farWorld, farCell)) {
-            return false;
-        }
-        final Quaternionf toLocal = IPCreatePortalEnds.snap(
-            frame == null ? new Quaternionf(toFarWorld) : new Quaternionf(frame.rotation()).conjugate().mul(toFarWorld));
-        final Vector3f out = toLocal.transform(new Vector3f(behind.getStepX(), behind.getStepY(), behind.getStepZ()));
-        final Direction farOut = Direction.getNearest(out.x, out.y, out.z);
-        if (!IPCreatePortalPipes.isPlaceholderFacing(farWorld.getBlockState(farCell), farOut)) {
-            return false;
-        }
-        if (opensTowards(farWorld, farCell.relative(farOut), farOut.getOpposite())) {
-            return true; // the far pipe draws the rest itself
-        }
-        if (IPCreatePortalEnds.outranked(farWorld, farCell.relative(farOut), farOut.getOpposite(), IPCreatePortalEnds.Kind.PIPE)) {
-            if (outrankedFace != null) {
-                outranked.computeIfAbsent(SectionPos.asLong(outrankedFace.pos()), s -> new ArrayList<>()).add(outrankedFace);
-            }
-            return true; // a belt or shaft there owns the space between: no stub, and the near pipe draws no filler
-        }
-        if (frame == null) {
-            found.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
-                .computeIfAbsent(SectionPos.asLong(farCell), s -> new ArrayList<>())
-                .add(new Stub(farCell.immutable(), farOut));
-        } else {
-            onShips.computeIfAbsent(farWorld, w -> new ArrayList<>()).add(new ShipStub(farCell.immutable(), farOut, frame, null));
-        }
-        targets.computeIfAbsent(farWorld.dimension(), d -> new HashMap<>())
-            .put(farCell.immutable(), new IPCreatePortalPieceTargets.Piece(PIECES[farOut.ordinal()], AllBlocks.FLUID_PIPE.asItem()));
-        return true;
     }
 
     /**
@@ -259,47 +203,6 @@ public final class IPCreatePortalPipeStubs {
     private static boolean opensTowards(final ClientLevel world, final BlockPos pos, final Direction side) {
         final FluidTransportBehaviour pipe = FluidPropagator.getPipe(world, pos);
         return pipe != null && pipe.canHaveFlowToward(world.getBlockState(pos), side);
-    }
-
-    /** Re-meshes the sections of {@code from} whose stubs differ in {@code to}, at once when {@code important}. */
-    private static void markChanged(
-        final Map<ResourceKey<Level>, Map<Long, List<Stub>>> from, final Map<ResourceKey<Level>, Map<Long, List<Stub>>> to,
-        final boolean important
-    ) {
-        for (final Map.Entry<ResourceKey<Level>, Map<Long, List<Stub>>> dimension : from.entrySet()) {
-            final Map<Long, List<Stub>> other = to.getOrDefault(dimension.getKey(), Map.of());
-            LevelRenderer renderer = null;
-            for (final Map.Entry<Long, List<Stub>> section : dimension.getValue().entrySet()) {
-                if (Objects.equals(section.getValue(), other.get(section.getKey()))) {
-                    continue;
-                }
-                if (renderer == null) {
-                    if (ClientWorldLoader.getClientWorlds().stream().noneMatch(w -> w.dimension() == dimension.getKey())) {
-                        break; // its world is gone, and with it the meshes
-                    }
-                    renderer = ClientWorldLoader.getWorldRenderer(dimension.getKey());
-                }
-                final long key = section.getKey();
-                ((IPLevelRendererSectionInvoker) renderer).ip$setSectionDirty(
-                    SectionPos.x(key), SectionPos.y(key), SectionPos.z(key), important
-                );
-            }
-        }
-    }
-
-    /** Game bus: adds the stubs of a section being meshed. */
-    public static void onAddSectionGeometry(final AddSectionGeometryEvent event) {
-        final Map<Long, List<Stub>> sections = stubs.get(event.getLevel().dimension());
-        final List<Stub> here = sections == null ? null : sections.get(SectionPos.asLong(event.getSectionOrigin()));
-        if (here == null) {
-            return;
-        }
-        final BlockPos origin = event.getSectionOrigin().immutable();
-        event.addRenderer(context -> {
-            for (final Stub stub : here) {
-                render(context, origin, stub);
-            }
-        });
     }
 
     private static void render(final AddSectionGeometryEvent.SectionRenderingContext context, final BlockPos origin, final Stub stub) {
@@ -329,63 +232,24 @@ public final class IPCreatePortalPipeStubs {
         if (shift != null) {
             poses.translate(shift.getStepX() * distance, shift.getStepY() * distance, shift.getStepZ() * distance);
         }
-        for (final RenderType renderType : model.getRenderTypes(state, RANDOM, ModelData.EMPTY)) {
-            final VertexConsumer consumer = context.getOrCreateChunkBuffer(renderType);
-            for (final Direction side : SIDES) {
-                for (final BakedQuad quad : model.getQuads(state, side, RANDOM, ModelData.EMPTY, renderType)) {
-                    final float shade = region.getShade(quad.getDirection(), quad.isShade());
-                    consumer.putBulkData(poses.last(), quad, shade, shade, shade, 1, light, OverlayTexture.NO_OVERLAY);
-                }
-            }
-        }
+        IPPortalSectionPieces.putModel(context, poses, model, state, ModelData.EMPTY, RANDOM, light, null);
         poses.popPose();
     }
-
-    /** Every cull face and none: the stub draws all its faces. */
-    private static final Direction[] SIDES = {null, Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST};
 
     // ---------------------------------------------------------------------------------------------------------------
     // Far halves on ships
 
     /** The ship stubs of one client world, as one Flywheel effect in that world's visualization. */
-    private static final class ShipStubs implements Effect {
-        private final ClientLevel level;
+    private static final class ShipStubs extends IPPortalWorldEffect {
         volatile List<ShipStub> stubs = List.of();
-        private WeakReference<VisualizationManagerImpl> manager = new WeakReference<>(null);
 
         ShipStubs(final ClientLevel level) {
-            this.level = level;
-        }
-
-        @Override
-        public LevelAccessor level() {
-            return level;
+            super(level);
         }
 
         @Override
         public EffectVisual<?> visualize(final VisualizationContext context, final float partialTick) {
             return new ShipStubsVisual(this);
-        }
-
-        /**
-         * Adds the effect to its world's visualization, again whenever Flywheel made a new one. Flywheel serves a world's
-         * visualization only while it is {@code Minecraft.level}.
-         */
-        @Nullable VisualizationManagerImpl attach() {
-            final Minecraft minecraft = Minecraft.getInstance();
-            final ClientLevel current = minecraft.level;
-            final VisualizationManagerImpl now;
-            minecraft.level = level;
-            try {
-                now = VisualizationManagerImpl.get(level);
-            } finally {
-                minecraft.level = current;
-            }
-            if (now != null && now != manager.get()) {
-                manager = new WeakReference<>(now);
-                now.effects().queueAdd(this);
-            }
-            return now;
         }
     }
 
@@ -408,11 +272,11 @@ public final class IPCreatePortalPipeStubs {
             if (now != shown) {
                 rebuild(now);
             }
-            final long time = effect.level.getGameTime();
+            final long time = effect.world().getGameTime();
             if (Math.abs(time - litAt) >= LIGHT_TICKS) {
                 litAt = time;
                 for (int i = 0; i < instances.size(); i++) {
-                    instances.get(i).light(LevelRenderer.getLightColor(effect.level, owners.get(i).pos())).setChanged();
+                    instances.get(i).light(LevelRenderer.getLightColor(effect.world(), owners.get(i).pos())).setChanged();
                 }
             }
         }
@@ -435,7 +299,7 @@ public final class IPCreatePortalPipeStubs {
                 add(embedding, stub, ComponentPartials.CONNECTION,
                     x + back.getStepX() * 4 / 16f, y + back.getStepY() * 4 / 16f, z + back.getStepZ() * 4 / 16f);
             }
-            litAt = effect.level.getGameTime();
+            litAt = effect.world().getGameTime();
         }
 
         private void add(final VisualEmbedding embedding, final ShipStub stub, final ComponentPartials part, final float x, final float y, final float z) {
@@ -443,7 +307,7 @@ public final class IPCreatePortalPipeStubs {
                 .instancer(InstanceTypes.TRANSFORMED, Models.partial(AllPartialModels.PIPE_ATTACHMENTS.get(part).get(stub.toward())))
                 .createInstance();
             instance.setIdentityTransform().translate(x, y, z);
-            instance.light(LevelRenderer.getLightColor(effect.level, stub.pos()));
+            instance.light(LevelRenderer.getLightColor(effect.world(), stub.pos()));
             instance.setChanged();
             instances.add(instance);
             owners.add(stub);

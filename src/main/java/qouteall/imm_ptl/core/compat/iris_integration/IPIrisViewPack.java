@@ -49,7 +49,10 @@ import java.util.Map;
  * Iris builds its own for it ({@link #onIrisPipelineMade}: joining, changing dimension, reloading the pack, the first
  * view into a dimension), in the same pause; a nested view into any other dimension builds its own when first drawn.
  * <p>
- * Client option {@code simpleNestedPortalViews} (on by default).
+ * Client option {@code simpleNestedPortalViews} (on by default). Not used while Colorwheel draws Flywheel under the pack:
+ * each level's Colorwheel engine takes the player's pack's program set once, and for any other pipeline it draws through
+ * compiles that pack's programs and framebuffers against the pipeline's targets; through the small pack's, whose
+ * targets no deferred or composite pass of that pack reads, contraptions and other Flywheel parts were not shown.
  */
 public final class IPIrisViewPack {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -107,6 +110,11 @@ public final class IPIrisViewPack {
     
     private static boolean usable() {
         if (!IPConfig.getConfig().simpleNestedPortalViews || failed || Iris.getCurrentPack().isEmpty()) {
+            return false;
+        }
+        // Colorwheel would draw the player's pack's programs into the small pack's targets (class comment)
+        if (net.neoforged.fml.ModList.get().isLoaded("colorwheel")
+            && qouteall.imm_ptl.core.compat.create_integration.IPFlywheelEmbeddings.isColorwheelBackend()) {
             return false;
         }
         ClientLevel level = Minecraft.getInstance().level;

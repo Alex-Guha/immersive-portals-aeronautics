@@ -31,6 +31,10 @@ final class IPIrisCompatImpl {
         return IrisApi.getInstance().isShaderPackInUse();
     }
 
+    static boolean isRenderingShadowPass() {
+        return IrisApi.getInstance().isRenderingShadowPass();
+    }
+
     /** Iris's {@code MixinBlockEntityRenderDispatcher.iris$wrapBufferSource}, for {@link IPIrisCompat#beginBlockEntity}. */
     static MultiBufferSource beginBlockEntity(MultiBufferSource source, BlockState state) {
         Object2IntMap<BlockState> blockStateIds = WorldRenderingSettings.INSTANCE.getBlockStateIds();

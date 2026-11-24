@@ -18,8 +18,9 @@ import qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortalsClient;
 
 /**
  * Create's vanilla elevator pulley renderer (without Flywheel): of a pulley whose shaft runs through a portal, the
- * magnet and the belt pieces past the portal plane are not drawn on its side (the far side draws them,
- * {@link IPElevatorPortalsClient#drawFarPulleyParts}), like its Flywheel visual ({@code MixinElevatorPulleyVisual_Portals}).
+ * magnet and the belt past the portal plane are not drawn on its side (the far side draws them,
+ * {@link IPElevatorPortalsClient#drawFarPulleyParts}), like its Flywheel visual ({@code MixinElevatorPulleyVisual_Portals}):
+ * {@link IPElevatorPortalsClient#vanillaPartAt}.
  */
 @Mixin(value = ElevatorPulleyRenderer.class, remap = false)
 public class MixinElevatorPulleyRenderer_Portals {
@@ -33,9 +34,8 @@ public class MixinElevatorPulleyRenderer_Portals {
     private void ip$notPastPlane(LevelAccessor world, SuperByteBuffer partial, float offset, BlockPos pulleyPos, PoseStack ms,
                                  VertexConsumer buffer, Operation<Void> original,
                                  @com.llamalad7.mixinextras.sugar.Local(argsOnly = true) ElevatorPulleyBlockEntity pulley) {
-        if (IPElevatorPortalsClient.magnetPastPlane(pulley, offset)) {
-            return;
+        if (!IPElevatorPortalsClient.vanillaPartAt(pulley, world, partial, offset, pulleyPos, ms, buffer)) {
+            original.call(world, partial, offset, pulleyPos, ms, buffer);
         }
-        original.call(world, partial, offset, pulleyPos, ms, buffer);
     }
 }

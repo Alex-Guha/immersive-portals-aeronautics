@@ -49,6 +49,18 @@ public final class IPIrisCompat {
         }
     }
 
+    /** Whether Iris is drawing its shadow pass now; false without Iris. */
+    public static boolean isRenderingShadowPass() {
+        if (!isIrisPresent()) {
+            return false;
+        }
+        try {
+            return IPIrisCompatImpl.isRenderingShadowPass();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /**
      * Immersive Aeronautics: {@code source} as Iris's block entity dispatcher hands it to block entity renderers
      * ({@code MixinBlockEntityRenderDispatcher}), for geometry drawn alongside block entities but not by one: with a

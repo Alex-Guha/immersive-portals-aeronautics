@@ -118,6 +118,11 @@ public class IPModEntryClient {
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
                 qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShaftHalves::onRenderStage
             );
+            // the belt of an elevator whose shaft runs through portals, in each level past the first portal
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,
+                qouteall.imm_ptl.core.compat.create_integration.IPElevatorPortalsClient::onRenderStage
+            );
             // Immersive Aeronautics: with Flywheel off, the part of a carriage past a portal
             net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.RenderLevelStageEvent.class,

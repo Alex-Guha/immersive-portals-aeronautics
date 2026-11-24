@@ -63,7 +63,7 @@ public final class IPFlywheelEmbeddings {
     }
 
     /** @return whether Colorwheel's backend (indirect or instancing) is the one Flywheel draws with */
-    static boolean isColorwheelBackend() {
+    public static boolean isColorwheelBackend() {
         if (!COLORWHEEL) {
             return false;
         }

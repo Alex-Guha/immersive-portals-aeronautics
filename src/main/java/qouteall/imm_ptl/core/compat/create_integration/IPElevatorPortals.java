@@ -347,6 +347,7 @@ public final class IPElevatorPortals {
     }
 
     private static void tickClient(final Level level, final ElevatorPulleyBlockEntity pulley) {
+        IPElevatorPortalsClient.track(pulley);
         final AbstractContraptionEntity home = pulley.movedContraption;
         final Map<CopyKey, ControlledContraptionEntity> byKey = CLIENT_COPIES.get(level.dimension());
         if (((IPElevatorPulley) pulley).ip$chain().isEmpty() || home == null || byKey == null || byKey.isEmpty()) {

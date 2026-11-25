@@ -1,3 +1,10 @@
+/*
+ * Immersive Portals Revamped - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.chunk_loading;
 
 import com.mojang.logging.LogUtils;
@@ -5,7 +12,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchFinishedPacket;
 import net.minecraft.network.protocol.game.ClientboundChunkBatchStartPacket;
-import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkHolder;
@@ -17,12 +23,12 @@ import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.neoforged.neoforge.event.EventHooks;
 import org.apache.commons.lang3.Validate;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.slf4j.Logger;
 import qouteall.imm_ptl.core.ducks.IEChunkMap;
 import qouteall.imm_ptl.core.miscellaneous.IPVanillaCopy;
+import qouteall.imm_ptl.core.mixin.common.chunk_sync.IEPlayerChunkSender;
 import qouteall.imm_ptl.core.network.PacketRedirection;
 import qouteall.q_misc_util.Helper;
 
@@ -185,9 +191,10 @@ public class PlayerChunkLoading {
     }
     
     /**
-     * {@link PlayerChunkSender#sendChunk(ServerGamePacketListenerImpl, ServerLevel, LevelChunk)}
+     * Immersive Aeronautics: sends through vanilla's {@link PlayerChunkSender#sendChunk(ServerGamePacketListenerImpl, ServerLevel, LevelChunk)}
+     * itself rather than a copy, so what NeoForge and other mods hook into it runs for chunks IP sends too
+     * ({@link IEPlayerChunkSender}). Inside the redirection, as everything it sends belongs to the chunk's dimension.
      */
-    @IPVanillaCopy
     private static void sendChunkPacket(
         ServerGamePacketListenerImpl serverGamePacketListenerImpl,
         ServerLevel serverLevel,
@@ -195,35 +202,9 @@ public class PlayerChunkLoading {
     ) {
         PacketRedirection.withForceRedirect(
             serverLevel,
-            () -> {
-                serverGamePacketListenerImpl.send(
-                    new ClientboundLevelChunkWithLightPacket(
-                        levelChunk, serverLevel.getLightEngine(), null, null
-                    )
-                );
-                
-//                onSendPacket(serverGamePacketListenerImpl, levelChunk);
-            }
+            () -> IEPlayerChunkSender.ip_sendChunk(serverGamePacketListenerImpl, serverLevel, levelChunk)
         );
-        EventHooks.fireChunkSent(serverGamePacketListenerImpl.getPlayer(), levelChunk, serverLevel);
     }
-    
-//    /**
-//     * Fabric API's mixin {@link net.fabricmc.fabric.mixin.attachment.ChunkDataSenderMixin}
-//     * is cancelled in {@link qouteall.imm_ptl.core.mixin.common.chunk_sync.MixinPlayerChunkSender}.
-//     * So manually implement it here.
-//     * */
-//    @IPVanillaCopy
-//    private static void onSendPacket(ServerGamePacketListenerImpl listener, LevelChunk chunk) {
-//        ServerPlayer player = listener.player;
-//
-//        List<AttachmentChange> changes = new ArrayList<>();
-//        ((AttachmentTargetImpl) chunk).fabric_computeInitialSyncChanges(player, changes::add);
-//
-//        if (!changes.isEmpty()) {
-//            AttachmentChange.partitionAndSendPackets(changes, player);
-//        }
-//    }
     
     /**
      * {@link PlayerChunkSender#onChunkBatchReceivedByClient(float)}

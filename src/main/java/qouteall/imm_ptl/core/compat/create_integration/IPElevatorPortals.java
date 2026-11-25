@@ -103,6 +103,12 @@ public final class IPElevatorPortals {
         final BlockPos pos = pulley.getBlockPos();
         final AbstractContraptionEntity home = pulley.movedContraption;
         final long now = level.getServer().getTickCount();
+        if (pulley.running && home == null) {
+            // the car is not attached yet (just loaded): its shaft stays, or Create keeps the offset above the world's
+            // floor meanwhile (the range of MixinPulleyBlockEntity_ElevatorRange)
+            removeCopies(level, pos, "its car is not there");
+            return;
+        }
         if (!pulley.running || home == null || !home.isAlive() || !(home.getContraption() instanceof ElevatorContraption ec)) {
             if (!holder.ip$chain().isEmpty()) {
                 holder.ip$setChain(List.of());
@@ -116,6 +122,7 @@ public final class IPElevatorPortals {
             return;
         }
         if (now - holder.ip$lastScan() >= SCAN_TICKS) {
+            final boolean firstScan = holder.ip$lastScan() < 0; // since the pulley loaded
             holder.ip$setLastScan(now);
             final List<IPElevatorShaft> found = IPElevatorShaft.findChain(level, pos, home.getBoundingBox());
             if (!IPElevatorShaft.lastRejections.isEmpty()
@@ -123,9 +130,23 @@ public final class IPElevatorPortals {
                 LOGGER.info("[IPElevator] pulley {} in {}: {}; turned down {}", pos.toShortString(), level.dimension().location(),
                     found.isEmpty() ? "no shaft" : "the shaft ends after " + found.size() + " portal(s)", IPElevatorShaft.lastRejections);
             }
-            if (!found.equals(holder.ip$chain())) {
+            final long sinceLoad = now - LOADED_AT.computeIfAbsent(pulley, k -> now);
+            if (found.size() < holder.ip$chain().size() && sinceLoad < LOAD_GRACE_TICKS) {
+                // just loaded with a saved shaft whose portals are not all loaded yet (ships load later than chunks): kept,
+                // and looked for again next tick. Dropped, Create kept the car above the world's floor meanwhile and it
+                // jumped there and back as the world loaded
+                if (firstScan) {
+                    LOGGER.info("[IPElevator] pulley {} in {}: waiting for the portals of its saved shaft to load (found {} of {})",
+                        pos.toShortString(), level.dimension().location(), found.size(), holder.ip$chain().size());
+                }
+                holder.ip$setLastScan(now - SCAN_TICKS + 1);
+                return;
+            }
+            if ((!found.isEmpty() && SHAFT_LOGGED.add(pulley)) || !found.equals(holder.ip$chain())) {
                 LOGGER.info("[IPElevator] pulley {} in {}: {}", pos.toShortString(), level.dimension().location(),
                     found.isEmpty() ? "no shaft through a portal" : "shaft through " + describe(found));
+            }
+            if (!found.equals(holder.ip$chain())) {
                 final boolean hadShaft = !holder.ip$chain().isEmpty();
                 holder.ip$setChain(found);
                 pulley.sendData();
@@ -217,6 +238,14 @@ public final class IPElevatorPortals {
      */
     private static final double COPY_LEAD = 2.0;
     private static final double COPY_LEAD_TICKS = 8.0;
+
+    /** When each pulley first ticked here, for {@link #LOAD_GRACE_TICKS}. */
+    private static final Map<ElevatorPulleyBlockEntity, Long> LOADED_AT = new WeakHashMap<>();
+    /** After loading, a saved shaft is kept this long while the search finds fewer of its portals (not loaded yet). */
+    private static final int LOAD_GRACE_TICKS = 200;
+    /** Pulleys whose shaft was logged since they loaded (a saved shaft found again unchanged is logged once). */
+    private static final java.util.Set<ElevatorPulleyBlockEntity> SHAFT_LOGGED =
+        java.util.Collections.newSetFromMap(new WeakHashMap<>());
 
     /** The last reasons logged for a pulley finding no shaft, so each is logged once. */
     private static final Map<BlockPos, String> REJECTIONS = new HashMap<>();
@@ -621,6 +650,19 @@ public final class IPElevatorPortals {
         }
         final IPElevatorShaft shaft = homeShaft(contraption);
         return shaft == null || contraption.getBoundingBox().minY >= shaft.planeY() ? null : new Keep(shaft.planeY(), true);
+    }
+
+    /**
+     * Whether a block a car or far copy moves into (in its own frame) is not on its drawn side of its plane: the blocks
+     * there belong to the other level. A block the plane cuts counts as past it.
+     */
+    public static boolean isPastPlane(final AbstractContraptionEntity entity, final BlockPos pos) {
+        final Keep keep = keep(entity);
+        if (keep == null) {
+            return false;
+        }
+        final double centre = pos.getY() + 0.5;
+        return keep.above() ? centre <= keep.planeY() : centre >= keep.planeY();
     }
 
     /**

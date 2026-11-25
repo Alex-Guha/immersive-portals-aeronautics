@@ -55,16 +55,23 @@ public class MixinElevatorPulleyBlockEntity_Portals implements IPElevatorPulley 
         IPElevatorPortals.tick((ElevatorPulleyBlockEntity) (Object) this);
     }
 
-    @Inject(method = "write", at = @At("TAIL"))
+    /**
+     * In the pulley's data for clients, and in the save: Create keeps the offset within the rope's range, which ends at
+     * the world's floor unless the shaft is known ({@code MixinPulleyBlockEntity_ElevatorRange}). Not saved, a car parked
+     * past the world's floor through a portal was pulled up to it at the first tick after loading (the shaft is found at
+     * the end of that tick), and went back down while clients got it.
+     */
+    @Inject(method = "write", at = @At("RETURN"))
     private void ip$writeShaft(CompoundTag compound, HolderLookup.Provider registries, boolean clientPacket, CallbackInfo ci) {
-        if (clientPacket && !ip$chain.isEmpty()) {
+        if (!ip$chain.isEmpty()) {
             compound.put("IPElevatorChain", IPElevatorShaft.writeChain(ip$chain));
         }
     }
 
-    @Inject(method = "read", at = @At("TAIL"))
+    /** At every return: Create's read returns early for saved data (not a client packet). */
+    @Inject(method = "read", at = @At("RETURN"))
     private void ip$readShaft(CompoundTag compound, HolderLookup.Provider registries, boolean clientPacket, CallbackInfo ci) {
-        if (clientPacket) {
+        if (clientPacket || compound.contains("IPElevatorChain")) {
             ip$chain = compound.contains("IPElevatorChain") ? IPElevatorShaft.readChain(compound.getCompound("IPElevatorChain")) : List.of();
         }
     }

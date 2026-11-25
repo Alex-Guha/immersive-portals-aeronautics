@@ -35,6 +35,8 @@
     "MixinControlledContraptionEntity_ElevatorAtRest",
     "MixinElevatorColumn_Portals",
     "MixinElevatorContactBlock_Portals",
+    "MixinElevatorContactBlockEntity_RelativeTarget",
+    "MixinSeatMovementBehaviour_ElevatorPortals",
     "MixinElevatorPulleyBlockEntity_Portals",
     "MixinElevatorTargetFloorPacket_Portals",
     "MixinEntity_ElevatorFarCopy",

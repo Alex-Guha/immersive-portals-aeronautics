@@ -6,7 +6,7 @@
 
 </div>
 
-The premier version of [Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsModForNeo) for Neoforge 1.21.1, especially with Create, DH/Voxy, Shaders, and/or Create: Aeronautics. Seamlessly fly through portals on Sable ships, or ride trains through dimensions, and so, so much more.
+The premier version of [Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsModForNeo) for NeoForge 1.21.1, especially with Create, DH/Voxy, shaders, and/or Create: Aeronautics. Seamlessly fly through portals on Sable ships, or ride trains through dimensions, and so, so much more.
 
 ![Aeronautics ship viewed through a portal from the Nether](https://media.forgecdn.net/attachments/2049/160/2026-10-13_05-34-50-png.png)
 
@@ -35,7 +35,7 @@ Works with:
 - Sodium and Iris, with shaders: BSL, Complementary Unbound, Complementary Reimagined and Sundial Lite are tested. If the view through a portal flickers, turn off the shader's TAA (often under "Post-processing").
 - Distant Horizons. Turn off its anti-aliasing if LODs jitter through portals.
 - Voxy with Roxy, or Neo Voxy.
-- Separate Sable Render Distance (SSRD), Create Sable Dynamic Lights, Create: Teleporters, [Create: Pocket Sized](https://www.curseforge.com/minecraft/mc-mods/pocket) (scaled portals resize ships passing through), [Shield Generators](https://www.curseforge.com/minecraft/mc-mods/create-aeronautics-shield-generator-force-field), and many others not listed. If you run into an issue, make a github issue or post it in the discord.
+- Separate Sable Render Distance (SSRD), Create Sable Dynamic Lights, Create: Teleporters, [Create: Pocket Sized](https://www.curseforge.com/minecraft/mc-mods/pocket) (scaled portals resize ships passing through), [Shield Generators](https://www.curseforge.com/minecraft/mc-mods/create-aeronautics-shield-generator-force-field), and many others not listed. If you run into an issue, make a GitHub issue or post it in the Discord.
 
 Partly compatible: Vista (no crash, but its far cameras shouldn't work through portals).
 

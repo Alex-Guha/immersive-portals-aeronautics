@@ -117,7 +117,10 @@ public class IPModMain {
         IPPortingLibCompat.init();
         
         BlockManipulationServer.init();
-        
+
+        // Immersive Aeronautics: portal blocks no portal holds any more are taken away
+        qouteall.imm_ptl.core.compat.IPLonePortalBlocks.init();
+
         // Immersive Aeronautics: portals mounted on Sable ships (their animation driver is read on both sides)
         if (net.neoforged.fml.ModList.get().isLoaded("sable")) {
             qouteall.imm_ptl.core.compat.ship_portals.IPShipPortalAnchors.init();

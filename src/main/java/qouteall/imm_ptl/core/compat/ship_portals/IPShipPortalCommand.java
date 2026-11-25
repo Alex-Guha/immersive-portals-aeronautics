@@ -96,6 +96,10 @@ public final class IPShipPortalCommand {
                                 .then(Commands.literal("light")
                                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                                 .executes(IPShipPortalCommand::light)))
+                                .then(Commands.literal("random-tick")
+                                        .then(Commands.argument("from", BlockPosArgument.blockPos())
+                                                .then(Commands.argument("to", BlockPosArgument.blockPos())
+                                                        .executes(IPShipPortalCommand::randomTick))))
                                 .then(Commands.literal("assemble-solid")
                                         .then(Commands.argument("from", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("to", BlockPosArgument.blockPos())
@@ -351,6 +355,34 @@ public final class IPShipPortalCommand {
         player.setShiftKeyDown(false);
         context.getSource().sendSuccess(() -> Component.literal("Unpacked at " + pos.toShortString() + ": " + result), true);
         return result.consumesAction() ? 1 : 0;
+    }
+
+    /**
+     * Random-ticks every portal block in a box, and in the plots of the ships over it: vanilla random-ticks only chunks
+     * near a player, so a headless server never does.
+     */
+    private static int randomTick(final CommandContext<CommandSourceStack> context) {
+        final ServerLevel level = context.getSource().getLevel();
+        final net.minecraft.world.level.levelgen.structure.BoundingBox box = net.minecraft.world.level.levelgen.structure.BoundingBox.fromCorners(
+                BlockPosArgument.getBlockPos(context, "from"), BlockPosArgument.getBlockPos(context, "to"));
+        final java.util.Set<BlockPos> ticked = new java.util.LinkedHashSet<>();
+        for (final BlockPos world : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
+            final java.util.List<BlockPos> at = new java.util.ArrayList<>();
+            at.add(world.immutable());
+            for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(world))) {
+                final Vector3d local = ship.logicalPose().transformPositionInverse(
+                        new Vector3d(world.getX() + 0.5, world.getY() + 0.5, world.getZ() + 0.5));
+                at.add(BlockPos.containing(local.x, local.y, local.z));
+            }
+            for (final BlockPos pos : at) {
+                final net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+                if (state.getBlock() == qouteall.imm_ptl.core.portal.PortalPlaceholderBlock.instance && ticked.add(pos)) {
+                    state.randomTick(level, pos, level.getRandom());
+                }
+            }
+        }
+        context.getSource().sendSuccess(() -> Component.literal("Random-ticked " + ticked.size() + " portal blocks"), false);
+        return ticked.size();
     }
 
     private static int light(final CommandContext<CommandSourceStack> context) {

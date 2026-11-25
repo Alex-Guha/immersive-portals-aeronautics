@@ -218,6 +218,8 @@ public abstract class BreakablePortalEntity extends Portal {
         }
         
         if (!isPortalValid()) {
+            // Immersive Aeronautics: say so, as Portal.tick does (its portal blocks are cleared by IPLonePortalBlocks)
+            LOGGER.info("Removed invalid portal {}", this);
             remove(RemovalReason.KILLED);
             return;
         }

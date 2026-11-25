@@ -118,6 +118,15 @@ public final class IPShipPortals {
         return IPShipPortalGeneration.whyNotOnShip((ServerLevel) portal.level(), shape.anchor) != null;
     }
 
+    /** Where the centre of a block in a ship's plot is in the world, or null when no loaded ship owns that position. */
+    @Nullable
+    public static net.minecraft.world.phys.Vec3 worldPositionOfPlotBlock(final ServerLevel level, final BlockPos plotPos) {
+        if (!SABLE || IPShipPortalGeneration.whyNotOnShip(level, plotPos) != null) {
+            return null;
+        }
+        return IPShipPortalGeneration.worldCentreOf(level, plotPos);
+    }
+
     /** The ship mount of this portal's own animation (the cluster's holder on the ship side), or null. */
     @Nullable
     public static IPShipMount mountOf(final Portal portal) {

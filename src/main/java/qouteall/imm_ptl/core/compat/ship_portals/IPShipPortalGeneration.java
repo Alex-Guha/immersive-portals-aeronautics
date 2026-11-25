@@ -39,6 +39,13 @@ final class IPShipPortalGeneration {
         return null;
     }
 
+    static net.minecraft.world.phys.Vec3 worldCentreOf(final ServerLevel level, final BlockPos plotPos) {
+        final SubLevel ship = Sable.HELPER.getContaining(level, plotPos);
+        final Vector3d centre = new Vector3d(plotPos.getX() + 0.5, plotPos.getY() + 0.5, plotPos.getZ() + 0.5);
+        final Vector3d world = ship == null ? centre : ship.logicalPose().transformPosition(centre);
+        return new net.minecraft.world.phys.Vec3(world.x, world.y, world.z);
+    }
+
     static BlockPos worldPositionOf(final ServerLevel level, final BlockPos plotPos) {
         final SubLevel ship = Sable.HELPER.getContaining(level, plotPos);
         if (ship == null) {

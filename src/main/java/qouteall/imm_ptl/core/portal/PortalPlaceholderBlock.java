@@ -162,6 +162,17 @@ public class PortalPlaceholderBlock extends Block {
         }
     }
     
+    // Immersive Aeronautics: portal blocks left by a portal that is gone (lost from a save, killed) clear themselves
+    @Override
+    public boolean isRandomlyTicking(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public void randomTick(BlockState state, ServerLevel level, BlockPos pos, net.minecraft.util.RandomSource random) {
+        qouteall.imm_ptl.core.compat.IPLonePortalBlocks.onRandomTick(level, pos);
+    }
+
     @Override
     public BlockState updateShape(
         BlockState thisState,
@@ -189,6 +200,10 @@ public class PortalPlaceholderBlock extends Block {
                             portal.notifyPlaceholderUpdate();
                         }
                     );
+                    // Immersive Aeronautics: and a portal block no portal holds goes (IPLonePortalBlocks)
+                    if (world instanceof ServerLevel serverLevel) {
+                        qouteall.imm_ptl.core.compat.IPLonePortalBlocks.onNeighbourChanged(serverLevel, blockPos);
+                    }
                 }
                 
                 world.getProfiler().pop();

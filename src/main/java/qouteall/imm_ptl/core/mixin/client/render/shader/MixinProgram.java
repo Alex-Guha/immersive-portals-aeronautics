@@ -1,57 +1,29 @@
+/*
+ * Immersive Portals Revamped - modified file.
+ * Original: Immersive Portals for NeoForge (iPortalTeam; Apache License 2.0).
+ * Modified for Immersive Portals Revamped, 2026; changes are marked "Immersive Aeronautics:"
+ * in the code and summarised in changelog/. This project's changes are licensed under the
+ * PolyForm Shield License 1.0.0; the original code stays under the Apache License 2.0. See NOTICE.
+ */
 package qouteall.imm_ptl.core.mixin.client.render.shader;
 
-import com.mojang.blaze3d.preprocessor.GlslPreprocessor;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.shaders.Program;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.Validate;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import qouteall.imm_ptl.core.render.ShaderCodeTransformation;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
-import java.util.Objects;
 
 @Mixin(value = Program.class)
 public class MixinProgram {
-    // The redirect uses method arguments.
-    // Iris also injects that method and uses local capture, so cannot overwrite.
-    private static final ThreadLocal<Program.Type> ip_programType = new ThreadLocal<>();
-    private static final ThreadLocal<String> ip_programName = new ThreadLocal<>();
-    
-    @Inject(
-        method = "compileShaderInternal",
-        at = @At("HEAD")
-    )
-    private static void onBeginCompileShaderInternal(
-        Program.Type type, String name, InputStream shaderData,
-        String sourceName, GlslPreprocessor preprocessor, CallbackInfoReturnable<Integer> cir
-    ) {
-        Validate.isTrue(ip_programType.get() == null);
-        Validate.isTrue(ip_programName.get() == null);
-        ip_programType.set(type);
-        ip_programName.set(name);
-    }
-    
-    @Inject(
-        method = "compileShaderInternal",
-        at = @At("RETURN")
-    )
-    private static void onEndCompileShaderInternal(
-        Program.Type type, String name, InputStream shaderData,
-        String sourceName, GlslPreprocessor preprocessor, CallbackInfoReturnable<Integer> cir
-    ) {
-        Validate.isTrue(ip_programType.get() == type);
-        Validate.isTrue(Objects.equals(ip_programName.get(), name));
-        ip_programType.set(null);
-        ip_programName.set(null);
-    }
-    
-    @Redirect(
+    // Immersive Aeronautics: a wrapper, not a @Redirect: other mods redirect this same read to patch shader sources
+    // (Shadered), and a second @Redirect of one call is skipped, which fails our required injection.
+    // The wrapper stacks on theirs and transforms the source they return.
+    @WrapOperation(
         method = "compileShaderInternal",
         at = @At(
             value = "INVOKE",
@@ -59,18 +31,12 @@ public class MixinProgram {
             remap = false
         )
     )
-    private static String redirectReadShaderSource(
-        InputStream inputStream, Charset charset
-    ) throws IOException {
-        String shaderCode = IOUtils.toString(inputStream, charset);
-        Program.Type type = ip_programType.get();
-        String name = ip_programName.get();
-        Validate.notNull(type);
-        Validate.notNull(name);
-        
-        String transformedShaderCode =
-            ShaderCodeTransformation.transform(type, name, shaderCode);
-        
-        return transformedShaderCode;
+    private static String wrapReadShaderSource(
+        InputStream inputStream, Charset charset, Operation<String> original,
+        @Local(argsOnly = true) Program.Type type,
+        @Local(argsOnly = true, ordinal = 0) String name
+    ) {
+        String shaderCode = original.call(inputStream, charset);
+        return ShaderCodeTransformation.transform(type, name, shaderCode);
     }
 }

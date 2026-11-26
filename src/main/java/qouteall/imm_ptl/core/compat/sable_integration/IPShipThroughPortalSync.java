@@ -53,6 +53,10 @@ import qouteall.imm_ptl.core.network.PacketRedirection;
  * chunks are topped up, and ships that are no longer viewed get a redirected StopTracking packet. Every tick
  * the pose/velocity snapshot packets (normally Sable's UDP stream) are sent per (player, dimension). On a
  * player dimension change the state is cleared and full syncs are re-sent for the arrival dimension.
+ * <p>
+ * A player in the ship's own dimension is Sable's while within its tracking range. Beyond it, a ship they see through
+ * portals (a chain that comes back to its dimension, such as an elevator shaft through the Nether) is synced here
+ * like one of another dimension, and handed back to Sable when they come within its range.
  */
 public final class IPShipThroughPortalSync {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -163,7 +167,8 @@ public final class IPShipThroughPortalSync {
             // packet. A ship that has left the arrival dimension since the last rescan is nobody's: its copy
             // gets a stop packet, or it stays on the client as a frozen ghost. Entries for other dimensions stay
             // and are reconciled normally: ships still visible through a portal keep updating, the rest get a
-            // stop packet when they drop out of view.
+            // stop packet when they drop out of view. So are the arrival dimension's ships beyond Sable's range,
+            // which Sable never takes over (left without updates, they stayed frozen on the client).
             ServerLevel arrivalLevel = server.getLevel(currentDim);
             Map<UUID, ServerSubLevel> arrivalShips = arrivalLevel == null ? Map.of() : indexFor(arrivalLevel, new HashMap<>());
             playerSynced.entrySet().removeIf(entry -> {
@@ -174,6 +179,8 @@ public final class IPShipThroughPortalSync {
                 ServerSubLevel sub = arrivalShips.get(entry.getKey());
                 if (sub == null || sub.isRemoved()) {
                     sendStopTracking(player, synced);
+                } else if (!inSableRange(player, arrivalLevel, sub)) {
+                    return false; // beyond Sable's range: still synced here while seen through a portal
                 }
                 return true;
             });
@@ -181,10 +188,24 @@ public final class IPShipThroughPortalSync {
 
         ArrayList<UUID> gone = new ArrayList<>();
 
-        for (UUID shipId : playerSynced.keySet()) {
-            if (!visible.containsKey(shipId)) {
-                gone.add(shipId);
+        ServerLevel ownLevel = player.serverLevel();
+        Map<UUID, ServerSubLevel> ownShips = null;
+        for (Map.Entry<UUID, Synced> entry : playerSynced.entrySet()) {
+            UUID shipId = entry.getKey();
+            if (visible.containsKey(shipId)) {
+                continue;
             }
+            if (entry.getValue().dim.equals(ownLevel.dimension())) {
+                if (ownShips == null) {
+                    ownShips = indexFor(ownLevel, new HashMap<>());
+                }
+                ServerSubLevel sub = ownShips.get(shipId);
+                if (sub != null && !sub.isRemoved() && inSableRange(player, ownLevel, sub)
+                    && !sub.getTrackingPlayers().contains(player.getUUID())) {
+                    continue; // came within Sable's range: its next tick takes the ship over (handOverToSable)
+                }
+            }
+            gone.add(shipId);
         }
 
         for (UUID shipId : gone) {
@@ -210,6 +231,9 @@ public final class IPShipThroughPortalSync {
             }
 
             ServerLevel shipLevel = shipLevels.get(entry.getKey());
+            if (shipLevel == player.level() && entry.getValue().getTrackingPlayers().contains(player.getUUID())) {
+                continue; // Sable still tracks it; out of its range, its next tick hands it here (adoptFromSable)
+            }
             if (shipLevel != null) {
                 Synced synced = sendStartTracking(player, shipLevel, entry.getValue());
                 if (synced != null) {
@@ -244,7 +268,7 @@ public final class IPShipThroughPortalSync {
         for (int cx = minChunkX; cx <= maxChunkX; cx += strideX) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz += strideZ) {
                 for (ServerPlayer player : ImmPtlChunkTracking.getPlayersViewingChunk(level.dimension(), cx, cz).toList()) {
-                    if (player.level() != level) {
+                    if (player.level() != level || (!inSableRange(player, level, sub) && outsideOwnView(player, cx, cz))) {
                         if (viewers == null) {
                             viewers = new HashMap<>();
                         }
@@ -275,6 +299,21 @@ public final class IPShipThroughPortalSync {
                 shipLevels.put(sub.getUniqueId(), level);
             }
         }
+    }
+
+    /** Whether Sable's own tracking covers {@code player} for {@code sub} (its {@code shouldLoad}: same level, within range). */
+    private static boolean inSableRange(ServerPlayer player, ServerLevel shipLevel, ServerSubLevel sub) {
+        if (player.level() != shipLevel) {
+            return false;
+        }
+        double range = dev.ryanhcode.sable.SableConfig.SUB_LEVEL_TRACKING_RANGE.getAsDouble();
+        return sub.logicalPose().position().distanceSquared(player.getX(), player.getY(), player.getZ()) < range * range;
+    }
+
+    /** Whether a chunk of the player's own level is outside the chunks around them: they view it through a portal. */
+    private static boolean outsideOwnView(ServerPlayer player, int chunkX, int chunkZ) {
+        int radius = qouteall.imm_ptl.core.McHelper.getPlayerLoadDistance(player);
+        return Math.abs(chunkX - player.chunkPosition().x) > radius || Math.abs(chunkZ - player.chunkPosition().z) > radius;
     }
 
     /**
@@ -360,7 +399,8 @@ public final class IPShipThroughPortalSync {
     }
 
     /**
-     * Sable stops tracking {@code sub} for {@code player}, who left {@code shipLevel} (walked through a portal). If they
+     * Sable stops tracking {@code sub} for {@code player}, who left {@code shipLevel} (walked through a portal) or went
+     * beyond its tracking range in it. If they
      * still view one of the ship's chunks, it is synced through the portal from now on instead: the client keeps its copy
      * and gets its movement from {@link #sendMovement} in the next tick, where it used to remove the ship and get it back
      * at the next rescan (every ship blinked). The next rescan stops it if it is not in view after all.
@@ -369,7 +409,7 @@ public final class IPShipThroughPortalSync {
      */
     public static boolean adoptFromSable(ServerPlayer player, ServerLevel shipLevel, ServerSubLevel sub) {
         if (!isAccessorAvailable() || sub.isRemoved() || IPShipRagdollGuard.isRagdollSubLevel(sub) || IPPymCompat.isWorn(sub)
-                || player.level() == shipLevel) {
+                || inSableRange(player, shipLevel, sub)) {
             return false;
         }
         HashMap<UUID, Map<UUID, ServerSubLevel>> visibleByPlayer = new HashMap<>();
@@ -396,6 +436,27 @@ public final class IPShipThroughPortalSync {
         LOGGER.debug("[IPShipThroughPortal] ship {} stays on the client of {} after they left {}: synced through the portal",
             sub.getUniqueId(), player.getGameProfile().getName(), shipLevel.dimension().location());
         return true;
+    }
+
+    /**
+     * IP just moved {@code player} out of {@code from}: the ships there that Sable tracked for them and they still see
+     * through a portal are taken over now, before IP updates which entities they are sent. Taken over only in Sable's
+     * next tracking tick, every entity on such a ship (an elevator car its rider was just handed out of, a contraption)
+     * was untracked for that tick and blinked out on the client until it was sent again.
+     */
+    public static void onPlayerLeftLevel(ServerPlayer player, ServerLevel from) {
+        if (!isAccessorAvailable()) {
+            return;
+        }
+        ServerSubLevelContainer container = SubLevelContainer.getContainer(from);
+        if (container == null) {
+            return;
+        }
+        for (ServerSubLevel sub : List.copyOf(container.getAllSubLevels())) {
+            if (!sub.isRemoved() && sub.getTrackingPlayers().contains(player.getUUID())) {
+                adoptFromSable(player, from, sub);
+            }
+        }
     }
 
     /**

@@ -118,6 +118,7 @@ public final class IPElevatorPortals {
                     IPElevatorFrames.refreshCollider(home);
                 }
             }
+            IPElevatorShaftLoading.forget(level, pos);
             removeCopies(level, pos, "the elevator stopped");
             return;
         }
@@ -140,6 +141,7 @@ public final class IPElevatorPortals {
                         pos.toShortString(), level.dimension().location(), found.size(), holder.ip$chain().size());
                 }
                 holder.ip$setLastScan(now - SCAN_TICKS + 1);
+                IPElevatorShaftLoading.update(level, pos, holder.ip$chain()); // its places load the rest
                 return;
             }
             if ((!found.isEmpty() && SHAFT_LOGGED.add(pulley)) || !found.equals(holder.ip$chain())) {
@@ -158,6 +160,11 @@ public final class IPElevatorPortals {
                     // plot by its assembly) was drawn nowhere
                     removeCopies(level, pos, "its shaft changed");
                 }
+            }
+            if (found.isEmpty()) {
+                IPElevatorShaftLoading.forget(level, pos);
+            } else {
+                IPElevatorShaftLoading.update(level, pos, found);
             }
         }
         final List<IPElevatorShaft> chain = holder.ip$chain();

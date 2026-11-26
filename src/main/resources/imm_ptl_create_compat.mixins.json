@@ -33,6 +33,7 @@
     "MixinAbstractContraptionEntity_ElevatorPortals",
     "MixinControlledContraptionEntity_ElevatorFarCopy",
     "MixinControlledContraptionEntity_ElevatorAtRest",
+    "MixinControlledContraptionEntity_SpawnController",
     "MixinElevatorColumn_Portals",
     "MixinElevatorContactBlock_Portals",
     "MixinElevatorContactBlockEntity_RelativeTarget",

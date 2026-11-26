@@ -485,6 +485,10 @@ public class ServerTeleportationManager {
         
         // adds the player
         toWorld.addDuringTeleport(player);
+
+        // Immersive Aeronautics: the ships of fromWorld the player still sees stay synced to them, before their entity
+        // tracking is updated below (an entity on such a ship was otherwise sent a removal and sent again a tick later)
+        qouteall.imm_ptl.core.compat.sable_integration.IPShipBlockInteraction.onPlayerLeftLevel(player, fromWorld);
         
         if (vehicle != null) {
             Vec3 offset = McHelper.getVehicleOffsetFromPassenger(vehicle, player);

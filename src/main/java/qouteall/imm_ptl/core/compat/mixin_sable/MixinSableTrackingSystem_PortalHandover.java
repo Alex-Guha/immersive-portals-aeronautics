@@ -25,6 +25,8 @@ import java.util.UUID;
  * <ul>
  *     <li>a player who left this level stops tracking its ships; a ship they still see through a portal is taken over
  *     by {@link IPShipThroughPortalSync} instead of being removed on the client (and re-sent at the next rescan);</li>
+ *     <li>a player who went beyond Sable's tracking range stops tracking a ship; one they still see through portals
+ *     (a chain of portals back into its level) is taken over the same way;</li>
  *     <li>a player who arrived starts tracking this level's ships; one their client already has through a portal is
  *     not sent again (a full sync re-sends every plot chunk and rebuilds the ship's render data).</li>
  * </ul>
@@ -40,6 +42,15 @@ public abstract class MixinSableTrackingSystem_PortalHandover {
             ordinal = 0), require = 0)
     private boolean ip_keepShipInPortalView(final SubLevelTrackingSystem self, final VeilPacketManager.PacketSink sink,
                                             final ServerSubLevel sub, @Local final UUID uuid) {
+        final ServerPlayer player = this.level.getServer().getPlayerList().getPlayer(uuid);
+        return player == null || !IPShipThroughPortalSync.adoptFromSable(player, this.level, sub);
+    }
+
+    @WrapWithCondition(method = "tick", at = @At(value = "INVOKE",
+            target = "Ldev/ryanhcode/sable/sublevel/system/SubLevelTrackingSystem;sendRemoval(Lfoundry/veil/api/network/VeilPacketManager$PacketSink;Ldev/ryanhcode/sable/sublevel/ServerSubLevel;)V",
+            ordinal = 1), require = 0)
+    private boolean ip_keepFarShipInPortalView(final SubLevelTrackingSystem self, final VeilPacketManager.PacketSink sink,
+                                               final ServerSubLevel sub, @Local final UUID uuid) {
         final ServerPlayer player = this.level.getServer().getPlayerList().getPlayer(uuid);
         return player == null || !IPShipThroughPortalSync.adoptFromSable(player, this.level, sub);
     }

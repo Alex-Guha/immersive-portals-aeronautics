@@ -152,6 +152,16 @@ public final class IPShipBlockInteraction {
     }
 
     /**
+     * Server: IP moved {@code player} out of {@code from}; the ships there they still see are synced to them through the
+     * portal from now on ({@code IPShipThroughPortalSync.onPlayerLeftLevel}).
+     */
+    public static void onPlayerLeftLevel(final ServerPlayer player, final ServerLevel from) {
+        if (SABLE) {
+            IPShipThroughPortalSync.onPlayerLeftLevel(player, from);
+        }
+    }
+
+    /**
      * Server: the recipients of a change to a ship's plot chunk, plus the players the ship is synced to through a
      * portal or near its far half (Sable sends plot chunk changes only to players tracking the ship in its own world).
      */

@@ -59,6 +59,27 @@ public final class IPElevatorFrames {
         return pose == null ? framePos : pose.transformPosition(framePos);
     }
 
+    /**
+     * The radius in chunks, around the chunk at {@code chunkX}, {@code chunkZ}, of the world chunks under the ships over
+     * that chunk (0 if none: not on a ship, or the ship not loaded). Sable unloads a ship when any chunk under it does.
+     */
+    public static int shipChunkRadius(final Level level, final int chunkX, final int chunkZ) {
+        if (!SABLE) {
+            return 0;
+        }
+        final double x = chunkX << 4;
+        final double z = chunkZ << 4;
+        int radius = 0;
+        for (final SubLevel ship : Sable.HELPER.getAllIntersecting(level,
+            new dev.ryanhcode.sable.companion.math.BoundingBox3d(x, level.getMinBuildHeight(), z, x + 16, level.getMaxBuildHeight(), z + 16))) {
+            final dev.ryanhcode.sable.companion.math.BoundingBox3dc box = ship.boundingBox();
+            radius = Math.max(radius, Math.max(
+                Math.max(chunkX - ((int) Math.floor(box.minX()) >> 4), ((int) Math.floor(box.maxX()) >> 4) - chunkX),
+                Math.max(chunkZ - ((int) Math.floor(box.minZ()) >> 4), ((int) Math.floor(box.maxZ()) >> 4) - chunkZ)));
+        }
+        return radius;
+    }
+
     /** Whether {@code entity} is in a ship's plot. */
     public static boolean isOnShip(final Entity entity) {
         return SABLE && Sable.HELPER.getContaining(entity) != null;

@@ -139,6 +139,8 @@ public class IPModMain {
             // Create's parts as kinds facing portals: who owns the space between the two sides
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalPieces.init();
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalShafts.init();
+            // elevator shafts through portals: their places held for the players near any of them
+            qouteall.imm_ptl.core.compat.create_integration.IPElevatorShaftLoading.init();
             // trains through portals within one dimension: their portal edges, synced to clients
             qouteall.imm_ptl.core.compat.create_integration.IPCreatePortalEdges.init();
             // portal blocks in framed plain portals (Create Teleporters'), so tracks, shafts and pipes bridge them

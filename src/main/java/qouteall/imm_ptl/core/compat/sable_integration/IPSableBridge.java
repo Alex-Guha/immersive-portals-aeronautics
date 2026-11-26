@@ -131,6 +131,7 @@ public final class IPSableBridge {
             IPShipTeleportJournal.write(
                 srcLevel.getServer(), data.uuid(), srcLevel.dimension().location(), dstLevel.dimension().location(), srcLevel.getMinBuildHeight(), data
             );
+            IPWalkerCompat.noteMove(srcLevel, sub.getUniqueId(), oldPose, pose);
             srcContainer.removeSubLevel(sub, SubLevelRemovalReason.REMOVED);
             // Pym would rebuild the old copy's last joints (a held handle's, aimed at this world's coordinates) on the new
             // copy when it is resized: the new copy has the same UUID (IPPymCompat.forgetConstraintsOf)
@@ -322,6 +323,10 @@ public final class IPSableBridge {
                 IPShipCreateCompat.reactivateGenerators(srcLevel, kinetics.generatorPositions(), loaded.shift());
                 IPShipBalloonCompat.restore(srcLevel, loaded.sub(), balloons, loaded.shift());
                 IPShipWireCompat.restore(srcLevel, loaded.sub(), wires, loaded.shift());
+                // back where it was, possibly in another plot: what joints save of it follows that plot
+                Pose3d restoredPose = SableNBTUtils.readPose3d(preEditCopy.getCompound("pose"));
+                IPWalkerCompat.noteMove(srcLevel, shipId, restoredPose, restoredPose);
+                IPShipJoints.shiftLoadedJoints(srcLevel, Map.of(shipId, loaded.shift()));
                 IPShipRiderCarry.replay(srcLevel, srcLevel, loaded.sub(), loaded.shift(), riders, arrivalVelocity(loaded.sub()));
                 LOGGER.info("[IPShipPortal] destination load failed; ship {} restored to source (move cancelled)", shipId);
                 return true;

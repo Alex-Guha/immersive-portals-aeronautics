@@ -158,6 +158,8 @@ public final class IPShipJoints {
      * partner's position.
      */
     public static void shiftLoadedJoints(ServerLevel level, Map<UUID, BlockPos> shifts) {
+        // before the zero-shift check: a walker's feet follow the ship's new pose even when its plot stays the same
+        IPWalkerCompat.shiftLoadedWalkers(level, shifts);
         if (!SIMULATED_LOADED || shifts.values().stream().allMatch(BlockPos.ZERO::equals)) {
             return;
         }

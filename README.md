@@ -35,6 +35,7 @@ Works with:
 - Sodium and Iris, with shaders: BSL, Complementary Unbound, Complementary Reimagined and Sundial Lite are tested. If the view through a portal flickers, turn off the shader's TAA (often under "Post-processing").
 - Distant Horizons. Turn off its anti-aliasing if LODs jitter through portals.
 - Voxy with Roxy, or Neo Voxy.
+- Let it Walk! (beta): walkers cross portals, walk through them and can be piloted through them.
 - Separate Sable Render Distance (SSRD), Create Sable Dynamic Lights, Create: Teleporters, [Create: Pocket Sized](https://www.curseforge.com/minecraft/mc-mods/pocket) (scaled portals resize ships passing through), [Shield Generators](https://www.curseforge.com/minecraft/mc-mods/create-aeronautics-shield-generator-force-field), and many others not listed. If you run into an issue, make a github issue or post it in the discord.
 
 Partly compatible: Vista (no crash, but its far cameras shouldn't work through portals).

@@ -8,6 +8,11 @@
   "plugin": "qouteall.imm_ptl.core.compat.IPOptionalModMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "MixinWalkerControlPayload_Portals",
+    "MixinWalkerCoreBlockEntity_Portals",
+    "MixinTerrainProbe_Portals",
+    "MixinLegCollision_Portals",
+    "MixinWalkerClimb_Portals",
     "MixinPymScaleNetwork_PortalViewers",
     "MixinEntity_SeatProxyRider",
     "MixinServerPlayer_SeatInOtherLevel",
@@ -54,6 +59,8 @@
     "MixinPymDetached_ShatterPortals"
   ],
   "client": [
+    "IPPilotInputAccessor",
+    "MixinPilotInput_Portals",
     "MixinPymScaleHandshake_AllLevels",
     "MixinPymScaleState_HeldCopy",
     "MixinPymScaleState_HandoffSnap",

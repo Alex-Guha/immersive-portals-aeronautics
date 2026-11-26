@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 import net.minecraft.core.registries.Registries;
@@ -150,6 +151,7 @@ public final class IPShipTeleportJournal {
                             LOGGER.warn("[IPShipPortal] journal: recovery load failed for {}; leaving entry for next start", subUuid);
                         } else {
                             LOGGER.info("[IPShipPortal] journal: recovered ship {}", subUuid);
+                            IPShipJoints.shiftLoadedJoints(dstLevel, Map.of(subUuid, loaded.shift()));
                             tryDelete(file);
                         }
                     }

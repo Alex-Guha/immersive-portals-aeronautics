@@ -14,9 +14,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Entry points of Create Aeronautics (Simulated) tools across portals for IP's and our own code: the physics staff
- * ({@link IPPhysicsStaffPortals}, {@link IPPhysicsStaffPortalsClient}) and handles ({@link IPHandlePortals},
- * {@link IPHandlePortalsClient}). They do nothing unless Simulated and Sable are loaded.
+ * Entry points of tools that act on ships across portals for IP's and our own code: Create Aeronautics' (Simulated)
+ * physics staff ({@link IPPhysicsStaffPortals}, {@link IPPhysicsStaffPortalsClient}) and handles
+ * ({@link IPHandlePortals}, {@link IPHandlePortalsClient}), which do nothing unless Simulated and Sable are loaded, and
+ * Let It Walk's pilot controls ({@link IPWalkerPilot}, {@link IPWalkerPilotClient}), unless Let It Walk is.
  */
 public final class IPPhysicsStaffHooks {
     private static final boolean ACTIVE = ModList.get().isLoaded("simulated") && ModList.get().isLoaded("sable");
@@ -25,6 +26,7 @@ public final class IPPhysicsStaffHooks {
     }
 
     public static void clearState() {
+        IPWalkerPilot.reset();
         if (ACTIVE) {
             IPPhysicsStaffPortals.reset();
             IPHandlePortals.reset();
@@ -32,6 +34,7 @@ public final class IPPhysicsStaffHooks {
     }
 
     public static void onServerPlayerTeleported(ServerPlayer player, ResourceKey<Level> from, Portal portal) {
+        IPWalkerPilot.onPlayerTeleported(player, from, portal);
         if (ACTIVE) {
             IPPhysicsStaffPortals.onPlayerTeleported(player, from, portal);
             IPHandlePortals.onPlayerTeleported(player, from, portal);
@@ -39,6 +42,9 @@ public final class IPPhysicsStaffHooks {
     }
 
     public static void onClientPlayerTeleported(Portal portal) {
+        if (IPWalkerPilot.isActive()) {
+            IPWalkerPilotClient.onPlayerTeleported(portal);
+        }
         if (ACTIVE) {
             IPPhysicsStaffPortalsClient.onPlayerTeleported(portal);
             IPHandlePortalsClient.onPlayerTeleported(portal);
@@ -54,11 +60,15 @@ public final class IPPhysicsStaffHooks {
         for (final ServerPlayer player : carried) {
             IPShipRiderCarry.scaleThrough(player, factor);
         }
-        if (ACTIVE) {
-            for (final ServerPlayer player : carried) {
-                onServerPlayerTeleported(player, src.dimension(), portal);
+        for (final ServerPlayer player : carried) {
+            onServerPlayerTeleported(player, src.dimension(), portal);
+            IPWalkerPilot.tellCarried(player, portal);
+            if (ACTIVE) {
                 IPPhysicsStaffPortals.tellCarried(player, portal);
             }
+        }
+        IPWalkerPilot.onShipMoved(src, dst, ship, portal, moved);
+        if (ACTIVE) {
             IPPhysicsStaffPortals.onShipMoved(src, dst, ship, portal, moved);
             IPHandlePortals.onShipMoved(src, dst, ship, portal, moved);
         }

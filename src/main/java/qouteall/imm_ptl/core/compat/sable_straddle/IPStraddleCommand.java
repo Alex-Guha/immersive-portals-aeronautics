@@ -5,15 +5,18 @@ package qouteall.imm_ptl.core.compat.sable_straddle;
 
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import qouteall.imm_ptl.core.compat.IPMixinReport;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipJoints;
 import qouteall.imm_ptl.core.compat.sable_integration.IPShipRopeCompat;
+import qouteall.imm_ptl.core.compat.sable_integration.IPWalkerCompat;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -23,6 +26,7 @@ import qouteall.imm_ptl.core.compat.sable_physics.IPPhysicsBackend;
 /**
  * {@code /ip_aeronautics straddle on|off|status}, {@code /ip_aeronautics straddle debug on|off} and the test hooks
  * {@code /ip_aeronautics straddle debug rope <from> <to>}, {@code debug swivel}, {@code debug joints},
+ * {@code debug walker <type> <pos> [facing]}, {@code debug walkers}, {@code debug walkerdrive <keys>},
  * {@code debug simassemble <assembler> <from>}, {@code debug reroot <n>}, {@code debug assembler <pos>},
  * {@code debug elevator <pulley> [floor]} and {@code debug pymdrive <scale> <ticks>} (operators only).
  * Registered only with Sable present.
@@ -49,6 +53,17 @@ public final class IPStraddleCommand {
                                 .then(Commands.literal("swivel").executes(IPStraddleCommand::assembleSwivels))
                                 .then(Commands.literal("dock").executes(IPStraddleCommand::dockConnectors))
                                 .then(Commands.literal("joints").executes(IPStraddleCommand::listJoints))
+                                .then(Commands.literal("walkers").executes(IPStraddleCommand::listWalkers))
+                                .then(Commands.literal("walkerdrive")
+                                        .then(Commands.argument("keys", IntegerArgumentType.integer(0))
+                                                .executes(IPStraddleCommand::driveWalkers)))
+                                .then(Commands.literal("walker")
+                                        .then(Commands.argument("type", StringArgumentType.word())
+                                                .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                                        .executes(context -> buildWalker(context, Direction.NORTH))
+                                                        .then(Commands.argument("facing", StringArgumentType.word())
+                                                                .executes(context -> buildWalker(context,
+                                                                        Direction.byName(StringArgumentType.getString(context, "facing"))))))))
                                 .then(Commands.literal("simassemble")
                                         .then(Commands.argument("assembler", BlockPosArgument.blockPos())
                                                 .then(Commands.argument("from", BlockPosArgument.blockPos())
@@ -98,6 +113,33 @@ public final class IPStraddleCommand {
             return 0;
         }
         context.getSource().sendSuccess(() -> Component.literal("Assembled from " + from.toShortString()), true);
+        return 1;
+    }
+
+    /** Test hook: builds one of Let It Walk's demo walkers ({@code built_spider}, ...) at a position. */
+    private static int buildWalker(final CommandContext<CommandSourceStack> context, final Direction facing) {
+        if (facing == null || facing.getAxis().isVertical()) {
+            context.getSource().sendFailure(Component.literal("Facing must be north, south, east or west"));
+            return 0;
+        }
+        final String result = IPWalkerCompat.buildDemo(context.getSource().getLevel(), BlockPosArgument.getBlockPos(context, "pos"), facing,
+                StringArgumentType.getString(context, "type"));
+        context.getSource().sendSuccess(() -> Component.literal("Walker: " + result), true);
+        return 1;
+    }
+
+    /** Test hook: every walker in the level takes these keys as a pilot's (cruise: bit 19). */
+    private static int driveWalkers(final CommandContext<CommandSourceStack> context) {
+        final int driven = IPWalkerCompat.drive(context.getSource().getLevel(), IntegerArgumentType.getInteger(context, "keys"));
+        context.getSource().sendSuccess(() -> Component.literal("Walkers driven: " + driven), true);
+        return driven;
+    }
+
+    /** Test hook: the walker cores in the level, and whether their legs' joints point into their ships' plots. */
+    private static int listWalkers(final CommandContext<CommandSourceStack> context) {
+        for (final String line : IPWalkerCompat.describe(context.getSource().getLevel())) {
+            context.getSource().sendSuccess(() -> Component.literal(line), true);
+        }
         return 1;
     }
 

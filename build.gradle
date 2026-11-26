@@ -217,6 +217,7 @@ dependencies {
     compileOnly "maven.modrinth:create-teleporters:TuG81a9A"    // Create: Teleporters 3.0.2
     compileOnly "maven.modrinth:create-pipes-n-physics:kH90vhqN" // Create: Pipes'n physics 3.2.1
     compileOnly "maven.modrinth:create-pocket-sized:p7CpwP4q"  // Create: Pocket Sized 0.32.0; bundles Pym 0.7.1 as jar-in-jar (our hooks reach it by reflection)
+    compileOnly "curse.maven:let-it-walk-1780503:9540966"       // Let it Walk! 0.1.5 (CurseForge only): walkers' piloting across portals
 
     // Unit tests (./gradlew test, part of build): plain JUnit on classes that need no running game
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"

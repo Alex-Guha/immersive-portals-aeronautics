@@ -49,7 +49,8 @@ public class IPOptionalModMixinPlugin implements IMixinConfigPlugin {
         Map.entry("dev.djefrey.colorwheel.", "colorwheel"),
         Map.entry("com.misterblusky9.pym.", "pym"),
         Map.entry("com.misterblusky9.pocket.", "pocket"),
-        Map.entry("punchymoves.", "punchy_moves")
+        Map.entry("punchymoves.", "punchy_moves"),
+        Map.entry("dev.letitwalk.", "let_it_walk")
     );
 
     private static final Map<String, String> MOD_BY_MIXIN_PACKAGE = Map.of(

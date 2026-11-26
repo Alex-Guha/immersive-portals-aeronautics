@@ -72,7 +72,8 @@ public final class IPMixinReport {
         Map.entry("me.cortex.voxy.", "Voxy"),
         Map.entry("net.irisshaders.", "Iris"),
         Map.entry("net.caffeinemc.mods.sodium.", "Sodium"),
-        Map.entry("top.leonx.dynlight.", "Create Dynamic Lights")
+        Map.entry("top.leonx.dynlight.", "Create Dynamic Lights"),
+        Map.entry("dev.letitwalk.", "Let It Walk")
     );
 
     private record Applied(String mod, String mixin, ClassNode target, List<String> handlers) {
